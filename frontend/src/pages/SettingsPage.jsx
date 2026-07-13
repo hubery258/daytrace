@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { zjuApi } from '../api/client';
 
 const STORAGE_KEY_API_KEY = 'simpletasker_api_key';
@@ -143,9 +143,17 @@ export default function SettingsPage() {
 
   const handlePreview = () => runZjuAction(async () => {
     const data = await zjuApi.preview(zjuPayload(false));
-    setPreviewItems(data.items || []);
-    setZjuErrors(data.errors || []);
-    setZjuMessage(`预览完成：${data.items?.length || 0} 个任务`);
+    const items = data.items || [];
+    const errors = data.errors || [];
+    const hasPintiaItem = items.some((item) => item.source === 'pintia');
+    const hasPintiaError = errors.some((error) => error.toLowerCase().includes('pintia'));
+    const pintiaStatus = includePintia && !hasPintiaItem && !hasPintiaError
+      ? '；Pintia 已连接，但暂无未截止题集'
+      : '';
+
+    setPreviewItems(items);
+    setZjuErrors(errors);
+    setZjuMessage(`预览完成：${items.length} 个任务${pintiaStatus}`);
     await refreshCredentialState();
   });
 
