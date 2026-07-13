@@ -49,12 +49,9 @@ async def get_schedule(schedule_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.put("/{schedule_id}", response_model=schemas.ScheduleOut)
 async def update_schedule(schedule_id: int, data: schemas.ScheduleUpdate, db: AsyncSession = Depends(get_db)):
-    existing = await crud.get_schedule(db, schedule_id)
-    if not existing:
-        raise HTTPException(status_code=404, detail="日程不存在")
-    if existing.is_planned and existing.start_time.date() < datetime.now().date():
-        raise HTTPException(status_code=400, detail="过去的计划日程不可修改")
     schedule = await crud.update_schedule(db, schedule_id, data)
+    if not schedule:
+        raise HTTPException(status_code=404, detail="日程不存在")
     return schedule
 
 

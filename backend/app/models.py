@@ -1,10 +1,17 @@
 import enum
 from datetime import datetime, date
 from sqlalchemy import (
-    Column, Integer, String, Text, DateTime, Date, Boolean,
-    Enum as SAEnum, JSON, ForeignKey,
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    Enum as SAEnum,
+    ForeignKey,
+    Integer,
+    JSON,
+    String,
+    Text,
 )
-from sqlalchemy.orm import relationship
 from .database import Base
 
 
@@ -68,10 +75,10 @@ class Schedule(Base):
     category = Column(String(100), default="普通日程", nullable=False)
     nature = Column(SAEnum(ScheduleNature), default=ScheduleNature.no_other_task, nullable=False)
     relax_suggestion = Column(String(500), nullable=True)
-    linked_todo_ids = Column(JSON, default=list, nullable=False)  # list[int], max 2
+    linked_todo_ids = Column(JSON, default=list, nullable=False)
     location = Column(String(300), nullable=True)
     notes = Column(Text, default="", nullable=False)
-    is_planned = Column(Boolean, default=True, nullable=False)  # True=计划日程, False=实际记录
+    is_planned = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
 
@@ -94,3 +101,42 @@ class LogTemplate(Base):
     name = Column(String(100), nullable=False)
     content = Column(Text, default="", nullable=False)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
+
+
+class ZjuCredential(Base):
+    __tablename__ = "zju_credentials"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(100), default="", nullable=False)
+    password = Column(Text, default="", nullable=False)
+    pintia_cookie = Column(Text, default="", nullable=False)
+    save_password = Column(Boolean, default=False, nullable=False)
+    save_pintia_cookie = Column(Boolean, default=False, nullable=False)
+    default_reminder_days = Column(Integer, default=1, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+
+class ImportBatch(Base):
+    __tablename__ = "import_batches"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source = Column(String(50), nullable=False)
+    status = Column(String(50), default="completed", nullable=False)
+    summary = Column(JSON, default=dict, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+
+class ExternalItem(Base):
+    __tablename__ = "external_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source = Column(String(50), nullable=False)
+    external_id = Column(String(300), nullable=False)
+    entity_type = Column(String(50), nullable=False)
+    local_entity_id = Column(Integer, nullable=False)
+    import_batch_id = Column(Integer, ForeignKey("import_batches.id"), nullable=True)
+    payload = Column(JSON, default=dict, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)

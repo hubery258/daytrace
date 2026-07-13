@@ -81,10 +81,7 @@ export default function TodoSummaryPage() {
                 style={{ cursor: 'pointer' }}
               >
                 <span style={{ marginRight: 8 }}>{statusEmoji[todo.status] || ''}</span>
-                <span className="todo-main">
-                  <span className="todo-name">{todo.name}</span>
-                  {todo.notes && <span className="todo-note">📝 {todo.notes}</span>}
-                </span>
+                <span className="todo-name">{todo.name}</span>
                 {todo.ddl_date && (
                   <span className="todo-meta">
                     {parseAsLocal(todo.ddl_date).toLocaleDateString('zh-CN')}

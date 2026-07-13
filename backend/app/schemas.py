@@ -1,7 +1,9 @@
+﻿from datetime import date, datetime
+from typing import Any, List, Optional
+
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Optional, List
-from datetime import datetime, date
-from .models import DDLType, TodoStatus, ScheduleNature
+
+from .models import DDLType, ScheduleNature, TodoStatus
 
 
 # ============ Todo ============
@@ -34,7 +36,7 @@ class TodoCreate(BaseModel):
     def check_ddl_date(cls, v, info):
         ddl_type = info.data.get("ddl_type")
         if ddl_type in (DDLType.hard, DDLType.soft) and v is None:
-            raise ValueError("选择了硬性或弹性DDL时必须指定ddl日期")
+            raise ValueError("选择了硬性或弹性 DDL 时必须指定 ddl 日期")
         return v
 
     @field_validator("reminder_days")
@@ -42,7 +44,7 @@ class TodoCreate(BaseModel):
     def check_reminder_days(cls, v, info):
         ddl_type = info.data.get("ddl_type")
         if ddl_type in (DDLType.hard, DDLType.soft) and v is None:
-            raise ValueError("选择了硬性或弹性DDL时必须指定提醒日期")
+            raise ValueError("选择了硬性或弹性 DDL 时必须指定提醒日期")
         return v
 
 
@@ -194,3 +196,72 @@ class LogTemplateOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ============ ZJU Todo Import ============
+
+class ZjuCredentialIn(BaseModel):
+    username: str = ""
+    password: str = ""
+    pintia_cookie: str = ""
+    save_password: bool = False
+    save_pintia_cookie: bool = False
+    default_reminder_days: int = Field(1, ge=0, le=60)
+
+
+class ZjuCredentialOut(BaseModel):
+    username: str = ""
+    has_password: bool = False
+    has_pintia_cookie: bool = False
+    save_password: bool = False
+    save_pintia_cookie: bool = False
+    default_reminder_days: int = 1
+
+
+class ExternalTodoPreview(BaseModel):
+    source: str
+    external_id: str
+    title: str
+    course_name: str = ""
+    ddl_at: Optional[datetime] = None
+    type: str = ""
+    url: str = ""
+    raw: dict[str, Any] = Field(default_factory=dict)
+    action: str = "create"
+    reason: str = "可导入"
+    imported_todo_id: Optional[int] = None
+
+
+class ZjuPreviewRequest(BaseModel):
+    username: Optional[str] = None
+    password: Optional[str] = None
+    pintia_cookie: Optional[str] = None
+    include_pintia: bool = True
+    save_credentials: bool = False
+    save_password: bool = False
+    save_pintia_cookie: bool = False
+    default_reminder_days: int = Field(1, ge=0, le=60)
+
+
+class ZjuPreviewOut(BaseModel):
+    items: List[ExternalTodoPreview] = Field(default_factory=list)
+    errors: List[str] = Field(default_factory=list)
+    saved_credentials: bool = False
+
+
+class ZjuImportRequest(BaseModel):
+    items: List[ExternalTodoPreview] = Field(default_factory=list)
+    reminder_days: int = Field(1, ge=0, le=60)
+
+
+class ZjuImportOut(BaseModel):
+    batch_id: int
+    created_count: int
+    skipped_count: int
+    todo_ids: List[int] = Field(default_factory=list)
+
+
+class ZjuUndoOut(BaseModel):
+    batch_id: Optional[int] = None
+    deleted_count: int = 0
+    skipped_count: int = 0
