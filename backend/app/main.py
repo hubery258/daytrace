@@ -1,18 +1,16 @@
-from contextlib import asynccontextmanager
+﻿from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import async_engine, Base
-from .routers import todos, schedules, logs
+from .routers import logs, schedules, todos, zju
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: create tables
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
-    # Shutdown
     await async_engine.dispose()
 
 
@@ -34,6 +32,7 @@ app.add_middleware(
 app.include_router(todos.router)
 app.include_router(schedules.router)
 app.include_router(logs.router)
+app.include_router(zju.router)
 
 
 @app.get("/api/health")
