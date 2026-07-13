@@ -1,5 +1,6 @@
-﻿import json
+import json
 import re
+import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -25,6 +26,11 @@ class ExternalTodo:
     raw: dict[str, Any] = field(default_factory=dict)
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
     if not value:
         return None
@@ -39,31 +45,54 @@ def _json_loads(data: bytes) -> Any:
     return json.loads(data.decode("utf-8"))
 
 
+def _legacy_tls_context() -> ssl.SSLContext:
+    context = ssl.create_default_context()
+    try:
+        context.set_ciphers("DEFAULT@SECLEVEL=1")
+    except ssl.SSLError:
+        pass
+    return context
+
+
+def _password_rsa_hex(password: str, exponent: str, modulus: str) -> str:
+    value = 0
+    for char in password:
+        value = value * 256 + ord(char)
+    encrypted = pow(value, int(exponent, 16), int(modulus, 16))
+    return f"{encrypted:0{len(modulus)}x}"
+
+
 class ZjuCoursesClient:
     def __init__(self, username: str, password: str, timeout: int = 12):
         self.username = username.strip()
         self.password = password
         self.timeout = timeout
         self.cookie_jar = CookieJar()
+        self.ssl_context = _legacy_tls_context()
         self.opener = urllib.request.build_opener(
-            urllib.request.HTTPCookieProcessor(self.cookie_jar)
+            urllib.request.HTTPCookieProcessor(self.cookie_jar),
+            urllib.request.HTTPSHandler(context=self.ssl_context),
+        )
+        self.no_redirect_opener = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(self.cookie_jar),
+            urllib.request.HTTPSHandler(context=self.ssl_context),
+            _NoRedirectHandler(),
         )
         self.user_agent = (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36"
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0 Safari/537.36 Edg/142.0"
         )
 
-    def _request(
+    def _make_request(
         self,
         url: str,
         method: str = "GET",
         data: Optional[dict[str, Any] | str | bytes] = None,
         headers: Optional[dict[str, str]] = None,
-    ) -> bytes:
+    ) -> urllib.request.Request:
         body = None
         request_headers = {
             "User-Agent": self.user_agent,
-            "Accept": "application/json, text/plain, */*",
         }
         if headers:
             request_headers.update(headers)
@@ -76,59 +105,130 @@ class ZjuCoursesClient:
             body = data.encode("utf-8")
         elif isinstance(data, bytes):
             body = data
+        return urllib.request.Request(url, data=body, headers=request_headers, method=method)
 
-        req = urllib.request.Request(url, data=body, headers=request_headers, method=method)
+    def _open(
+        self,
+        url: str,
+        method: str = "GET",
+        data: Optional[dict[str, Any] | str | bytes] = None,
+        headers: Optional[dict[str, str]] = None,
+        follow_redirects: bool = True,
+    ):
+        req = self._make_request(url, method=method, data=data, headers=headers)
+        opener = self.opener if follow_redirects else self.no_redirect_opener
         try:
-            with self.opener.open(req, timeout=self.timeout) as resp:
-                return resp.read()
+            return opener.open(req, timeout=self.timeout)
         except urllib.error.HTTPError as exc:
+            if not follow_redirects and 300 <= exc.code < 400:
+                return exc
             detail = exc.read().decode("utf-8", errors="ignore")
-            raise ZjuClientError(f"请求失败 ({exc.code}): {detail[:200]}") from exc
+            raise ZjuClientError(f"Request failed ({exc.code}): {detail[:200]}") from exc
         except urllib.error.URLError as exc:
-            raise ZjuClientError(f"网络连接失败: {exc.reason}") from exc
+            raise ZjuClientError(f"Network connection failed: {exc.reason}") from exc
 
-    def login(self) -> None:
-        if not self.username or not self.password:
-            raise ZjuClientError("请填写 ZJU 学号和密码")
+    def _request(
+        self,
+        url: str,
+        method: str = "GET",
+        data: Optional[dict[str, Any] | str | bytes] = None,
+        headers: Optional[dict[str, str]] = None,
+    ) -> bytes:
+        resp = self._open(url, method=method, data=data, headers=headers)
+        try:
+            return resp.read()
+        finally:
+            resp.close()
 
-        login_html = self._request("https://zjuam.zju.edu.cn/cas/login").decode(
-            "utf-8", errors="ignore"
-        )
-        execution = re.search(r'name="execution" value="(.*?)"', login_html)
+    def _redirect_location(self, url: str, resp) -> str:
+        location = resp.headers.get("Location")
+        if not location:
+            raise ZjuClientError(f"Login redirect failed: {url} did not return Location")
+        return urllib.parse.urljoin(url, location)
+
+    def _cas_login_service(self, service_url: str) -> str:
+        login_url = "https://zjuam.zju.edu.cn/cas/login?service=" + urllib.parse.quote(service_url, safe="")
+        login_html = self._request(login_url).decode("utf-8", errors="ignore")
+        execution = re.search(r'name="execution" value="([^"]+)"', login_html)
         if not execution:
-            raise ZjuClientError("无法获取统一身份认证 execution")
+            raise ZjuClientError("Unable to read CAS execution value")
 
         pubkey = _json_loads(self._request("https://zjuam.zju.edu.cn/cas/v2/getPubKey"))
         modulus = pubkey.get("modulus")
         exponent = pubkey.get("exponent")
         if not modulus or not exponent:
-            raise ZjuClientError("无法获取统一身份认证 RSA 公钥")
+            raise ZjuClientError("Unable to read CAS RSA public key")
 
         try:
-            password_int = int(self.password.encode("utf-8").hex(), 16)
-            encrypted = pow(password_int, int(exponent, 16), int(modulus, 16))
-            password_enc = f"{encrypted:0128x}"
+            password_enc = _password_rsa_hex(self.password, exponent, modulus)
         except ValueError as exc:
-            raise ZjuClientError("密码加密失败") from exc
+            raise ZjuClientError("Password encryption failed") from exc
 
-        self._request(
-            "https://zjuam.zju.edu.cn/cas/login",
+        resp = self._open(
+            login_url,
             method="POST",
             data={
                 "username": self.username,
                 "password": password_enc,
                 "execution": execution.group(1),
                 "_eventId": "submit",
-                "rememberMe": "true",
+                "authcode": "",
             },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
         )
+        try:
+            if resp.status == 302:
+                return self._redirect_location(login_url, resp)
+            detail = resp.read().decode("utf-8", errors="ignore")
+            message = re.search(r'<span id="msg">([^<]+)</span>', detail)
+            if message:
+                raise ZjuClientError(f"CAS login failed: {message.group(1)}")
+            raise ZjuClientError(f"CAS login failed with status {resp.status}")
+        finally:
+            resp.close()
 
-        if not any(cookie.name == "iPlanetDirectoryPro" for cookie in self.cookie_jar):
-            raise ZjuClientError("统一身份认证登录失败，请检查学号或密码")
+    def login(self) -> None:
+        if not self.username or not self.password:
+            raise ZjuClientError("Please enter ZJU username and password")
 
-        self._request("https://courses.zju.edu.cn/user/index")
-        if not any(cookie.name == "session" and "courses.zju.edu.cn" in cookie.domain for cookie in self.cookie_jar):
-            raise ZjuClientError("学在浙大登录失败，未获取 session")
+        url = "https://courses.zju.edu.cn/user/index"
+        while urllib.parse.urlparse(url).hostname != "zjuam.zju.edu.cn":
+            resp = self._open(url, follow_redirects=False)
+            try:
+                if not (300 <= resp.status < 400):
+                    break
+                url = self._redirect_location(url, resp)
+            finally:
+                resp.close()
+
+        if urllib.parse.urlparse(url).hostname != "zjuam.zju.edu.cn":
+            return
+
+        service = urllib.parse.parse_qs(urllib.parse.urlparse(url).query).get("service", [""])[0]
+        if not service:
+            raise ZjuClientError("Courses login failed: CAS redirect has no service parameter")
+
+        url = self._cas_login_service(service)
+        for _ in range(12):
+            resp = self._open(url, follow_redirects=False)
+            try:
+                body = resp.read().decode("utf-8", errors="ignore")
+                if resp.status == 200 and 'meta http-equiv="refresh"' in body:
+                    match = re.search(r'meta http-equiv="refresh" content="0;URL=([^"]+)"', body)
+                    if not match:
+                        raise ZjuClientError("Courses login failed: cannot parse meta refresh")
+                    url = urllib.parse.urljoin(url, match.group(1))
+                    continue
+                if 300 <= resp.status < 400:
+                    url = self._redirect_location(url, resp)
+                    continue
+                if resp.status in (200, 204):
+                    return
+                raise ZjuClientError(f"Courses login failed with status {resp.status}")
+            finally:
+                resp.close()
+        raise ZjuClientError("Courses login failed: too many redirects")
 
     def fetch_json(self, url: str, method: str = "GET", body: Optional[dict[str, Any]] = None) -> Any:
         data = None
@@ -136,6 +236,7 @@ class ZjuCoursesClient:
         if body is not None:
             data = json.dumps(body, ensure_ascii=False).encode("utf-8")
             headers = {"Content-Type": "application/json"}
+        headers = {"Accept": "application/json, text/plain, */*", **(headers or {})}
         return _json_loads(self._request(url, method=method, data=data, headers=headers))
 
     def get_reliable_todos(self) -> list[ExternalTodo]:
@@ -235,7 +336,7 @@ class ZjuCoursesClient:
                     ExternalTodo(
                         source="zju_courses",
                         external_id=f"courses.zju:{activity.get('type') or 'activity'}:{activity_id}",
-                        title=activity.get("title") or "未命名学在浙大任务",
+                        title=activity.get("title") or "Untitled ZJU task",
                         course_name=course_name,
                         ddl_at=end_time,
                         type=activity.get("type") or "activity",
@@ -259,7 +360,7 @@ class ZjuCoursesClient:
                     ExternalTodo(
                         source="zju_courses",
                         external_id=f"courses.zju:quiz:{exam_id}",
-                        title=exam.get("title") or "未命名测验",
+                        title=exam.get("title") or "Untitled quiz",
                         course_name=course_name,
                         ddl_at=end_time,
                         type="quiz",
@@ -283,7 +384,7 @@ class ZjuCoursesClient:
                     ExternalTodo(
                         source="zju_courses",
                         external_id=f"courses.zju:interaction:{classroom_id}",
-                        title=classroom.get("title") or "未命名互动任务",
+                        title=classroom.get("title") or "Untitled interaction",
                         course_name=course_name,
                         ddl_at=end_time,
                         type="interaction",
@@ -322,13 +423,13 @@ def fetch_pintia_todos(cookie: str, timeout: int = 12) -> list[ExternalTodo]:
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as resp:
+        with urllib.request.urlopen(request, timeout=timeout, context=_legacy_tls_context()) as resp:
             data = _json_loads(resp.read())
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="ignore")
-        raise ZjuClientError(f"Pintia 请求失败 ({exc.code}): {detail[:200]}") from exc
+        raise ZjuClientError(f"Pintia request failed ({exc.code}): {detail[:200]}") from exc
     except urllib.error.URLError as exc:
-        raise ZjuClientError(f"Pintia 网络连接失败: {exc.reason}") from exc
+        raise ZjuClientError(f"Pintia network connection failed: {exc.reason}") from exc
 
     now = datetime.now()
     output: list[ExternalTodo] = []
@@ -341,7 +442,7 @@ def fetch_pintia_todos(cookie: str, timeout: int = 12) -> list[ExternalTodo]:
             ExternalTodo(
                 source="pintia",
                 external_id=f"pintia:problem-set:{problem_set_id}",
-                title=item.get("name") or "未命名 Pintia 题集",
+                title=item.get("name") or "Untitled Pintia problem set",
                 course_name=item.get("organizationName") or item.get("ownerNickname") or "Pintia",
                 ddl_at=end_at,
                 type="problem_set",

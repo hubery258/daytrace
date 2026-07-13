@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 from datetime import datetime
 from typing import Iterable
 
@@ -157,8 +157,8 @@ async def clear_pintia_cookie(db: AsyncSession = Depends(get_db)):
 async def preview_zju_todos(data: schemas.ZjuPreviewRequest, db: AsyncSession = Depends(get_db)):
     credential = await _get_credential(db)
     username = (data.username if data.username is not None else (credential.username if credential else "")).strip()
-    password = data.password if data.password is not None else (credential.password if credential else "")
-    pintia_cookie = data.pintia_cookie if data.pintia_cookie is not None else (credential.pintia_cookie if credential else "")
+    password = (data.password or (credential.password if credential else ""))
+    pintia_cookie = (data.pintia_cookie or (credential.pintia_cookie if credential else ""))
 
     if not username or not password:
         raise HTTPException(status_code=400, detail="请填写 ZJU 学号和密码，或先保存凭据")

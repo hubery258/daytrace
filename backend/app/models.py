@@ -1,4 +1,4 @@
-﻿import enum
+import enum
 from datetime import datetime, date
 from sqlalchemy import (
     Boolean,
@@ -139,3 +139,4 @@ class ExternalItem(Base):
     import_batch_id = Column(Integer, ForeignKey("import_batches.id"), nullable=True)
     payload = Column(JSON, default=dict, nullable=False)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
