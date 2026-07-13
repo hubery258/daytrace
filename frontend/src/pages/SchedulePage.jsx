@@ -33,6 +33,7 @@ function getEventStyle(schedule) {
 export default function SchedulePage() {
   const today = startOfDay(new Date());
   const [currentDate, setCurrentDate] = useState(today);
+  const [jumpDate, setJumpDate] = useState(getDateStr(today));
   const [plannedSchedules, setPlannedSchedules] = useState([]);
   const [actualSchedules, setActualSchedules] = useState([]);
   const [showModal, setShowModal] = useState(false);
@@ -65,6 +66,10 @@ export default function SchedulePage() {
 
   useEffect(() => { loadSchedules(); }, [loadSchedules]);
 
+  useEffect(() => {
+    setJumpDate(getDateStr(currentDate));
+  }, [currentDate]);
+
   const goPrev = () => {
     const d = new Date(currentDate);
     d.setDate(d.getDate() - 1);
@@ -75,6 +80,17 @@ export default function SchedulePage() {
     const d = new Date(currentDate);
     d.setDate(d.getDate() + 1);
     setCurrentDate(d);
+  };
+
+  const goToday = () => {
+    setCurrentDate(today);
+  };
+
+  const handleJumpDate = () => {
+    if (!jumpDate) return;
+    const d = new Date(`${jumpDate}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return;
+    setCurrentDate(startOfDay(d));
   };
 
   const isToday = getDateStr(currentDate) === todayStr();
@@ -171,9 +187,17 @@ export default function SchedulePage() {
       <div className="week-nav">
         <button className="btn btn-sm btn-secondary" onClick={goPrev}>← 前一天</button>
         <span>{formatDate(`${getDateStr(currentDate)}T12:00:00`)}{isToday ? '（今天）' : ''}</span>
+        <input
+          type="date"
+          value={jumpDate}
+          onChange={e => setJumpDate(e.target.value)}
+          style={{ maxWidth: 150 }}
+          aria-label="选择日程日期"
+        />
+        <button className="btn btn-sm btn-primary" onClick={handleJumpDate}>跳转</button>
+        {!isToday && <button className="btn btn-sm btn-secondary" onClick={goToday}>今天</button>}
         <button className="btn btn-sm btn-secondary" onClick={goNext}>后一天 →</button>
       </div>
-
       <div className="timeline-mobile-switch" aria-label="切换日程类型">
         <button
           className={`btn btn-sm ${mobileLane === 'planned' ? 'btn-primary' : 'btn-secondary'}`}

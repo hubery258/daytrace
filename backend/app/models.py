@@ -117,6 +117,17 @@ class ZjuCredential(Base):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
 
 
+class ZjuCalendarCache(Base):
+    __tablename__ = "zju_calendar_caches"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    academic_year = Column(String(20), nullable=False)
+    semester = Column(Integer, nullable=False)
+    calendar = Column(JSON, default=dict, nullable=False)
+    fetched_at = Column(DateTime, default=datetime.now, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
 class ImportBatch(Base):
     __tablename__ = "import_batches"
 
@@ -140,3 +151,4 @@ class ExternalItem(Base):
     payload = Column(JSON, default=dict, nullable=False)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+

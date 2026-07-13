@@ -1,4 +1,4 @@
-﻿const BASE_URL = '/api';
+const BASE_URL = '/api';
 
 async function request(path, options = {}) {
   const url = `${BASE_URL}${path}`;
@@ -81,9 +81,18 @@ export const zjuApi = {
   preview: (data) => request('/zju/preview', { method: 'POST', body: JSON.stringify(data) }),
   importTodos: (data) => request('/zju/import', { method: 'POST', body: JSON.stringify(data) }),
   undoLast: () => request('/zju/undo-last', { method: 'POST' }),
+  getCalendarCache: ({ academic_year, semester }) => {
+    const qs = new URLSearchParams({ academic_year, semester });
+    return request(`/zju/calendar/cache?${qs.toString()}`);
+  },
+  fetchCalendar: (data) => request('/zju/calendar/fetch', { method: 'POST', body: JSON.stringify(data) }),
+  previewSchedule: (data) => request('/zju/schedule/preview', { method: 'POST', body: JSON.stringify(data) }),
+  importSchedule: (data) => request('/zju/schedule/import', { method: 'POST', body: JSON.stringify(data) }),
+  undoLastSchedule: () => request('/zju/schedule/undo-last', { method: 'POST' }),
 };
 
 // ============ Health ============
 export const healthApi = {
   check: () => request('/health/'),
 };
+

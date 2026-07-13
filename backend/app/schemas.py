@@ -1,4 +1,4 @@
-﻿from datetime import date, datetime
+from datetime import date, datetime
 from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -265,3 +265,59 @@ class ZjuUndoOut(BaseModel):
     batch_id: Optional[int] = None
     deleted_count: int = 0
     skipped_count: int = 0
+
+
+# ============ ZJU Schedule Import ============
+
+class ZjuCalendarFetchRequest(BaseModel):
+    academic_year: str = Field(..., min_length=4, max_length=20)
+    semester: int = Field(..., ge=1, le=2)
+
+
+class ZjuCalendarCacheOut(BaseModel):
+    academic_year: str
+    semester: int
+    has_cache: bool = False
+    fetched_at: Optional[datetime] = None
+    calendar: dict[str, Any] = Field(default_factory=dict)
+
+
+class ExternalSchedulePreview(BaseModel):
+    source: str
+    external_id: str
+    course_name: str
+    teacher: str = ""
+    location: str = ""
+    start_time: datetime
+    end_time: datetime
+    weekday: int
+    week: int
+    sections: str = ""
+    action: str = "create"
+    reason: str = "可导入"
+    imported_schedule_id: Optional[int] = None
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+
+class ZjuSchedulePreviewRequest(BaseModel):
+    username: Optional[str] = None
+    password: Optional[str] = None
+    academic_year: str = Field(..., min_length=4, max_length=20)
+    semester: int = Field(..., ge=1, le=2)
+
+
+class ZjuSchedulePreviewOut(BaseModel):
+    items: List[ExternalSchedulePreview] = Field(default_factory=list)
+    errors: List[str] = Field(default_factory=list)
+    calendar_fetched_at: Optional[datetime] = None
+
+
+class ZjuScheduleImportRequest(BaseModel):
+    items: List[ExternalSchedulePreview] = Field(default_factory=list)
+
+
+class ZjuScheduleImportOut(BaseModel):
+    batch_id: int
+    created_count: int
+    skipped_count: int
+    schedule_ids: List[int] = Field(default_factory=list)

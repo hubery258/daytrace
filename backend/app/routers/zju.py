@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import models, schemas
 from ..database import get_db
-from ..zju_client import ExternalTodo, ZjuClientError, ZjuCoursesClient, fetch_pintia_todos
+from ..zju_client import ExternalSchedule, ExternalTodo, ZjuClientError, ZjuCoursesClient, ZjuZdbkClient, expand_zdbk_timetable, fetch_celechron_calendar, fetch_pintia_todos
 
 
 router = APIRouter(prefix="/api/zju", tags=["zju"])
@@ -294,6 +294,251 @@ async def undo_last_import(db: AsyncSession = Depends(get_db)):
         todo = await db.get(models.Todo, external_item.local_entity_id)
         if todo and not todo.is_completed:
             await db.delete(todo)
+            deleted_count += 1
+        else:
+            skipped_count += 1
+        await db.delete(external_item)
+
+    batch.status = "undone"
+    batch.summary = {**(batch.summary or {}), "undo_deleted_count": deleted_count, "undo_skipped_count": skipped_count}
+    batch.updated_at = datetime.now()
+    await db.commit()
+    return schemas.ZjuUndoOut(batch_id=batch.id, deleted_count=deleted_count, skipped_count=skipped_count)
+
+def _to_schedule_preview(item: ExternalSchedule) -> schemas.ExternalSchedulePreview:
+    return schemas.ExternalSchedulePreview(
+        source=item.source,
+        external_id=item.external_id,
+        course_name=item.course_name,
+        teacher=item.teacher,
+        location=item.location,
+        start_time=item.start_time,
+        end_time=item.end_time,
+        weekday=item.weekday,
+        week=item.week,
+        sections=item.sections,
+        raw=item.raw,
+    )
+
+
+async def _get_calendar_cache(db: AsyncSession, academic_year: str, semester: int) -> models.ZjuCalendarCache | None:
+    result = await db.execute(
+        select(models.ZjuCalendarCache).where(
+            models.ZjuCalendarCache.academic_year == academic_year,
+            models.ZjuCalendarCache.semester == semester,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+def _calendar_cache_out(cache: models.ZjuCalendarCache | None, academic_year: str, semester: int) -> schemas.ZjuCalendarCacheOut:
+    if not cache:
+        return schemas.ZjuCalendarCacheOut(academic_year=academic_year, semester=semester, has_cache=False)
+    return schemas.ZjuCalendarCacheOut(
+        academic_year=cache.academic_year,
+        semester=cache.semester,
+        has_cache=True,
+        fetched_at=cache.fetched_at,
+        calendar=cache.calendar or {},
+    )
+
+
+async def _mark_existing_schedules(
+    db: AsyncSession,
+    items: Iterable[schemas.ExternalSchedulePreview],
+) -> list[schemas.ExternalSchedulePreview]:
+    output: list[schemas.ExternalSchedulePreview] = []
+    for item in items:
+        result = await db.execute(
+            select(models.ExternalItem).where(
+                models.ExternalItem.source == item.source,
+                models.ExternalItem.external_id == item.external_id,
+                models.ExternalItem.entity_type == "schedule",
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            item.action = "exists"
+            item.reason = "已导入"
+            item.imported_schedule_id = existing.local_entity_id
+        else:
+            item.action = "create"
+            item.reason = "可导入"
+        output.append(item)
+    return output
+
+
+def _build_schedule_notes(item: schemas.ExternalSchedulePreview) -> str:
+    lines = [
+        "来源：ZJU 课表导入",
+        f"平台：{item.source}",
+        f"外部 ID：{item.external_id}",
+        f"周次：第 {item.week} 周",
+        f"节次：{item.sections}",
+    ]
+    if item.teacher:
+        lines.append(f"教师：{item.teacher}")
+    if item.location:
+        lines.append(f"地点：{item.location}")
+    return "\n".join(lines)
+
+
+@router.get("/calendar/cache", response_model=schemas.ZjuCalendarCacheOut)
+async def get_calendar_cache(academic_year: str, semester: int, db: AsyncSession = Depends(get_db)):
+    cache = await _get_calendar_cache(db, academic_year.strip(), semester)
+    return _calendar_cache_out(cache, academic_year.strip(), semester)
+
+
+@router.post("/calendar/fetch", response_model=schemas.ZjuCalendarCacheOut)
+async def fetch_calendar_cache(data: schemas.ZjuCalendarFetchRequest, db: AsyncSession = Depends(get_db)):
+    academic_year = data.academic_year.strip()
+    try:
+        calendar = await asyncio.to_thread(fetch_celechron_calendar, academic_year, data.semester)
+    except ZjuClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    cache = await _get_calendar_cache(db, academic_year, data.semester)
+    if not cache:
+        cache = models.ZjuCalendarCache(academic_year=academic_year, semester=data.semester)
+        db.add(cache)
+        await db.flush()
+    cache.calendar = calendar
+    cache.fetched_at = datetime.now()
+    cache.updated_at = datetime.now()
+    await db.commit()
+    await db.refresh(cache)
+    return _calendar_cache_out(cache, academic_year, data.semester)
+
+
+def _fetch_external_schedules(
+    username: str,
+    password: str,
+    academic_year: str,
+    semester: int,
+    calendar: dict,
+) -> tuple[list[ExternalSchedule], list[str]]:
+    try:
+        client = ZjuZdbkClient(username, password)
+        client.login_zdbk()
+        raw_items = client.get_undergraduate_timetable(academic_year, semester)
+        return expand_zdbk_timetable(raw_items, calendar, academic_year, semester), []
+    except ZjuClientError as exc:
+        return [], [str(exc)]
+
+
+@router.post("/schedule/preview", response_model=schemas.ZjuSchedulePreviewOut)
+async def preview_zju_schedule(data: schemas.ZjuSchedulePreviewRequest, db: AsyncSession = Depends(get_db)):
+    credential = await _get_credential(db)
+    username = (data.username if data.username is not None else (credential.username if credential else "")).strip()
+    password = data.password or (credential.password if credential else "")
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="请填写 ZJU 学号和密码，或先保存凭据")
+
+    academic_year = data.academic_year.strip()
+    cache = await _get_calendar_cache(db, academic_year, data.semester)
+    if not cache:
+        raise HTTPException(status_code=400, detail="请先手动拉取并缓存该学期校历")
+
+    fetched, errors = await asyncio.to_thread(
+        _fetch_external_schedules,
+        username,
+        password,
+        academic_year,
+        data.semester,
+        cache.calendar or {},
+    )
+    preview_items = [_to_schedule_preview(item) for item in fetched]
+    preview_items = await _mark_existing_schedules(db, preview_items)
+    return schemas.ZjuSchedulePreviewOut(items=preview_items, errors=errors, calendar_fetched_at=cache.fetched_at)
+
+
+@router.post("/schedule/import", response_model=schemas.ZjuScheduleImportOut)
+async def import_zju_schedule(data: schemas.ZjuScheduleImportRequest, db: AsyncSession = Depends(get_db)):
+    batch = models.ImportBatch(source="zju_schedule", status="completed", summary={})
+    db.add(batch)
+    await db.flush()
+
+    created_ids: list[int] = []
+    skipped_count = 0
+    imported_keys: set[tuple[str, str]] = set()
+
+    for item in data.items:
+        key = (item.source, item.external_id)
+        if item.action == "exists" or key in imported_keys:
+            skipped_count += 1
+            continue
+        imported_keys.add(key)
+
+        result = await db.execute(
+            select(models.ExternalItem).where(
+                models.ExternalItem.source == item.source,
+                models.ExternalItem.external_id == item.external_id,
+                models.ExternalItem.entity_type == "schedule",
+            )
+        )
+        if result.scalar_one_or_none():
+            skipped_count += 1
+            continue
+
+        schedule = models.Schedule(
+            name=item.course_name[:200],
+            start_time=item.start_time,
+            end_time=item.end_time,
+            category="课程",
+            nature=models.ScheduleNature.no_other_task,
+            location=item.location or None,
+            notes=_build_schedule_notes(item),
+            is_planned=True,
+        )
+        db.add(schedule)
+        await db.flush()
+        db.add(
+            models.ExternalItem(
+                source=item.source,
+                external_id=item.external_id,
+                entity_type="schedule",
+                local_entity_id=schedule.id,
+                import_batch_id=batch.id,
+                payload=item.model_dump(mode="json"),
+            )
+        )
+        created_ids.append(schedule.id)
+
+    batch.summary = {"created_count": len(created_ids), "skipped_count": skipped_count}
+    await db.commit()
+    return schemas.ZjuScheduleImportOut(
+        batch_id=batch.id,
+        created_count=len(created_ids),
+        skipped_count=skipped_count,
+        schedule_ids=created_ids,
+    )
+
+
+@router.post("/schedule/undo-last", response_model=schemas.ZjuUndoOut)
+async def undo_last_schedule_import(db: AsyncSession = Depends(get_db)):
+    batch_result = await db.execute(
+        select(models.ImportBatch)
+        .where(models.ImportBatch.source == "zju_schedule", models.ImportBatch.status == "completed")
+        .order_by(models.ImportBatch.created_at.desc())
+        .limit(1)
+    )
+    batch = batch_result.scalar_one_or_none()
+    if not batch:
+        return schemas.ZjuUndoOut(batch_id=None, deleted_count=0, skipped_count=0)
+
+    item_result = await db.execute(
+        select(models.ExternalItem).where(
+            models.ExternalItem.import_batch_id == batch.id,
+            models.ExternalItem.entity_type == "schedule",
+        )
+    )
+    external_items = list(item_result.scalars().all())
+    deleted_count = 0
+    skipped_count = 0
+    for external_item in external_items:
+        schedule = await db.get(models.Schedule, external_item.local_entity_id)
+        if schedule:
+            await db.delete(schedule)
             deleted_count += 1
         else:
             skipped_count += 1
