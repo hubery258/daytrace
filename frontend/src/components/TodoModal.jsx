@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { todoApi } from '../api/client';
 import { toLocalISO } from '../utils/time';
 
@@ -16,13 +16,12 @@ const STATUSES = [
 
 export default function TodoModal({ todo, onClose, onSaved }) {
   const isEdit = !!todo;
-  const [categorySuggestions, setCategorySuggestions] = useState([]);
   const [form, setForm] = useState({
     name: todo?.name || '',
     ddl_type: todo?.ddl_type || 'none',
     ddl_date: todo?.ddl_date ? todo.ddl_date.slice(0, 16) : '',
     reminder_days: todo?.reminder_days ?? '',
-    category: todo?.category || '计划箱',
+    category: todo?.category || '任务',
     status: todo?.status || 'not_focusing',
     waiting_reply_person: todo?.waiting_reply_person || '',
     notes: todo?.notes || '',
@@ -31,32 +30,8 @@ export default function TodoModal({ todo, onClose, onSaved }) {
   const showDdlFields = form.ddl_type === 'hard' || form.ddl_type === 'soft';
   const showReplyPerson = form.status === 'waiting_reply';
 
-  useEffect(() => {
-    todoApi.list({})
-      .then(todos => {
-        const categories = Array.from(new Set(todos.map(t => t.category).filter(Boolean)));
-        setCategorySuggestions(categories.slice(0, 50));
-      })
-      .catch(() => {});
-  }, []);
-
   const handleChange = (field, value) => {
-    setForm(prev => {
-      const next = { ...prev, [field]: value };
-      if (field === 'ddl_type') {
-        if (value === 'none') {
-          next.ddl_date = '';
-          next.reminder_days = '';
-          if (!prev.category || prev.category === '任务') next.category = '计划箱';
-        } else if (!prev.category || prev.category === '计划箱') {
-          next.category = '任务';
-        }
-      }
-      if (field === 'status' && value !== 'waiting_reply') {
-        next.waiting_reply_person = '';
-      }
-      return next;
-    });
+    setForm(prev => ({ ...prev, [field]: value }));
   };
 
   const handleSubmit = async (e) => {
@@ -135,13 +110,7 @@ export default function TodoModal({ todo, onClose, onSaved }) {
               value={form.category}
               onChange={e => handleChange('category', e.target.value)}
               placeholder="默认：任务"
-              list="todo-category-suggestions"
             />
-            <datalist id="todo-category-suggestions">
-              {categorySuggestions.map(category => (
-                <option key={category} value={category} />
-              ))}
-            </datalist>
           </div>
 
           <div className="form-group">

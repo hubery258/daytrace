@@ -1,6 +1,6 @@
 from datetime import datetime, date, timedelta
 from typing import Optional, List
-from sqlalchemy import select, and_, or_, func
+from sqlalchemy import select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from . import models, schemas
 
@@ -46,17 +46,6 @@ async def get_focusing_todos(db: AsyncSession) -> List[models.Todo]:
         )
     )
     return list(result.scalars().all())
-
-
-async def count_focusing_todos(db: AsyncSession, exclude_todo_id: Optional[int] = None) -> int:
-    stmt = select(func.count()).select_from(models.Todo).where(
-        models.Todo.status == models.TodoStatus.focusing,
-        models.Todo.is_completed == False,
-    )
-    if exclude_todo_id is not None:
-        stmt = stmt.where(models.Todo.id != exclude_todo_id)
-    result = await db.execute(stmt)
-    return int(result.scalar_one())
 
 
 async def get_waiting_reply_todos(db: AsyncSession) -> List[models.Todo]:

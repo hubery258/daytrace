@@ -46,14 +46,13 @@ export default function HomePage() {
   useEffect(() => { loadData(); }, [loadData]);
 
   const handleComplete = async (todo) => {
-    if (completingIds.has(todo.id)) return;
     setCompletingIds(prev => new Set([...prev, todo.id]));
     try {
       await todoApi.update(todo.id, { is_completed: true });
       const today = todayStr();
       const existingLog = await logApi.get(today).catch(() => null);
       const completedIds = existingLog
-        ? Array.from(new Set([...existingLog.completed_todo_ids, todo.id]))
+        ? [...existingLog.completed_todo_ids, todo.id]
         : [todo.id];
       await logApi.upsert({ log_date: today, completed_todo_ids: completedIds, log_text: existingLog?.log_text || '' });
       setTimeout(() => {
@@ -101,13 +100,9 @@ export default function HomePage() {
   };
 
   const handleAddToFocusing = async (todoId) => {
-    try {
-      await todoApi.update(todoId, { status: 'focusing' });
-      setShowTodoPicker(false);
-      loadData();
-    } catch (err) {
-      alert('加入关注失败：' + err.message);
-    }
+    await todoApi.update(todoId, { status: 'focusing' });
+    setShowTodoPicker(false);
+    loadData();
   };
 
   const contextMenuItems = contextMenu ? [
@@ -129,10 +124,7 @@ export default function HomePage() {
         className={`todo-circle ${completingIds.has(todo.id) ? 'completed' : ''}`}
         onClick={() => handleComplete(todo)}
       />
-      <span className="todo-main">
-        <span className="todo-name">{todo.name}</span>
-        {todo.notes && <span className="todo-note">📝 {todo.notes}</span>}
-      </span>
+      <span className="todo-name">{todo.name}</span>
       {todo.ddl_date && (
         <span className="todo-meta">
           {parseAsLocal(todo.ddl_date).toLocaleDateString('zh-CN')}
@@ -182,10 +174,7 @@ export default function HomePage() {
                 className={`todo-circle ${completingIds.has(todo.id) ? 'completed' : ''}`}
                 onClick={() => handleComplete(todo)}
               />
-              <span className="todo-main">
-                <span className="todo-name">{todo.name}</span>
-                {todo.notes && <span className="todo-note">📝 {todo.notes}</span>}
-              </span>
+              <span className="todo-name">{todo.name}</span>
               {todo.waiting_reply_person && (
                 <span className="todo-meta">@{todo.waiting_reply_person}</span>
               )}
@@ -285,10 +274,7 @@ export default function HomePage() {
                     onClick={() => handleAddToFocusing(todo.id)}
                     style={{ cursor: 'pointer' }}
                   >
-                    <span className="todo-main">
-                      <span className="todo-name">{todo.name}</span>
-                      {todo.notes && <span className="todo-note">📝 {todo.notes}</span>}
-                    </span>
+                    <span className="todo-name">{todo.name}</span>
                     {todo.ddl_date && (
                       <span className="todo-meta">
                         {parseAsLocal(todo.ddl_date).toLocaleDateString('zh-CN')}

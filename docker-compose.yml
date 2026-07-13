@@ -7,12 +7,19 @@ services:
       - DATABASE_URL=sqlite+aiosqlite:///./data/task_app.db
     volumes:
       - ./data:/app/data
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
 
   frontend:
-    build: ./frontend
+    image: node:20-alpine
     ports:
-      - "3000:80"
-    depends_on:
-      - backend
+      - "5173:5173"
+    working_dir: /app
+    environment:
+      - API_TARGET=http://backend:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: sh -c "npm install && npx vite --host 0.0.0.0"
     restart: unless-stopped

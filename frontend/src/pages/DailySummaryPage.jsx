@@ -6,10 +6,7 @@ const TODAY = todayStr();
 
 const STORAGE_KEY_API_KEY = 'simpletasker_api_key';
 const STORAGE_KEY_API_BASE = 'simpletasker_api_base';
-const STORAGE_KEY_MODEL = 'simpletasker_ai_model';
 const STORAGE_KEY_PROMPT = 'simpletasker_ai_prompt';
-const DEFAULT_API_BASE = 'https://api.deepseek.com';
-const DEFAULT_MODEL = 'deepseek-chat';
 
 const DEFAULT_PROMPT = `你是一位专业的个人效率助手，你的任务是帮助用户分析每日的时间管理情况并提供改进建议。
 
@@ -148,8 +145,7 @@ ${todayLog}
 请帮我分析今日效率并给出建议。`;
 
       // Call AI
-      const apiBase = (localStorage.getItem(STORAGE_KEY_API_BASE) || DEFAULT_API_BASE).replace(/\/+$/, '');
-      const model = localStorage.getItem(STORAGE_KEY_MODEL) || DEFAULT_MODEL;
+      const apiBase = localStorage.getItem(STORAGE_KEY_API_BASE) || 'https://api.deepseek.com';
       const systemPrompt = localStorage.getItem(STORAGE_KEY_PROMPT) || DEFAULT_PROMPT;
 
       const res = await fetch(`${apiBase}/v1/chat/completions`, {
@@ -159,7 +155,7 @@ ${todayLog}
           'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model,
+          model: 'deepseek-chat',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userMessage },
