@@ -2,13 +2,32 @@ import { useState, useEffect, useCallback } from 'react';
 import { scheduleApi } from '../api/client';
 import ScheduleModal from '../components/ScheduleModal';
 import ContextMenu from '../components/ContextMenu';
-import { parseAsLocal, formatTime, formatDate, startOfDay, endOfDay, todayStr } from '../utils/time';
+import { parseAsLocal, formatTime, formatDate, startOfDay, todayStr } from '../utils/time';
+
+const HOUR_HEIGHT = 64;
+const MIN_EVENT_HEIGHT = 28;
 
 function getDateStr(d) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+function minutesSinceStartOfDay(datetimeStr) {
+  const d = parseAsLocal(datetimeStr);
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+function getEventStyle(schedule) {
+  const startMinutes = minutesSinceStartOfDay(schedule.start_time);
+  const endMinutes = minutesSinceStartOfDay(schedule.end_time);
+  const duration = Math.max(15, endMinutes - startMinutes);
+
+  return {
+    top: `${(startMinutes / 60) * HOUR_HEIGHT}px`,
+    height: `${Math.max(MIN_EVENT_HEIGHT, (duration / 60) * HOUR_HEIGHT)}px`,
+  };
 }
 
 export default function SchedulePage() {
@@ -20,6 +39,7 @@ export default function SchedulePage() {
   const [editSchedule, setEditSchedule] = useState(null);
   const [isPlanned, setIsPlanned] = useState(true);
   const [contextMenu, setContextMenu] = useState(null);
+  const [mobileLane, setMobileLane] = useState('planned');
 
   const loadSchedules = useCallback(async () => {
     try {
@@ -62,7 +82,7 @@ export default function SchedulePage() {
   const canEditPlanned = (schedule) => {
     const sDate = parseAsLocal(schedule.start_time);
     sDate.setHours(0, 0, 0, 0);
-    return sDate > today;
+    return sDate >= today;
   };
 
   const handleDeleteSchedule = async () => {
@@ -75,6 +95,7 @@ export default function SchedulePage() {
   const handleEditSchedule = () => {
     if (!contextMenu) return;
     const s = contextMenu.schedule;
+    if (s.is_planned && !canEditPlanned(s)) return;
     setEditSchedule(s);
     setIsPlanned(s.is_planned);
     setShowModal(true);
@@ -82,49 +103,67 @@ export default function SchedulePage() {
   };
 
   const contextMenuItems = contextMenu ? [
-    { label: '✏️ 修改', onClick: handleEditSchedule },
+    ...(
+      contextMenu.schedule.is_planned && !canEditPlanned(contextMenu.schedule)
+        ? []
+        : [{ label: '✏️ 修改', onClick: handleEditSchedule }]
+    ),
     { label: '🗑️ 删除', onClick: handleDeleteSchedule, danger: true },
   ] : [];
 
-  const renderTimeline = (schedules, canEditFn) => {
-    const hours = Array.from({ length: 24 }, (_, i) => i);
-    const scheduleMap = {};
-    schedules.forEach(s => {
-      const startH = parseAsLocal(s.start_time).getHours();
-      const endH = parseAsLocal(s.end_time).getHours();
-      // 跨小时的日程放入每个覆盖的小时格
-      for (let h = startH; h <= endH && h < 24; h++) {
-        if (!scheduleMap[h]) scheduleMap[h] = [];
-        scheduleMap[h].push(s);
-      }
-    });
-
-    return hours.map(h => (
-      <div key={h} className="timeline-slot">
-        <span className="hour">{String(h).padStart(2, '0')}:00</span>
-        <div style={{ flex: 1 }}>
-          {(scheduleMap[h] || []).map(s => (
-            <div key={s.id} className={`event ${s.is_planned ? '' : 'actual'}`}
-              onClick={() => {
-                if (canEditFn?.(s) ?? true) {
-                  setEditSchedule(s);
-                  setIsPlanned(s.is_planned);
-                  setShowModal(true);
-                }
-              }}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                setContextMenu({ x: e.clientX, y: e.clientY, schedule: s });
-              }}
-              style={{ cursor: canEditFn?.(s) ?? true ? 'pointer' : 'default' }}
-            >
-              {s.name} ({formatTime(s.start_time)}-{formatTime(s.end_time)})
-            </div>
-          ))}
-        </div>
-      </div>
-    ));
+  const openSchedule = (schedule, canEditFn) => {
+    if (canEditFn?.(schedule) ?? true) {
+      setEditSchedule(schedule);
+      setIsPlanned(schedule.is_planned);
+      setShowModal(true);
+    }
   };
+
+  const openCreateSchedule = (planned) => {
+    setIsPlanned(planned);
+    setEditSchedule(null);
+    setShowModal(true);
+  };
+
+  const renderEvents = (schedules, canEditFn) => (
+    <>
+      {schedules.length === 0 && (
+        <div className="timeline-empty">暂无日程</div>
+      )}
+      {schedules.map(s => {
+        const canEdit = canEditFn?.(s) ?? true;
+
+        return (
+          <button
+            key={s.id}
+            type="button"
+            className={`event ${s.is_planned ? '' : 'actual'} ${canEdit ? '' : 'readonly'}`}
+            onClick={() => openSchedule(s, canEditFn)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setContextMenu({ x: e.clientX, y: e.clientY, schedule: s });
+            }}
+            style={getEventStyle(s)}
+            title={s.notes || undefined}
+          >
+            <span className="event-title">{s.name}</span>
+            <span className="event-time">{formatTime(s.start_time)}-{formatTime(s.end_time)}</span>
+            {s.notes && <span className="event-note">📝 {s.notes}</span>}
+          </button>
+        );
+      })}
+    </>
+  );
+
+  const renderAxis = () => (
+    <div className="timeline-axis" aria-hidden="true">
+      {Array.from({ length: 24 }, (_, h) => (
+        <div key={h} className="timeline-hour">
+          <span>{String(h).padStart(2, '0')}:00</span>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div>
@@ -135,29 +174,49 @@ export default function SchedulePage() {
         <button className="btn btn-sm btn-secondary" onClick={goNext}>后一天 →</button>
       </div>
 
-      {/* Timeline Columns */}
-      <div className="timeline-columns">
-        <div className="timeline-column">
+      <div className="timeline-mobile-switch" aria-label="切换日程类型">
+        <button
+          className={`btn btn-sm ${mobileLane === 'planned' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setMobileLane('planned')}
+        >
+          计划
+        </button>
+        <button
+          className={`btn btn-sm ${mobileLane === 'actual' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setMobileLane('actual')}
+        >
+          实际
+        </button>
+        <button
+          className="btn btn-sm btn-secondary timeline-mobile-add"
+          onClick={() => openCreateSchedule(mobileLane === 'planned')}
+        >
+          +
+        </button>
+      </div>
+
+      {/* Shared Timeline */}
+      <div className="timeline-compare">
+        <div className="timeline-compare-header">
           <h3>
-            📋 计划日程
-            <button className="btn btn-sm btn-secondary" onClick={() => {
-              setIsPlanned(true);
-              setEditSchedule(null);
-              setShowModal(true);
-            }}>+</button>
+            📋 规划日程
+            <button className="btn btn-sm btn-secondary" onClick={() => openCreateSchedule(true)}>+</button>
           </h3>
-          {renderTimeline(plannedSchedules, canEditPlanned)}
-        </div>
-        <div className="timeline-column">
+          <div className="timeline-axis-title">时间</div>
           <h3>
             ✍️ 实际记录
-            <button className="btn btn-sm btn-secondary" onClick={() => {
-              setIsPlanned(false);
-              setEditSchedule(null);
-              setShowModal(true);
-            }}>+</button>
+            <button className="btn btn-sm btn-secondary" onClick={() => openCreateSchedule(false)}>+</button>
           </h3>
-          {renderTimeline(actualSchedules)}
+        </div>
+
+        <div className="timeline-compare-grid" style={{ '--hour-height': `${HOUR_HEIGHT}px` }}>
+          <div className={`timeline-lane planned ${mobileLane === 'planned' ? 'mobile-active' : ''}`}>
+            {renderEvents(plannedSchedules, canEditPlanned)}
+          </div>
+          {renderAxis()}
+          <div className={`timeline-lane actual ${mobileLane === 'actual' ? 'mobile-active' : ''}`}>
+            {renderEvents(actualSchedules)}
+          </div>
         </div>
       </div>
 
