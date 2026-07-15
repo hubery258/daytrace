@@ -76,12 +76,26 @@ docker compose up -d
 
 - 前端：`http://localhost:3000`
 - 后端：`http://localhost:8000`
-- SQLite 数据：`./data/task_app.db`
+- SQLite 数据：`${TASK_DATA_DIR:-./data}/task_app.db`
+
+可以在项目根目录创建本地 `.env` 指定长期使用的数据目录，例如：
+
+```env
+TASK_DATA_DIR=D:/cs/task/data
+```
+
+这样即使重建镜像或升级版本，只要 `.env` 仍指向同一个目录，Docker 后端都会继续使用同一份 SQLite 数据库。
 
 停止服务：
 
 ```bash
 docker compose down
+```
+
+不要在保留本地数据时使用：
+
+```bash
+docker compose down -v
 ```
 
 如果需要开发模式（前端 Vite 热更新、后端 `--reload`），使用：
