@@ -29,9 +29,9 @@ export const todoApi = {
   create: (data) => request('/todos/', { method: 'POST', body: JSON.stringify(data) }),
   update: (id, data) => request(`/todos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id) => request(`/todos/${id}`, { method: 'DELETE' }),
-  focusing: () => request('/todos/focusing/'),
-  waitingReply: () => request('/todos/waiting-reply/'),
-  ddlNear: () => request('/todos/ddl-near/'),
+  focusing: () => request('/todos/focusing'),
+  waitingReply: () => request('/todos/waiting-reply'),
+  ddlNear: () => request('/todos/ddl-near'),
 };
 
 // ============ Schedules ============
@@ -47,7 +47,7 @@ export const scheduleApi = {
   create: (data) => request('/schedules/', { method: 'POST', body: JSON.stringify(data) }),
   update: (id, data) => request(`/schedules/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id) => request(`/schedules/${id}`, { method: 'DELETE' }),
-  current: () => request('/schedules/current/'),
+  current: () => request('/schedules/current'),
   week: (startDate) => request(`/schedules/week/?start_date=${startDate.toISOString()}`),
 };
 
@@ -66,8 +66,8 @@ export const logApi = {
 
 // ============ LogTemplate ============
 export const templateApi = {
-  list: () => request('/templates/'),
-  create: (data) => request('/templates/', { method: 'POST', body: JSON.stringify(data) }),
+  list: () => request('/templates'),
+  create: (data) => request('/templates', { method: 'POST', body: JSON.stringify(data) }),
   update: (id, data) => request(`/templates/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id) => request(`/templates/${id}`, { method: 'DELETE' }),
 };
