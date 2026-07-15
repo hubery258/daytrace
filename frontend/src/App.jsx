@@ -4,6 +4,7 @@ import SchedulePage from './pages/SchedulePage';
 import TodoSummaryPage from './pages/TodoSummaryPage';
 import DailySummaryPage from './pages/DailySummaryPage';
 import SettingsPage from './pages/SettingsPage';
+import ZjuPage from './pages/ZjuPage';
 
 export default function App() {
   return (
@@ -21,6 +22,9 @@ export default function App() {
         <NavLink to="/summary" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
           📝 今日总结
         </NavLink>
+        <NavLink to="/zju" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+          🎓 ZJU
+        </NavLink>
         <NavLink to="/settings" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
           ⚙️
         </NavLink>
@@ -32,6 +36,7 @@ export default function App() {
           <Route path="/schedule" element={<SchedulePage />} />
           <Route path="/todos" element={<TodoSummaryPage />} />
           <Route path="/summary" element={<DailySummaryPage />} />
+          <Route path="/zju" element={<ZjuPage />} />
         </Routes>
       </main>
     </div>

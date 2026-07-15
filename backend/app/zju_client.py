@@ -4,8 +4,10 @@ import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
+import hashlib
+from html import unescape
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from http.cookiejar import CookieJar
 from typing import Any, Optional
 
@@ -146,12 +148,72 @@ class ZjuCoursesClient:
             raise ZjuClientError(f"Login redirect failed: {url} did not return Location")
         return urllib.parse.urljoin(url, location)
 
-    def _cas_login_service(self, service_url: str) -> str:
-        login_url = "https://zjuam.zju.edu.cn/cas/login?service=" + urllib.parse.quote(service_url, safe="")
-        login_html = self._request(login_url).decode("utf-8", errors="ignore")
-        execution = re.search(r'name="execution" value="([^"]+)"', login_html)
+    def _read_cas_execution(self, login_url: str) -> tuple[str, str]:
+        resp = self._open(login_url, follow_redirects=False)
+        try:
+            if 300 <= resp.status < 400:
+                return "", self._redirect_location(login_url, resp)
+            login_html = resp.read().decode("utf-8", errors="ignore")
+        finally:
+            resp.close()
+
+        execution = re.search(
+            r'name=["\']execution["\'][^>]*value=["\']([^"\']+)["\']',
+            login_html,
+            flags=re.I,
+        ) or re.search(
+            r'value=["\']([^"\']+)["\'][^>]*name=["\']execution["\']',
+            login_html,
+            flags=re.I,
+        )
         if not execution:
             raise ZjuClientError("Unable to read CAS execution value")
+        return execution.group(1), ""
+
+    def _cas_login_base(self) -> None:
+        login_url = "https://zjuam.zju.edu.cn/cas/login"
+        execution, redirect_url = self._read_cas_execution(login_url)
+        if redirect_url:
+            return
+
+        pubkey = _json_loads(self._request("https://zjuam.zju.edu.cn/cas/v2/getPubKey"))
+        modulus = pubkey.get("modulus")
+        exponent = pubkey.get("exponent")
+        if not modulus or not exponent:
+            raise ZjuClientError("Unable to read CAS RSA public key")
+        try:
+            password_enc = _password_rsa_hex(self.password, exponent, modulus)
+        except ValueError as exc:
+            raise ZjuClientError("Password encryption failed") from exc
+
+        resp = self._open(
+            login_url,
+            method="POST",
+            data={
+                "username": self.username,
+                "password": password_enc,
+                "execution": execution,
+                "_eventId": "submit",
+                "authcode": "",
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+        try:
+            if resp.status in (200, 204, 302):
+                detail = resp.read().decode("utf-8", errors="ignore") if resp.status == 200 else ""
+                message = re.search(r'<span id="msg">([^<]+)</span>', detail)
+                if message:
+                    raise ZjuClientError(f"CAS login failed: {message.group(1)}")
+                return
+            raise ZjuClientError(f"CAS login failed with status {resp.status}")
+        finally:
+            resp.close()
+    def _cas_login_service(self, service_url: str) -> str:
+        login_url = "https://zjuam.zju.edu.cn/cas/login?service=" + urllib.parse.quote(service_url, safe="")
+        execution_value, redirect_url = self._read_cas_execution(login_url)
+        if redirect_url:
+            return redirect_url
 
         pubkey = _json_loads(self._request("https://zjuam.zju.edu.cn/cas/v2/getPubKey"))
         modulus = pubkey.get("modulus")
@@ -170,7 +232,7 @@ class ZjuCoursesClient:
             data={
                 "username": self.username,
                 "password": password_enc,
-                "execution": execution.group(1),
+                "execution": execution_value,
                 "_eventId": "submit",
                 "authcode": "",
             },
@@ -451,3 +513,682 @@ def fetch_pintia_todos(cookie: str, timeout: int = 12) -> list[ExternalTodo]:
             )
         )
     return sorted(output, key=lambda item: item.ddl_at or datetime.max)
+
+
+
+@dataclass
+class ExternalSchedule:
+    source: str
+    external_id: str
+    course_name: str
+    teacher: str = ""
+    location: str = ""
+    start_time: datetime = field(default_factory=datetime.now)
+    end_time: datetime = field(default_factory=datetime.now)
+    weekday: int = 1
+    week: int = 1
+    sections: str = ""
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ExternalGrade:
+    source: str
+    external_id: str
+    course_id: str = ""
+    course_code: str = ""
+    course_name: str = ""
+    credit: float = 0.0
+    original_score: str = ""
+    hundred_point: Optional[float] = None
+    five_point: Optional[float] = None
+    four_point: Optional[float] = None
+    four_point_legacy: Optional[float] = None
+    gpa_included: bool = False
+    credit_included: bool = False
+    major: bool = False
+    academic_year: str = ""
+    semester: str = ""
+    course_nature: str = ""
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+DEFAULT_SESSION_TIME = [
+    [],
+    ["08:00", "08:45"],
+    ["08:50", "09:35"],
+    ["09:50", "10:35"],
+    ["10:40", "11:25"],
+    ["11:30", "12:15"],
+    ["13:15", "14:00"],
+    ["14:05", "14:50"],
+    ["14:55", "15:40"],
+    ["15:55", "16:40"],
+    ["16:45", "17:30"],
+    ["18:30", "19:15"],
+    ["19:20", "20:05"],
+    ["20:10", "20:55"],
+    ["21:00", "21:45"],
+    ["21:50", "22:35"],
+    ["22:40", "23:25"],
+]
+
+
+def _strip_html(value: Any) -> str:
+    text = unescape(str(value or ""))
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.I)
+    text = re.sub(r"<[^>]+>", "", text)
+    return text.replace("\r", "\n").strip()
+
+
+def _parse_calendar_date(value: str) -> date:
+    return datetime.strptime(value, "%Y%m%d").date()
+
+
+def _calendar_key(day: date) -> str:
+    return day.strftime("%Y%m%d")
+
+
+def _parse_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _parse_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _round_or_none(value: Optional[float], digits: int = 3) -> Optional[float]:
+    if value is None:
+        return None
+    return round(value, digits)
+
+
+def _normalize_course_name(value: str) -> str:
+    text = str(value or "").strip()
+    text = text.replace("（", "(").replace("）", ")")
+    return re.sub(r"\s+", "", text).lower()
+
+
+_GRADE_HUNDRED_MAP = {
+    "A+": 95.0,
+    "A": 92.0,
+    "A-": 88.0,
+    "B+": 85.0,
+    "B": 82.0,
+    "B-": 78.0,
+    "C+": 75.0,
+    "C": 72.0,
+    "C-": 68.0,
+    "D": 62.0,
+    "F": 0.0,
+    "优秀": 95.0,
+    "良好": 85.0,
+    "中等": 75.0,
+    "及格": 65.0,
+    "不及格": 0.0,
+    "合格": 75.0,
+    "不合格": 0.0,
+}
+
+_GRADE_FIVE_MAP = {
+    "A+": 5.0,
+    "A": 4.8,
+    "A-": 4.5,
+    "B+": 4.2,
+    "B": 3.8,
+    "B-": 3.5,
+    "C+": 3.2,
+    "C": 2.8,
+    "C-": 2.5,
+    "D": 1.5,
+    "F": 0.0,
+    "优秀": 5.0,
+    "良好": 4.0,
+    "中等": 3.0,
+    "及格": 1.5,
+    "不及格": 0.0,
+}
+
+_NON_GPA_SCORES = {"", "合格", "不合格", "弃修", "待录", "缓考", "无效", "缺考", "免修", "通过", "未通过"}
+_NON_CREDIT_SCORES = {"", "不合格", "弃修", "待录", "缓考", "无效", "缺考", "未通过", "F"}
+
+
+def _score_to_hundred(original_score: str) -> Optional[float]:
+    text = str(original_score or "").strip()
+    numeric = _parse_float(text)
+    if numeric is not None:
+        return numeric
+    return _GRADE_HUNDRED_MAP.get(text.upper(), _GRADE_HUNDRED_MAP.get(text))
+
+
+def _score_to_five(original_score: str, hundred_point: Optional[float]) -> Optional[float]:
+    text = str(original_score or "").strip()
+    mapped = _GRADE_FIVE_MAP.get(text.upper(), _GRADE_FIVE_MAP.get(text))
+    if mapped is not None:
+        return mapped
+    if hundred_point is None:
+        return None
+    if hundred_point >= 95:
+        return 5.0
+    if hundred_point >= 90:
+        return 4.8
+    if hundred_point >= 85:
+        return 4.5
+    if hundred_point >= 80:
+        return 4.0
+    if hundred_point >= 75:
+        return 3.5
+    if hundred_point >= 70:
+        return 3.0
+    if hundred_point >= 65:
+        return 2.5
+    if hundred_point >= 60:
+        return 1.5
+    return 0.0
+
+
+def _five_to_four(five_point: Optional[float]) -> Optional[float]:
+    if five_point is None:
+        return None
+    return min(4.3, max(0.0, five_point - 0.7))
+
+
+def _five_to_legacy_four(five_point: Optional[float]) -> Optional[float]:
+    if five_point is None:
+        return None
+    return min(4.0, max(0.0, five_point - 1.0))
+
+
+def _parse_zdbk_course_id(course_id: str) -> tuple[str, str, str]:
+    text = str(course_id or "").strip()
+    match = re.match(r"^\((\d{4}-\d{4})-([^)]*)\)-([^-]+)", text)
+    if match:
+        return match.group(1), match.group(2), match.group(3).strip()
+    match = re.search(r"\)-([^-]+)", text)
+    if match:
+        return "", "", match.group(1).strip()
+    return "", "", ""
+
+
+def _grade_course_group_key(grade: ExternalGrade) -> str:
+    if grade.course_code:
+        return grade.course_code.strip().lower()
+    _, _, parsed_code = _parse_zdbk_course_id(grade.course_id)
+    if parsed_code:
+        return parsed_code.lower()
+    return _normalize_course_name(grade.course_name)
+
+
+def _grade_term_key(grade: ExternalGrade) -> tuple[str, str, str]:
+    return (grade.academic_year or "", grade.semester or "", grade.external_id or "")
+
+
+def normalize_grade_strategy(strategy: str) -> str:
+    value = (strategy or "scholarship").strip().lower()
+    if value not in {"scholarship", "abroad", "all_attempts"}:
+        return "scholarship"
+    return value
+
+
+def select_grades_by_strategy(grades: list[ExternalGrade], strategy: str) -> list[ExternalGrade]:
+    normalized = normalize_grade_strategy(strategy)
+    valid = [grade for grade in grades if grade.gpa_included or grade.credit_included]
+    if normalized == "all_attempts":
+        return valid
+
+    grouped: dict[str, list[ExternalGrade]] = {}
+    for grade in valid:
+        grouped.setdefault(_grade_course_group_key(grade), []).append(grade)
+
+    selected: list[ExternalGrade] = []
+    for group in grouped.values():
+        if normalized == "abroad":
+            selected.append(
+                sorted(
+                    group,
+                    key=lambda grade: (
+                        grade.hundred_point if grade.hundred_point is not None else -1,
+                        grade.five_point if grade.five_point is not None else -1,
+                        _grade_term_key(grade),
+                    ),
+                )[-1]
+            )
+        else:
+            selected.append(sorted(group, key=_grade_term_key)[0])
+    return sorted(selected, key=_grade_term_key)
+
+
+def calculate_grade_summary(
+    grades: list[ExternalGrade],
+    strategy: str = "scholarship",
+    major_grades: Optional[list[ExternalGrade]] = None,
+) -> dict[str, Any]:
+    normalized = normalize_grade_strategy(strategy)
+    selected = select_grades_by_strategy(grades, normalized)
+    all_counted = [grade for grade in grades if grade.gpa_included or grade.credit_included]
+    all_credit_items = [grade for grade in grades if grade.credit_included and grade.credit > 0]
+    gpa_items = [grade for grade in selected if grade.gpa_included and grade.credit > 0]
+
+    def weighted(items: list[ExternalGrade], attr: str) -> Optional[float]:
+        usable = [grade for grade in items if getattr(grade, attr) is not None and grade.credit > 0]
+        total_credit = sum(grade.credit for grade in usable)
+        if total_credit <= 0:
+            return None
+        return sum((getattr(grade, attr) or 0) * grade.credit for grade in usable) / total_credit
+
+    major_selected = select_grades_by_strategy(major_grades or [], normalized)
+    major_gpa_items = [grade for grade in major_selected if grade.gpa_included and grade.credit > 0]
+
+    return {
+        "strategy": normalized,
+        "course_count": len(selected),
+        "gpa_course_count": len(gpa_items),
+        "total_credit": round(sum(grade.credit for grade in all_counted), 3),
+        "earned_credit": round(sum(grade.credit for grade in all_credit_items), 3),
+        "gpa_credit": round(sum(grade.credit for grade in gpa_items), 3),
+        "gpa_five": _round_or_none(weighted(gpa_items, "five_point")),
+        "gpa_four": _round_or_none(weighted(gpa_items, "four_point")),
+        "gpa_four_legacy": _round_or_none(weighted(gpa_items, "four_point_legacy")),
+        "average_hundred": _round_or_none(weighted(gpa_items, "hundred_point")),
+        "major_gpa_five": _round_or_none(weighted(major_gpa_items, "five_point")),
+        "major_gpa_four": _round_or_none(weighted(major_gpa_items, "four_point")),
+        "major_gpa_four_legacy": _round_or_none(weighted(major_gpa_items, "four_point_legacy")),
+        "major_average_hundred": _round_or_none(weighted(major_gpa_items, "hundred_point")),
+    }
+
+
+def _semester_to_zdbk_xqm(semester: int) -> str:
+    return "3" if semester == 1 else "12"
+
+
+def _extract_zdbk_course_parts(item: dict[str, Any]) -> tuple[str, str, str]:
+    candidates = [item.get("kcb"), item.get("kcmc"), item.get("cdmc")]
+    text = "\n".join(_strip_html(v) for v in candidates if v)
+    parts = [p.strip() for p in re.split(r"\n+", text) if p.strip()]
+    name = item.get("kcmc") or (parts[0] if parts else "未命名课程")
+    teacher = item.get("xm") or ""
+    location = item.get("cdmc") or item.get("jxdd") or ""
+    for part in parts[1:]:
+        if not teacher and not re.search(r"校区|教室|楼|室|线上", part):
+            teacher = part
+            continue
+        if not location and re.search(r"校区|教室|楼|室|线上", part):
+            location = part
+    return str(name).strip(), str(teacher).strip(), str(location).strip()
+
+
+def _parse_week_numbers(item: dict[str, Any], fallback_max_week: int) -> list[int]:
+    text = " ".join(str(item.get(key) or "") for key in ("zcd", "qsjsz", "kcb"))
+    weeks: set[int] = set()
+    for start, end in re.findall(r"(\d+)\s*-\s*(\d+)\s*周", text):
+        weeks.update(range(int(start), int(end) + 1))
+    for single in re.findall(r"(?<![-\d])(\d+)\s*周", text):
+        weeks.add(int(single))
+    if not weeks:
+        weeks.update(range(1, fallback_max_week + 1))
+    dsz = str(item.get("dsz") or "")
+    if dsz == "1":
+        weeks = {w for w in weeks if w % 2 == 1}
+    elif dsz == "0":
+        weeks = {w for w in weeks if w % 2 == 0}
+    return sorted(w for w in weeks if 1 <= w <= fallback_max_week)
+
+
+
+
+def _zdbk_half_flags(item: dict[str, Any]) -> tuple[bool, bool, bool]:
+    semester_text = str(item.get("xxq") or item.get("xq") or "")
+    first_half = any(value in semester_text for value in ("秋", "春"))
+    second_half = any(value in semester_text for value in ("冬", "夏"))
+    return first_half, second_half, bool(semester_text.strip())
+
+
+def _matches_selected_zdbk_semester(item: dict[str, Any], semester: int) -> bool:
+    first_half, second_half, has_marker = _zdbk_half_flags(item)
+    if not has_marker or not (first_half or second_half):
+        return True
+    semester_text = str(item.get("xxq") or item.get("xq") or "")
+    if semester == 1:
+        return any(value in semester_text for value in ("秋", "冬")) and not any(value in semester_text for value in ("春", "夏"))
+    return any(value in semester_text for value in ("春", "夏")) and not any(value in semester_text for value in ("秋", "冬"))
+
+
+def _zdbk_half_indexes(item: dict[str, Any]) -> list[int]:
+    first_half, second_half, has_marker = _zdbk_half_flags(item)
+    if not has_marker or not (first_half or second_half):
+        return [0, 1]
+    halves: list[int] = []
+    if first_half:
+        halves.append(0)
+    if second_half:
+        halves.append(1)
+    return halves
+
+
+def _build_half_weekday_dates(start: date, end: date) -> list[list[list[date]]]:
+    dates: list[list[list[date]]] = [[[] for _ in range(8)], [[] for _ in range(8)]]
+    odd_even_week = 0
+    current = start
+    while current <= end:
+        dates[odd_even_week][current.isoweekday()].append(current)
+        if current.isoweekday() == 7:
+            odd_even_week = 1 - odd_even_week
+        current += timedelta(days=1)
+    return dates
+
+def _course_key(item: dict[str, Any], course_name: str, teacher: str, location: str) -> str:
+    for key in ("jxb_id", "jxbid", "kch", "kch_id", "xkkh"):
+        value = item.get(key)
+        if value:
+            return str(value)
+    raw = json.dumps(item, ensure_ascii=False, sort_keys=True)
+    digest = hashlib.sha1(f"{course_name}|{teacher}|{location}|{raw}".encode("utf-8")).hexdigest()[:12]
+    return digest
+
+
+def _extract_zdbk_query_items(raw: bytes | str) -> list[dict[str, Any]]:
+    text = raw.decode("utf-8", errors="ignore") if isinstance(raw, bytes) else raw
+    stripped = text.strip()
+    if not stripped or stripped == "null":
+        return []
+    if any(marker in stripped for marker in ("login_ssologin", "cas/login", "统一身份认证")):
+        raise ZjuClientError("ZDBK session expired, please retry login")
+    try:
+        data = json.loads(stripped)
+    except json.JSONDecodeError:
+        match = re.search(r'"items"\s*:\s*(\[.*?\])\s*,\s*"limit"', stripped, flags=re.S)
+        if not match:
+            raise ZjuClientError("ZDBK grade response format is invalid")
+        try:
+            data = {"items": json.loads(match.group(1))}
+        except json.JSONDecodeError as exc:
+            raise ZjuClientError("ZDBK grade items cannot be parsed") from exc
+    if isinstance(data, dict):
+        items = data.get("items") or data.get("rows") or []
+        if isinstance(items, list):
+            return [item for item in items if isinstance(item, dict)]
+    raise ZjuClientError("ZDBK grade response format is invalid")
+
+
+def _normalize_zdbk_grade_item(item: dict[str, Any], major: bool = False) -> ExternalGrade:
+    course_id = str(item.get("xkkh") or item.get("jxb_id") or item.get("jxbid") or "").strip()
+    parsed_year, parsed_semester, parsed_course_code = _parse_zdbk_course_id(course_id)
+    course_code = str(item.get("kch") or item.get("kch_id") or item.get("kcdm") or parsed_course_code or "").strip()
+    course_name = str(item.get("kcmc") or item.get("kcmc_zw") or "未命名课程").strip()
+    credit = _parse_float(item.get("xf")) or 0.0
+    original_score = str(item.get("cj") or item.get("bfzcj") or item.get("zcj") or "").strip()
+    hundred_point = _score_to_hundred(original_score)
+    five_point = _parse_float(item.get("jd"))
+    if five_point is None:
+        five_point = _score_to_five(original_score, hundred_point)
+    four_point = _five_to_four(five_point)
+    four_point_legacy = _five_to_legacy_four(five_point)
+    academic_year = str(item.get("xnmmc") or item.get("xnm") or item.get("xn") or parsed_year or "").strip()
+    semester = str(item.get("xqmmc") or item.get("xqm") or item.get("xq") or parsed_semester or "").strip()
+    course_nature = str(item.get("kcxzmc") or item.get("kclbmc") or item.get("kcsxmc") or "").strip()
+    external_seed = course_id or course_code or f"{academic_year}:{semester}:{course_name}:{original_score}"
+    external_id = f"zdbk:{hashlib.sha1(external_seed.encode('utf-8')).hexdigest()[:16]}"
+    score_key = original_score.upper()
+    gpa_included = bool(credit > 0 and five_point is not None and score_key not in _NON_GPA_SCORES)
+    credit_included = bool(credit > 0 and score_key not in _NON_CREDIT_SCORES and (five_point is None or five_point > 0 or original_score == "合格"))
+    return ExternalGrade(
+        source="zju_zdbk_grade",
+        external_id=external_id,
+        course_id=course_id,
+        course_code=course_code,
+        course_name=course_name,
+        credit=credit,
+        original_score=original_score,
+        hundred_point=hundred_point,
+        five_point=five_point,
+        four_point=four_point,
+        four_point_legacy=four_point_legacy,
+        gpa_included=gpa_included,
+        credit_included=credit_included,
+        major=major,
+        academic_year=academic_year,
+        semester=semester,
+        course_nature=course_nature,
+        raw=item,
+    )
+
+
+def fetch_celechron_calendar(academic_year: str, semester: int, timeout: int = 12) -> dict[str, Any]:
+    start_year = academic_year.split("-")[0].strip()
+    try:
+        year = int(start_year)
+    except ValueError as exc:
+        raise ZjuClientError("Invalid academic year") from exc
+    url = f"http://calendar.celechron.top/{year}-{year + 1}-{semester}.json"
+    request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as resp:
+            data = _json_loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            raise ZjuClientError(f"暂时没有 {academic_year} {('秋冬' if semester == 1 else '春夏')} 学期的校历数据") from exc
+        raise ZjuClientError(f"Calendar request failed ({exc.code})") from exc
+    except urllib.error.URLError as exc:
+        raise ZjuClientError(f"Calendar network connection failed: {exc.reason}") from exc
+    if not isinstance(data, dict) or "startEnd" not in data:
+        raise ZjuClientError("Calendar data format is invalid")
+    return data
+
+
+class ZjuZdbkClient(ZjuCoursesClient):
+    service_url = "https://zdbk.zju.edu.cn/jwglxt/xtgl/login_ssologin.html"
+
+    def _has_zdbk_cookies(self) -> bool:
+        names = {cookie.name for cookie in self.cookie_jar}
+        return "JSESSIONID" in names and "route" in names
+    def _discover_zdbk_service(self) -> str:
+        resp = self._open(self.service_url, follow_redirects=False)
+        try:
+            if 300 <= resp.status < 400:
+                location = self._redirect_location(self.service_url, resp)
+                parsed = urllib.parse.urlparse(location)
+                if parsed.hostname == "zjuam.zju.edu.cn":
+                    service = urllib.parse.parse_qs(parsed.query).get("service", [""])[0]
+                    if service:
+                        return service
+                return location
+            body = resp.read().decode("utf-8", errors="ignore")
+            match = re.search(r'https://zjuam\.zju\.edu\.cn/cas/login\?service=([^"\'<>\s]+)', body)
+            if match:
+                return urllib.parse.unquote(match.group(1))
+            return self.service_url
+        finally:
+            resp.close()
+    def login_zdbk(self) -> None:
+        if not self.username or not self.password:
+            raise ZjuClientError("Please enter ZJU username and password")
+
+        try:
+            ticket_url = self._cas_login_service(self.service_url)
+        except ZjuClientError as exc:
+            if "Unable to read CAS execution value" not in str(exc):
+                raise
+            self._cas_login_base()
+            ticket_url = self._cas_login_service(self.service_url)
+
+        resp = self._open(ticket_url, follow_redirects=False)
+        try:
+            if 300 <= resp.status < 400:
+                next_url = self._redirect_location(ticket_url, resp)
+                resp.close()
+                resp = self._open(next_url, follow_redirects=False)
+            resp.read()
+        finally:
+            resp.close()
+
+        if not self._has_zdbk_cookies():
+            raise ZjuClientError("ZDBK login failed: missing JSESSIONID/route")
+
+    def _request_zdbk_grade_items(self, url: str) -> list[dict[str, Any]]:
+        headers = {
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Connection": "close",
+            "X-Requested-With": "XMLHttpRequest",
+            "Referer": "https://zdbk.zju.edu.cn/jwglxt/xtgl/index_initMenu.html",
+        }
+
+        def read_once() -> str:
+            resp = self._open(url, method="POST", headers=headers, follow_redirects=False)
+            try:
+                if 300 <= resp.status < 400:
+                    raise ZjuClientError("ZDBK session expired, please retry login")
+                return resp.read().decode("utf-8", errors="ignore")
+            finally:
+                resp.close()
+
+        try:
+            response_text = read_once()
+            return _extract_zdbk_query_items(response_text)
+        except ZjuClientError as exc:
+            if "session expired" in str(exc) or "(901)" in str(exc):
+                self.login_zdbk()
+                return _extract_zdbk_query_items(read_once())
+            raise
+
+    def get_undergraduate_grades(self) -> list[ExternalGrade]:
+        items = self._request_zdbk_grade_items(
+            "https://zdbk.zju.edu.cn/jwglxt/cxdy/xscjcx_cxXscjIndex.html?doType=query&queryModel.showCount=5000"
+        )
+        return [_normalize_zdbk_grade_item(item, major=False) for item in items]
+
+    def get_undergraduate_major_grades(self) -> list[ExternalGrade]:
+        items = self._request_zdbk_grade_items(
+            "https://zdbk.zju.edu.cn/jwglxt/zycjtj/xszgkc_cxXsZgkcIndex.html?doType=query&queryModel.showCount=5000"
+        )
+        return [_normalize_zdbk_grade_item(item, major=True) for item in items]
+    def get_undergraduate_timetable(self, academic_year: str, semester: int) -> list[dict[str, Any]]:
+        xnm = academic_year.split("-")[0].strip()
+        data = {
+            "xnm": xnm,
+            "xqm": _semester_to_zdbk_xqm(semester),
+            "kzlx": "ck",
+        }
+        try:
+            raw = self._request(
+                "https://zdbk.zju.edu.cn/jwglxt/kbcx/xskbcx_cxXsKb.html",
+                method="POST",
+                data=data,
+                headers={
+                    "Accept": "application/json, text/javascript, */*; q=0.01",
+                    "X-Requested-With": "XMLHttpRequest",
+                    "Referer": "https://zdbk.zju.edu.cn/jwglxt/xtgl/index_initMenu.html",
+                },
+            )
+        except ZjuClientError as exc:
+            if "(901)" in str(exc):
+                self.login_zdbk()
+                raw = self._request(
+                    "https://zdbk.zju.edu.cn/jwglxt/kbcx/xskbcx_cxXsKb.html",
+                    method="POST",
+                    data=data,
+                    headers={
+                        "Accept": "application/json, text/javascript, */*; q=0.01",
+                        "X-Requested-With": "XMLHttpRequest",
+                        "Referer": "https://zdbk.zju.edu.cn/jwglxt/xtgl/index_initMenu.html",
+                    },
+                )
+            else:
+                raise
+        data = _json_loads(raw)
+        if isinstance(data, dict):
+            return data.get("kbList") or []
+        raise ZjuClientError("ZDBK timetable response format is invalid")
+
+
+def expand_zdbk_timetable(
+    items: list[dict[str, Any]],
+    calendar: dict[str, Any],
+    academic_year: str,
+    semester: int,
+) -> list[ExternalSchedule]:
+    start_end = calendar.get("startEnd") or []
+    if len(start_end) < 4:
+        raise ZjuClientError("Cached calendar missing startEnd")
+    session_time = calendar.get("sessionTime") or DEFAULT_SESSION_TIME
+    if len(session_time) < 2:
+        session_time = DEFAULT_SESSION_TIME
+
+    half_ranges = [
+        (_parse_calendar_date(start_end[0]), _parse_calendar_date(start_end[1])),
+        (_parse_calendar_date(start_end[2]), _parse_calendar_date(start_end[3])),
+    ]
+    half_dates = [_build_half_weekday_dates(start, end) for start, end in half_ranges]
+    blocked = set((calendar.get("holiday") or {}).keys()) | set((calendar.get("dummy") or {}).keys())
+    exchange = calendar.get("exchange") or {}
+    exchange_by_original = {key[8:16]: key[0:8] for key in exchange.keys() if len(key) >= 16}
+
+    output: list[ExternalSchedule] = []
+    for item in items:
+        if not _matches_selected_zdbk_semester(item, semester):
+            continue
+
+        weekday = _parse_int(item.get("xqj"), 0)
+        section_start = _parse_int(item.get("djj"), 0)
+        section_count = _parse_int(item.get("skcd"), 1)
+        if weekday < 1 or weekday > 7 or section_start < 1:
+            continue
+        section_end = section_start + max(section_count, 1) - 1
+        if section_start >= len(session_time) or section_end >= len(session_time):
+            continue
+
+        dsz = str(item.get("dsz") or "")
+        odd_even_indexes: list[int] = []
+        if dsz != "1":
+            odd_even_indexes.append(0)
+        if dsz != "0":
+            odd_even_indexes.append(1)
+
+        course_name, teacher, location = _extract_zdbk_course_parts(item)
+        key = _course_key(item, course_name, teacher, location)
+        start_clock = session_time[section_start][0]
+        end_clock = session_time[section_end][1]
+
+        for half_index in _zdbk_half_indexes(item):
+            for odd_even_index in odd_even_indexes:
+                for occurrence_index, scheduled_date in enumerate(half_dates[half_index][odd_even_index][weekday], start=1):
+                    date_key = _calendar_key(scheduled_date)
+                    if date_key in blocked:
+                        continue
+                    actual_key = exchange_by_original.get(date_key, date_key)
+                    if actual_key in blocked:
+                        continue
+                    actual_date = _parse_calendar_date(actual_key)
+                    start_time = datetime.fromisoformat(f"{actual_date.isoformat()}T{start_clock}:00")
+                    end_time = datetime.fromisoformat(f"{actual_date.isoformat()}T{end_clock}:00")
+                    week_label = half_index * 8 + (occurrence_index - 1) * 2 + odd_even_index + 1
+                    external_id = (
+                        f"zdbk:{academic_year}:{semester}:{key}:half{half_index}:"
+                        f"week{week_label}:day{weekday}:section{section_start}"
+                    )
+                    output.append(
+                        ExternalSchedule(
+                            source="zju_zdbk",
+                            external_id=external_id,
+                            course_name=course_name,
+                            teacher=teacher,
+                            location=location,
+                            start_time=start_time,
+                            end_time=end_time,
+                            weekday=weekday,
+                            week=week_label,
+                            sections=f"{section_start}-{section_end}",
+                            raw={"academic_year": academic_year, "semester": semester, "half_index": half_index, "item": item},
+                        )
+                    )
+    return sorted(output, key=lambda item: (item.start_time, item.course_name))

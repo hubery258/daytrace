@@ -1,4 +1,4 @@
-﻿from datetime import date, datetime
+from datetime import date, datetime
 from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -265,3 +265,114 @@ class ZjuUndoOut(BaseModel):
     batch_id: Optional[int] = None
     deleted_count: int = 0
     skipped_count: int = 0
+
+
+# ============ ZJU Schedule Import ============
+
+class ZjuCalendarFetchRequest(BaseModel):
+    academic_year: str = Field(..., min_length=4, max_length=20)
+    semester: int = Field(..., ge=1, le=2)
+
+
+class ZjuCalendarCacheOut(BaseModel):
+    academic_year: str
+    semester: int
+    has_cache: bool = False
+    fetched_at: Optional[datetime] = None
+    calendar: dict[str, Any] = Field(default_factory=dict)
+
+
+class ExternalSchedulePreview(BaseModel):
+    source: str
+    external_id: str
+    course_name: str
+    teacher: str = ""
+    location: str = ""
+    start_time: datetime
+    end_time: datetime
+    weekday: int
+    week: int
+    sections: str = ""
+    action: str = "create"
+    reason: str = "可导入"
+    imported_schedule_id: Optional[int] = None
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+
+class ZjuSchedulePreviewRequest(BaseModel):
+    username: Optional[str] = None
+    password: Optional[str] = None
+    academic_year: str = Field(..., min_length=4, max_length=20)
+    semester: int = Field(..., ge=1, le=2)
+
+
+class ZjuSchedulePreviewOut(BaseModel):
+    items: List[ExternalSchedulePreview] = Field(default_factory=list)
+    errors: List[str] = Field(default_factory=list)
+    calendar_fetched_at: Optional[datetime] = None
+
+
+class ZjuScheduleImportRequest(BaseModel):
+    items: List[ExternalSchedulePreview] = Field(default_factory=list)
+
+
+class ZjuScheduleImportOut(BaseModel):
+    batch_id: int
+    created_count: int
+    skipped_count: int
+    schedule_ids: List[int] = Field(default_factory=list)
+# ============ ZJU Grades ============
+
+class ZjuGradeItem(BaseModel):
+    source: str = "zju_zdbk_grade"
+    external_id: str
+    course_id: str = ""
+    course_code: str = ""
+    course_name: str = ""
+    credit: float = 0
+    original_score: str = ""
+    hundred_point: Optional[float] = None
+    five_point: Optional[float] = None
+    four_point: Optional[float] = None
+    four_point_legacy: Optional[float] = None
+    gpa_included: bool = False
+    credit_included: bool = False
+    major: bool = False
+    academic_year: str = ""
+    semester: str = ""
+    course_nature: str = ""
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+
+class ZjuGradeSummary(BaseModel):
+    strategy: str = "scholarship"
+    course_count: int = 0
+    gpa_course_count: int = 0
+    total_credit: float = 0
+    earned_credit: float = 0
+    gpa_credit: float = 0
+    gpa_five: Optional[float] = None
+    gpa_four: Optional[float] = None
+    gpa_four_legacy: Optional[float] = None
+    average_hundred: Optional[float] = None
+    major_gpa_five: Optional[float] = None
+    major_gpa_four: Optional[float] = None
+    major_gpa_four_legacy: Optional[float] = None
+    major_average_hundred: Optional[float] = None
+
+
+class ZjuGradeFetchRequest(BaseModel):
+    username: Optional[str] = None
+    password: Optional[str] = None
+    include_major: bool = True
+    strategy: str = "scholarship"
+
+
+class ZjuGradeOut(BaseModel):
+    items: List[ZjuGradeItem] = Field(default_factory=list)
+    major_items: List[ZjuGradeItem] = Field(default_factory=list)
+    summary: ZjuGradeSummary = Field(default_factory=ZjuGradeSummary)
+    fetched_at: Optional[datetime] = None
+    has_cache: bool = False
+    from_cache: bool = False
+    errors: List[str] = Field(default_factory=list)
