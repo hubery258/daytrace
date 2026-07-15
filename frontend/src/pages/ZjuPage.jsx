@@ -23,6 +23,11 @@ function formatDateTime(value) {
   return new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
+function formatNumber(value, digits = 2) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
+  return Number(value).toFixed(digits).replace(/\.00$/, '');
+}
+
 export default function ZjuPage() {
   const [zjuUsername, setZjuUsername] = useState('');
   const [zjuPassword, setZjuPassword] = useState('');
@@ -45,6 +50,11 @@ export default function ZjuPage() {
   const [scheduleMessage, setScheduleMessage] = useState('');
   const [scheduleBusy, setScheduleBusy] = useState(false);
 
+  const [gradeStrategy, setGradeStrategy] = useState('scholarship');
+  const [gradeState, setGradeState] = useState(null);
+  const [gradeMessage, setGradeMessage] = useState('');
+  const [gradeBusy, setGradeBusy] = useState(false);
+
   const academicYears = useMemo(() => academicYearOptions(), []);
   const calendarLabel = useMemo(() => `${academicYear} ${semester === 1 ? '秋冬' : '春夏'}学期`, [academicYear, semester]);
 
@@ -63,6 +73,10 @@ export default function ZjuPage() {
   useEffect(() => {
     refreshCalendarState();
   }, [academicYear, semester]);
+
+  useEffect(() => {
+    refreshGradeCache(gradeStrategy);
+  }, [gradeStrategy]);
 
   const zjuPayload = (saveCredentials = false) => ({
     username: zjuUsername.trim(),
@@ -101,6 +115,18 @@ export default function ZjuPage() {
     }
   };
 
+  const runGradeAction = async (action) => {
+    setGradeBusy(true);
+    setGradeMessage('');
+    try {
+      await action();
+    } catch (err) {
+      setGradeMessage(err.message);
+    } finally {
+      setGradeBusy(false);
+    }
+  };
+
   const refreshCredentialState = async () => {
     const data = await zjuApi.getCredentials();
     setCredentialState(data);
@@ -117,6 +143,16 @@ export default function ZjuPage() {
     } catch (err) {
       setCalendarState(null);
       setScheduleMessage(`读取校历缓存失败：${err.message}`);
+    }
+  };
+
+  const refreshGradeCache = async (strategy = gradeStrategy) => {
+    try {
+      const data = await zjuApi.getGradeCache(strategy);
+      setGradeState(data);
+    } catch (err) {
+      setGradeState(null);
+      setGradeMessage(`读取成绩缓存失败：${err.message}`);
     }
   };
 
@@ -236,6 +272,34 @@ export default function ZjuPage() {
     }
     setScheduleMessage(`课表撤销完成：删除 ${data.deleted_count} 条，跳过 ${data.skipped_count} 条`);
     setScheduleItems([]);
+  });
+
+  const handleReadGradeCache = () => runGradeAction(async () => {
+    const data = await zjuApi.getGradeCache(gradeStrategy);
+    setGradeState(data);
+    if (data.has_cache) {
+      setGradeMessage(`读取缓存成功：${(data.items || []).length} 门课程`);
+    } else {
+      setGradeMessage('未读取到本地成绩缓存');
+    }
+  });
+
+  const handleFetchGrades = () => runGradeAction(async () => {
+    const data = await zjuApi.fetchGrades({
+      username: zjuUsername.trim(),
+      password: zjuPassword,
+      include_major: true,
+      strategy: gradeStrategy,
+    });
+    setGradeState(data);
+    const warning = (data.errors || []).length > 0 ? `；${data.errors.length} 条提示` : '';
+    setGradeMessage(`成绩刷新完成：${(data.items || []).length} 门课程${warning}`);
+  });
+
+  const handleClearGradeCache = () => runGradeAction(async () => {
+    const data = await zjuApi.clearGradeCache();
+    setGradeState(data);
+    setGradeMessage('已清除本地成绩缓存');
   });
 
   return (
@@ -382,6 +446,84 @@ export default function ZjuPage() {
                 <div className="todo-meta">{item.reason}</div>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="card-header">ZJU 成绩与学分概览</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+          <div className="form-group">
+            <label>重复课程口径</label>
+            <select value={gradeStrategy} onChange={e => setGradeStrategy(e.target.value)}>
+              <option value="scholarship">保研：取第一次有效成绩</option>
+              <option value="abroad">出国：取最高成绩</option>
+              <option value="all_attempts">全部记录</option>
+            </select>
+          </div>
+        </div>
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 10 }}>
+          成绩仅做本地只读概览和估算，不写回学校系统。当前缓存：{gradeState?.has_cache ? `已缓存（${gradeState.fetched_at ? new Date(gradeState.fetched_at).toLocaleString() : '时间未知'}）` : '未缓存'}。
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button className="btn btn-secondary" onClick={handleReadGradeCache} disabled={gradeBusy}>读取缓存</button>
+          <button className="btn btn-primary" onClick={handleFetchGrades} disabled={gradeBusy}>{gradeBusy ? '处理中...' : '刷新成绩'}</button>
+          <button className="btn btn-danger" onClick={handleClearGradeCache} disabled={gradeBusy}>清除成绩缓存</button>
+        </div>
+        {gradeMessage && <div style={{ marginTop: 10, color: gradeMessage.includes('失败') || gradeMessage.includes('请') ? 'var(--danger)' : 'var(--text-secondary)' }}>{gradeMessage}</div>}
+        {(gradeState?.errors || []).length > 0 && (
+          <div style={{ marginTop: 10, color: 'var(--warning)', fontSize: '0.85rem' }}>
+            {gradeState.errors.map((error, index) => <div key={index}>{error}</div>)}
+          </div>
+        )}
+        {gradeState?.summary && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginTop: 14 }}>
+            {[
+              ['已获学分', formatNumber(gradeState.summary.earned_credit)],
+              ['计 GPA 学分', formatNumber(gradeState.summary.gpa_credit)],
+              ['五分制 GPA', formatNumber(gradeState.summary.gpa_five, 3)],
+              ['4.3 GPA', formatNumber(gradeState.summary.gpa_four, 3)],
+              ['原始 4.0', formatNumber(gradeState.summary.gpa_four_legacy, 3)],
+              ['百分制均分', formatNumber(gradeState.summary.average_hundred, 2)],
+              ['主修五分制', formatNumber(gradeState.summary.major_gpa_five, 3)],
+            ].map(([label, value]) => (
+              <div key={label} className="todo-item" style={{ cursor: 'default', display: 'block' }}>
+                <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', marginBottom: 4 }}>{label}</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{value}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        {(gradeState?.items || []).length > 0 && (
+          <div style={{ marginTop: 14, overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+              <thead>
+                <tr style={{ color: 'var(--text-secondary)', textAlign: 'left' }}>
+                  <th style={{ padding: '8px 6px' }}>课程</th>
+                  <th style={{ padding: '8px 6px' }}>学分</th>
+                  <th style={{ padding: '8px 6px' }}>成绩</th>
+                  <th style={{ padding: '8px 6px' }}>百分制</th>
+                  <th style={{ padding: '8px 6px' }}>五分制</th>
+                  <th style={{ padding: '8px 6px' }}>4.3</th>
+                  <th style={{ padding: '8px 6px' }}>计入</th>
+                  <th style={{ padding: '8px 6px' }}>学年学期</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gradeState.items.map((item) => (
+                  <tr key={item.external_id} style={{ borderTop: '1px solid var(--border)' }}>
+                    <td style={{ padding: '8px 6px', minWidth: 180 }}>{item.course_name}</td>
+                    <td style={{ padding: '8px 6px' }}>{formatNumber(item.credit)}</td>
+                    <td style={{ padding: '8px 6px' }}>{item.original_score || '—'}</td>
+                    <td style={{ padding: '8px 6px' }}>{formatNumber(item.hundred_point)}</td>
+                    <td style={{ padding: '8px 6px' }}>{formatNumber(item.five_point, 3)}</td>
+                    <td style={{ padding: '8px 6px' }}>{formatNumber(item.four_point, 3)}</td>
+                    <td style={{ padding: '8px 6px' }}>{item.gpa_included ? 'GPA' : ''}{item.credit_included ? `${item.gpa_included ? ' / ' : ''}学分` : ''}</td>
+                    <td style={{ padding: '8px 6px', color: 'var(--text-secondary)' }}>{[item.academic_year, item.semester].filter(Boolean).join(' ') || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

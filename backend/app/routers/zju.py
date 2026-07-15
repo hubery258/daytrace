@@ -1,14 +1,15 @@
 import asyncio
+from dataclasses import asdict
 from datetime import datetime
 from typing import Iterable
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import models, schemas
 from ..database import get_db
-from ..zju_client import ExternalSchedule, ExternalTodo, ZjuClientError, ZjuCoursesClient, ZjuZdbkClient, expand_zdbk_timetable, fetch_celechron_calendar, fetch_pintia_todos
+from ..zju_client import ExternalGrade, ExternalSchedule, ExternalTodo, ZjuClientError, ZjuCoursesClient, ZjuZdbkClient, calculate_grade_summary, expand_zdbk_timetable, fetch_celechron_calendar, fetch_pintia_todos, normalize_grade_strategy
 
 
 router = APIRouter(prefix="/api/zju", tags=["zju"])
@@ -550,3 +551,129 @@ async def undo_last_schedule_import(db: AsyncSession = Depends(get_db)):
     await db.commit()
     return schemas.ZjuUndoOut(batch_id=batch.id, deleted_count=deleted_count, skipped_count=skipped_count)
 
+def _grade_to_dict(item: ExternalGrade) -> dict:
+    return asdict(item)
+
+
+def _grade_from_dict(item: dict) -> ExternalGrade:
+    allowed = ExternalGrade.__dataclass_fields__.keys()
+    return ExternalGrade(**{key: item.get(key) for key in allowed})
+
+
+def _grades_out(
+    items: list[dict],
+    major_items: list[dict],
+    strategy: str,
+    fetched_at: datetime | None,
+    has_cache: bool,
+    from_cache: bool,
+    errors: list[str] | None = None,
+) -> schemas.ZjuGradeOut:
+    grade_items = [_grade_from_dict(item) for item in items]
+    major_grade_items = [_grade_from_dict(item) for item in major_items]
+    summary = calculate_grade_summary(grade_items, strategy=strategy, major_grades=major_grade_items)
+    return schemas.ZjuGradeOut(
+        items=[schemas.ZjuGradeItem(**_grade_to_dict(item)) for item in grade_items],
+        major_items=[schemas.ZjuGradeItem(**_grade_to_dict(item)) for item in major_grade_items],
+        summary=schemas.ZjuGradeSummary(**summary),
+        fetched_at=fetched_at,
+        has_cache=has_cache,
+        from_cache=from_cache,
+        errors=errors or [],
+    )
+
+
+async def _get_latest_grade_snapshot(db: AsyncSession) -> models.ZjuGradeSnapshot | None:
+    result = await db.execute(
+        select(models.ZjuGradeSnapshot)
+        .where(models.ZjuGradeSnapshot.source == "zju_zdbk_grade")
+        .order_by(models.ZjuGradeSnapshot.fetched_at.desc(), models.ZjuGradeSnapshot.id.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+def _fetch_external_grades(
+    username: str,
+    password: str,
+    include_major: bool,
+) -> tuple[list[ExternalGrade], list[ExternalGrade], list[str]]:
+    errors: list[str] = []
+    client = ZjuZdbkClient(username, password)
+    client.login_zdbk()
+    items = client.get_undergraduate_grades()
+    major_items: list[ExternalGrade] = []
+    if include_major:
+        try:
+            major_items = client.get_undergraduate_major_grades()
+        except ZjuClientError as exc:
+            errors.append(f"主修成绩读取失败：{exc}")
+    return items, major_items, errors
+
+
+@router.get("/grades/cache", response_model=schemas.ZjuGradeOut)
+async def get_grade_cache(strategy: str = "scholarship", db: AsyncSession = Depends(get_db)):
+    normalized_strategy = normalize_grade_strategy(strategy)
+    snapshot = await _get_latest_grade_snapshot(db)
+    if not snapshot:
+        return _grades_out([], [], normalized_strategy, None, False, True)
+    payload = snapshot.payload_json or {}
+    return _grades_out(
+        payload.get("items") or [],
+        payload.get("major_items") or [],
+        normalized_strategy,
+        snapshot.fetched_at,
+        True,
+        True,
+        payload.get("errors") or [],
+    )
+
+
+@router.post("/grades/fetch", response_model=schemas.ZjuGradeOut)
+async def fetch_grades(data: schemas.ZjuGradeFetchRequest, db: AsyncSession = Depends(get_db)):
+    credential = await _get_credential(db)
+    username = (data.username if data.username is not None else (credential.username if credential else "")).strip()
+    password = data.password or (credential.password if credential else "")
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="请填写 ZJU 学号和密码，或先保存凭据")
+
+    normalized_strategy = normalize_grade_strategy(data.strategy)
+    try:
+        items, major_items, errors = await asyncio.to_thread(
+            _fetch_external_grades,
+            username,
+            password,
+            data.include_major,
+        )
+    except ZjuClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    fetched_at = datetime.now()
+    item_payload = [_grade_to_dict(item) for item in items]
+    major_payload = [_grade_to_dict(item) for item in major_items]
+    summary = calculate_grade_summary(items, strategy=normalized_strategy, major_grades=major_items)
+
+    snapshot = await _get_latest_grade_snapshot(db)
+    if not snapshot:
+        snapshot = models.ZjuGradeSnapshot(source="zju_zdbk_grade")
+        db.add(snapshot)
+        await db.flush()
+    snapshot.fetched_at = fetched_at
+    snapshot.summary_json = summary
+    snapshot.payload_json = {
+        "items": item_payload,
+        "major_items": major_payload,
+        "errors": errors,
+    }
+    snapshot.updated_at = datetime.now()
+    await db.commit()
+    await db.refresh(snapshot)
+
+    return _grades_out(item_payload, major_payload, normalized_strategy, fetched_at, True, False, errors)
+
+
+@router.post("/grades/clear-cache", response_model=schemas.ZjuGradeOut)
+async def clear_grade_cache(db: AsyncSession = Depends(get_db)):
+    await db.execute(delete(models.ZjuGradeSnapshot).where(models.ZjuGradeSnapshot.source == "zju_zdbk_grade"))
+    await db.commit()
+    return _grades_out([], [], "scholarship", None, False, True)

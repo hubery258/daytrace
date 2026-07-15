@@ -128,6 +128,18 @@ class ZjuCalendarCache(Base):
     created_at = Column(DateTime, default=datetime.now, nullable=False)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
 
+
+class ZjuGradeSnapshot(Base):
+    __tablename__ = "zju_grade_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source = Column(String(50), default="zju_zdbk_grade", nullable=False)
+    fetched_at = Column(DateTime, default=datetime.now, nullable=False)
+    summary_json = Column(JSON, default=dict, nullable=False)
+    payload_json = Column(JSON, default=dict, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
 class ImportBatch(Base):
     __tablename__ = "import_batches"
 
@@ -151,4 +163,3 @@ class ExternalItem(Base):
     payload = Column(JSON, default=dict, nullable=False)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
-

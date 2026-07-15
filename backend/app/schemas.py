@@ -321,3 +321,58 @@ class ZjuScheduleImportOut(BaseModel):
     created_count: int
     skipped_count: int
     schedule_ids: List[int] = Field(default_factory=list)
+# ============ ZJU Grades ============
+
+class ZjuGradeItem(BaseModel):
+    source: str = "zju_zdbk_grade"
+    external_id: str
+    course_id: str = ""
+    course_code: str = ""
+    course_name: str = ""
+    credit: float = 0
+    original_score: str = ""
+    hundred_point: Optional[float] = None
+    five_point: Optional[float] = None
+    four_point: Optional[float] = None
+    four_point_legacy: Optional[float] = None
+    gpa_included: bool = False
+    credit_included: bool = False
+    major: bool = False
+    academic_year: str = ""
+    semester: str = ""
+    course_nature: str = ""
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+
+class ZjuGradeSummary(BaseModel):
+    strategy: str = "scholarship"
+    course_count: int = 0
+    gpa_course_count: int = 0
+    total_credit: float = 0
+    earned_credit: float = 0
+    gpa_credit: float = 0
+    gpa_five: Optional[float] = None
+    gpa_four: Optional[float] = None
+    gpa_four_legacy: Optional[float] = None
+    average_hundred: Optional[float] = None
+    major_gpa_five: Optional[float] = None
+    major_gpa_four: Optional[float] = None
+    major_gpa_four_legacy: Optional[float] = None
+    major_average_hundred: Optional[float] = None
+
+
+class ZjuGradeFetchRequest(BaseModel):
+    username: Optional[str] = None
+    password: Optional[str] = None
+    include_major: bool = True
+    strategy: str = "scholarship"
+
+
+class ZjuGradeOut(BaseModel):
+    items: List[ZjuGradeItem] = Field(default_factory=list)
+    major_items: List[ZjuGradeItem] = Field(default_factory=list)
+    summary: ZjuGradeSummary = Field(default_factory=ZjuGradeSummary)
+    fetched_at: Optional[datetime] = None
+    has_cache: bool = False
+    from_cache: bool = False
+    errors: List[str] = Field(default_factory=list)

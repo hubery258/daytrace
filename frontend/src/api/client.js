@@ -89,10 +89,12 @@ export const zjuApi = {
   previewSchedule: (data) => request('/zju/schedule/preview', { method: 'POST', body: JSON.stringify(data) }),
   importSchedule: (data) => request('/zju/schedule/import', { method: 'POST', body: JSON.stringify(data) }),
   undoLastSchedule: () => request('/zju/schedule/undo-last', { method: 'POST' }),
+  getGradeCache: (strategy = 'scholarship') => request(`/zju/grades/cache?${new URLSearchParams({ strategy }).toString()}`),
+  fetchGrades: (data) => request('/zju/grades/fetch', { method: 'POST', body: JSON.stringify(data) }),
+  clearGradeCache: () => request('/zju/grades/clear-cache', { method: 'POST' }),
 };
 
 // ============ Health ============
 export const healthApi = {
   check: () => request('/health/'),
 };
-
