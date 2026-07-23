@@ -8,6 +8,7 @@ import ProjectDetailPage from './pages/ProjectDetailPage';
 import DailySummaryPage from './pages/DailySummaryPage';
 import SettingsPage from './pages/SettingsPage';
 import ZjuPage from './pages/ZjuPage';
+import AiCreatePage from './pages/AiCreatePage';
 
 export default function App() {
   return (
@@ -49,6 +50,7 @@ export default function App() {
           <Route path="/todos" element={<TodoSummaryPage />} />
           <Route path="/summary" element={<DailySummaryPage />} />
           <Route path="/zju" element={<ZjuPage />} />
+          <Route path="/ai-create" element={<AiCreatePage />} />
         </Routes>
       </main>
     </div>

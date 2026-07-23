@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { todoApi, scheduleApi, logApi } from '../api/client';
 import TodoModal from '../components/TodoModal';
 import ScheduleModal from '../components/ScheduleModal';
@@ -235,6 +236,9 @@ export default function HomePage() {
         <button className="btn btn-secondary" onClick={() => setShowScheduleModal(true)}>
           📅 新建日程
         </button>
+        <Link className="btn btn-secondary" to="/ai-create">
+          AI 新建
+        </Link>
       </div>
 
       {/* Modals */}
