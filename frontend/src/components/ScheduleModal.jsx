@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { scheduleApi, todoApi } from '../api/client';
+import { useEffect, useState } from 'react';
+import { projectApi, scheduleApi, todoApi } from '../api/client';
 import { toLocalISO } from '../utils/time';
 
 const NATURES = [
@@ -8,10 +8,12 @@ const NATURES = [
   { value: 'free_arrange', label: '📌 自由安排任务' },
 ];
 
-export default function ScheduleModal({ schedule, onClose, onSaved, defaultPlanned = true, defaultDate = '' }) {
+export default function ScheduleModal({ schedule, onClose, onSaved, defaultPlanned = true, defaultDate = '', defaultProjectId = null }) {
   const isEdit = !!schedule;
   const [todos, setTodos] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [form, setForm] = useState({
+    project_id: schedule?.project_id ?? defaultProjectId ?? '',
     name: schedule?.name || '',
     start_time: schedule?.start_time ? schedule.start_time.slice(0, 16) : (defaultDate ? `${defaultDate}T09:00` : ''),
     end_time: schedule?.end_time ? schedule.end_time.slice(0, 16) : (defaultDate ? `${defaultDate}T10:00` : ''),
@@ -24,6 +26,10 @@ export default function ScheduleModal({ schedule, onClose, onSaved, defaultPlann
     is_planned: schedule?.is_planned ?? defaultPlanned,
   });
   const [loadedTodos, setLoadedTodos] = useState(false);
+
+  useEffect(() => {
+    projectApi.list().then(setProjects).catch(err => console.error('加载项目失败', err));
+  }, []);
 
   const loadTodos = async () => {
     if (loadedTodos) return;
@@ -50,9 +56,12 @@ export default function ScheduleModal({ schedule, onClose, onSaved, defaultPlann
     e.preventDefault();
     const payload = {
       ...form,
+      project_id: form.project_id ? Number(form.project_id) : null,
       start_time: toLocalISO(form.start_time),
       end_time: toLocalISO(form.end_time),
-      linked_todo_ids: form.nature === 'free_arrange' ? form.linked_todo_ids.slice(0, 2) : [],
+      nature: 'no_other_task',
+      relax_suggestion: null,
+      linked_todo_ids: [],
     };
 
     try {
@@ -83,6 +92,16 @@ export default function ScheduleModal({ schedule, onClose, onSaved, defaultPlann
             />
           </div>
 
+
+          <div className="form-group">
+            <label>所属项目</label>
+            <select value={form.project_id} onChange={e => handleChange('project_id', e.target.value)}>
+              <option value="">不归属项目</option>
+              {projects.map(project => (
+                <option key={project.id} value={project.id}>{project.name}</option>
+              ))}
+            </select>
+          </div>
           <div className="form-group">
             <label>开始时间 *</label>
             <input
@@ -114,6 +133,7 @@ export default function ScheduleModal({ schedule, onClose, onSaved, defaultPlann
           </div>
           */}
 
+          {/* 性质分类暂时隐藏；后续需要时可恢复这整段。
           <div className="form-group">
             <label>性质分类</label>
             <select value={form.nature} onChange={e => handleChange('nature', e.target.value)}>
@@ -153,6 +173,7 @@ export default function ScheduleModal({ schedule, onClose, onSaved, defaultPlann
               ))}
             </div>
           )}
+          */}
 
           <div className="form-group">
             <label>地点（可选）</label>

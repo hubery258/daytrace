@@ -33,10 +33,33 @@ class ScheduleNature(str, enum.Enum):
     free_arrange = "free_arrange"
 
 
+class ProjectStatus(str, enum.Enum):
+    active = "active"
+    paused = "paused"
+    completed = "completed"
+    archived = "archived"
+    canceled = "canceled"
+
+
+class Project(Base):
+    __tablename__ = "projects"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(200), nullable=False)
+    description = Column(Text, default="", nullable=False)
+    status = Column(SAEnum(ProjectStatus), default=ProjectStatus.active, nullable=False)
+    ddl_date = Column(Date, nullable=True)
+    color = Column(String(32), nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    archived_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
 class Todo(Base):
     __tablename__ = "todos"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
     name = Column(String(200), nullable=False)
     ddl_type = Column(SAEnum(DDLType), default=DDLType.none, nullable=False)
     ddl_date = Column(DateTime, nullable=True)
@@ -69,6 +92,7 @@ class Schedule(Base):
     __tablename__ = "schedules"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
     name = Column(String(200), nullable=False)
     start_time = Column(DateTime, nullable=False)
     end_time = Column(DateTime, nullable=False)

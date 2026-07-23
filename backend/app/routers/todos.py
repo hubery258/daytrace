@@ -18,9 +18,10 @@ async def list_todos(
     category: Optional[str] = Query(None),
     status: Optional[models.TodoStatus] = Query(None),
     is_completed: Optional[bool] = Query(None),
+    project_id: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    return await crud.get_todos(db, category=category, status=status, is_completed=is_completed)
+    return await crud.get_todos(db, category=category, status=status, is_completed=is_completed, project_id=project_id)
 
 
 @router.get("/focusing", response_model=List[schemas.TodoOut])

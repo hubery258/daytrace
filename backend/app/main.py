@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from .database import async_engine, Base
-from .routers import logs, schedules, todos, zju
+from .routers import logs, projects, schedules, todos, zju
 
 
 async def ensure_sqlite_schema_compat(conn):
@@ -15,6 +15,18 @@ async def ensure_sqlite_schema_compat(conn):
             if column_name not in existing:
                 await conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_sql}"))
 
+    await add_missing_columns(
+        "todos",
+        {
+            "project_id": "project_id INTEGER",
+        },
+    )
+    await add_missing_columns(
+        "schedules",
+        {
+            "project_id": "project_id INTEGER",
+        },
+    )
     await add_missing_columns(
         "zju_credentials",
         {
@@ -63,9 +75,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="鏃ヨ抗 API",
-    description="涓汉鏁堢巼鍔╂墜 - 寰呭姙 & 鏃ョ▼ & AI 鍒嗘瀽",
-    version="0.1.0",
+    title="日迹 API",
+    description="个人效率助手 - 待办 & 日程 & 项目 & AI 分析",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -79,6 +91,7 @@ app.add_middleware(
 
 app.include_router(todos.router)
 app.include_router(schedules.router)
+app.include_router(projects.router)
 app.include_router(logs.router)
 app.include_router(zju.router)
 
