@@ -19,9 +19,10 @@ async def list_schedules(
     is_planned: Optional[bool] = Query(None),
     date_from: Optional[datetime] = Query(None),
     date_to: Optional[datetime] = Query(None),
+    project_id: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    return await crud.get_schedules(db, is_planned=is_planned, date_from=date_from, date_to=date_to)
+    return await crud.get_schedules(db, is_planned=is_planned, date_from=date_from, date_to=date_to, project_id=project_id)
 
 
 @router.get("/current", response_model=Optional[schemas.ScheduleOut])

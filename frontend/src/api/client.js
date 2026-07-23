@@ -16,6 +16,21 @@ async function request(path, options = {}) {
   return res.json();
 }
 
+// ============ Projects ============
+export const projectApi = {
+  list: (params = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null) qs.set(k, v);
+    });
+    return request(`/projects/?${qs.toString()}`);
+  },
+  get: (id) => request(`/projects/${id}`),
+  overview: (id) => request(`/projects/${id}/overview`),
+  create: (data) => request('/projects/', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id, data) => request(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id) => request(`/projects/${id}`, { method: 'DELETE' }),
+};
 // ============ Todos ============
 export const todoApi = {
   list: (params = {}) => {

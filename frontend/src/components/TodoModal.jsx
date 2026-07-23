@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { todoApi } from '../api/client';
+import { useEffect, useState } from 'react';
+import { projectApi, todoApi } from '../api/client';
 import { toLocalISO } from '../utils/time';
 
 const DDL_TYPES = [
@@ -14,9 +14,11 @@ const STATUSES = [
   { value: 'waiting_reply', label: '⏳ 等待他人答复' },
 ];
 
-export default function TodoModal({ todo, onClose, onSaved }) {
+export default function TodoModal({ todo, onClose, onSaved, defaultProjectId = null }) {
   const isEdit = !!todo;
+  const [projects, setProjects] = useState([]);
   const [form, setForm] = useState({
+    project_id: todo?.project_id ?? defaultProjectId ?? '',
     name: todo?.name || '',
     ddl_type: todo?.ddl_type || 'none',
     ddl_date: todo?.ddl_date ? todo.ddl_date.slice(0, 16) : '',
@@ -27,6 +29,10 @@ export default function TodoModal({ todo, onClose, onSaved }) {
     notes: todo?.notes || '',
   });
 
+
+  useEffect(() => {
+    projectApi.list().then(setProjects).catch(err => console.error('加载项目失败', err));
+  }, []);
   const showDdlFields = form.ddl_type === 'hard' || form.ddl_type === 'soft';
   const showReplyPerson = form.status === 'waiting_reply';
 
@@ -38,6 +44,7 @@ export default function TodoModal({ todo, onClose, onSaved }) {
     e.preventDefault();
     const payload = {
       ...form,
+      project_id: form.project_id ? Number(form.project_id) : null,
       reminder_days: showDdlFields ? Number(form.reminder_days) : null,
       ddl_date: showDdlFields && form.ddl_date ? toLocalISO(form.ddl_date) : null,
     };
@@ -70,6 +77,16 @@ export default function TodoModal({ todo, onClose, onSaved }) {
             />
           </div>
 
+
+          <div className="form-group">
+            <label>所属项目</label>
+            <select value={form.project_id} onChange={e => handleChange('project_id', e.target.value)}>
+              <option value="">不归属项目</option>
+              {projects.map(project => (
+                <option key={project.id} value={project.id}>{project.name}</option>
+              ))}
+            </select>
+          </div>
           <div className="form-group">
             <label>DDL 类型</label>
             <select value={form.ddl_type} onChange={e => handleChange('ddl_type', e.target.value)}>

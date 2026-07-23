@@ -2,6 +2,8 @@ import { Routes, Route, NavLink } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import SchedulePage from './pages/SchedulePage';
 import TodoSummaryPage from './pages/TodoSummaryPage';
+import ProjectListPage from './pages/ProjectListPage';
+import ProjectDetailPage from './pages/ProjectDetailPage';
 import DailySummaryPage from './pages/DailySummaryPage';
 import SettingsPage from './pages/SettingsPage';
 import ZjuPage from './pages/ZjuPage';
@@ -15,6 +17,9 @@ export default function App() {
         </NavLink>
         <NavLink to="/schedule" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
           📅 日程
+        </NavLink>
+        <NavLink to="/projects" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+          🗂️ 项目
         </NavLink>
         <NavLink to="/todos" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
           📋 待办汇总
@@ -34,6 +39,8 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/schedule" element={<SchedulePage />} />
+          <Route path="/projects" element={<ProjectListPage />} />
+          <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
           <Route path="/todos" element={<TodoSummaryPage />} />
           <Route path="/summary" element={<DailySummaryPage />} />
           <Route path="/zju" element={<ZjuPage />} />

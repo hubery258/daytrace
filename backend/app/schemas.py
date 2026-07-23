@@ -3,12 +3,66 @@ from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from .models import DDLType, ScheduleNature, TodoStatus
+from .models import DDLType, ProjectStatus, ScheduleNature, TodoStatus
 
+
+# ============ Project ============
+
+class ProjectBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    description: str = ""
+    status: ProjectStatus = ProjectStatus.active
+    ddl_date: Optional[date] = None
+    color: Optional[str] = Field(None, max_length=32)
+
+
+class ProjectCreate(ProjectBase):
+    pass
+
+
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    status: Optional[ProjectStatus] = None
+    ddl_date: Optional[date] = None
+    color: Optional[str] = Field(None, max_length=32)
+
+
+class ProjectOut(BaseModel):
+    id: int
+    name: str
+    description: str
+    status: ProjectStatus
+    ddl_date: Optional[date] = None
+    color: Optional[str] = None
+    completed_at: Optional[datetime] = None
+    archived_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+    todo_count: int = 0
+    completed_todo_count: int = 0
+    progress: Optional[float] = None
+    next_todo: Optional["TodoOut"] = None
+    recent_schedules: List["ScheduleOut"] = Field(default_factory=list)
+
+    class Config:
+        from_attributes = True
+
+
+class ProjectOverview(BaseModel):
+    project: ProjectOut
+    todos: List["TodoOut"] = Field(default_factory=list)
+    schedules: List["ScheduleOut"] = Field(default_factory=list)
+    progress: Optional[float] = None
+    todo_count: int = 0
+    completed_todo_count: int = 0
+    next_todo: Optional["TodoOut"] = None
+    recent_schedules: List["ScheduleOut"] = Field(default_factory=list)
 
 # ============ Todo ============
 
 class TodoCreate(BaseModel):
+    project_id: Optional[int] = None
     name: str = Field(..., min_length=1, max_length=200)
     ddl_type: DDLType = DDLType.none
     ddl_date: Optional[datetime] = None
@@ -49,6 +103,7 @@ class TodoCreate(BaseModel):
 
 
 class TodoUpdate(BaseModel):
+    project_id: Optional[int] = None
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     ddl_type: Optional[DDLType] = None
     ddl_date: Optional[datetime] = None
@@ -77,6 +132,7 @@ class TodoUpdate(BaseModel):
 
 class TodoOut(BaseModel):
     id: int
+    project_id: Optional[int] = None
     name: str
     ddl_type: DDLType
     ddl_date: Optional[datetime] = None
@@ -99,6 +155,7 @@ class TodoOut(BaseModel):
 # ============ Schedule ============
 
 class ScheduleCreate(BaseModel):
+    project_id: Optional[int] = None
     name: str = Field(..., min_length=1, max_length=200)
     start_time: datetime
     end_time: datetime
@@ -120,6 +177,7 @@ class ScheduleCreate(BaseModel):
 
 
 class ScheduleUpdate(BaseModel):
+    project_id: Optional[int] = None
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
@@ -134,6 +192,7 @@ class ScheduleUpdate(BaseModel):
 
 class ScheduleOut(BaseModel):
     id: int
+    project_id: Optional[int] = None
     name: str
     start_time: datetime
     end_time: datetime
