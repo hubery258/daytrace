@@ -2,54 +2,48 @@ import { useEffect, useState } from 'react';
 import { projectApi, scheduleApi, todoApi } from '../api/client';
 import { toLocalISO } from '../utils/time';
 
-const NATURES = [
-  { value: 'no_other_task', label: '🚫 不能安排其他任务' },
-  { value: 'relax', label: '🎮 安排摸鱼任务' },
-  { value: 'free_arrange', label: '📌 自由安排任务' },
-];
+function asDateTimeLocal(value) {
+  if (!value) return '';
+  return value.slice(0, 16);
+}
 
-export default function ScheduleModal({ schedule, onClose, onSaved, defaultPlanned = true, defaultDate = '', defaultProjectId = null }) {
+export default function ScheduleModal({
+  schedule,
+  onClose,
+  onSaved,
+  defaultPlanned = true,
+  defaultDate = '',
+  defaultProjectId = null,
+  prefill = {},
+}) {
   const isEdit = !!schedule;
   const [todos, setTodos] = useState([]);
   const [projects, setProjects] = useState([]);
   const [form, setForm] = useState({
-    project_id: schedule?.project_id ?? defaultProjectId ?? '',
-    name: schedule?.name || '',
-    start_time: schedule?.start_time ? schedule.start_time.slice(0, 16) : (defaultDate ? `${defaultDate}T09:00` : ''),
-    end_time: schedule?.end_time ? schedule.end_time.slice(0, 16) : (defaultDate ? `${defaultDate}T10:00` : ''),
-    category: schedule?.category || '普通日程',
-    nature: schedule?.nature || 'no_other_task',
-    relax_suggestion: schedule?.relax_suggestion || '',
-    linked_todo_ids: schedule?.linked_todo_ids || [],
-    location: schedule?.location || '',
-    notes: schedule?.notes || '',
-    is_planned: schedule?.is_planned ?? defaultPlanned,
+    project_id: schedule?.project_id ?? prefill.project_id ?? defaultProjectId ?? '',
+    name: schedule?.name || prefill.name || '',
+    start_time: asDateTimeLocal(schedule?.start_time || prefill.start_time) || (defaultDate ? `${defaultDate}T09:00` : ''),
+    end_time: asDateTimeLocal(schedule?.end_time || prefill.end_time) || (defaultDate ? `${defaultDate}T10:00` : ''),
+    category: schedule?.category || prefill.category || '普通日程',
+    nature: schedule?.nature || prefill.nature || 'no_other_task',
+    relax_suggestion: schedule?.relax_suggestion || prefill.relax_suggestion || '',
+    linked_todo_ids: schedule?.linked_todo_ids || prefill.linked_todo_ids || [],
+    location: schedule?.location || prefill.location || '',
+    notes: schedule?.notes || prefill.notes || '',
+    is_planned: schedule?.is_planned ?? prefill.is_planned ?? defaultPlanned,
   });
-  const [loadedTodos, setLoadedTodos] = useState(false);
 
   useEffect(() => {
     projectApi.list().then(setProjects).catch(err => console.error('加载项目失败', err));
+    todoApi.list({ is_completed: false }).then(setTodos).catch(err => console.error('加载待办失败', err));
   }, []);
-
-  const loadTodos = async () => {
-    if (loadedTodos) return;
-    try {
-      const data = await todoApi.list({ is_completed: false });
-      setTodos(data);
-      setLoadedTodos(true);
-    } catch (err) {
-      console.error('加载待办失败', err);
-    }
-  };
 
   const handleChange = (field, value) => {
     setForm(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleLinkedTodo = (idx, todoId) => {
-    const next = [...form.linked_todo_ids];
-    next[idx] = todoId ? Number(todoId) : undefined;
-    setForm(prev => ({ ...prev, linked_todo_ids: next.filter(Boolean) }));
+  const handleLinkedTodo = (todoId) => {
+    setForm(prev => ({ ...prev, linked_todo_ids: todoId ? [Number(todoId)] : [] }));
   };
 
   const handleSubmit = async (e) => {
@@ -61,16 +55,14 @@ export default function ScheduleModal({ schedule, onClose, onSaved, defaultPlann
       end_time: toLocalISO(form.end_time),
       nature: 'no_other_task',
       relax_suggestion: null,
-      linked_todo_ids: [],
+      linked_todo_ids: form.linked_todo_ids.filter(Boolean).map(Number),
     };
 
     try {
-      if (isEdit) {
-        await scheduleApi.update(schedule.id, payload);
-      } else {
-        await scheduleApi.create(payload);
-      }
-      onSaved();
+      const saved = isEdit
+        ? await scheduleApi.update(schedule.id, payload)
+        : await scheduleApi.create(payload);
+      onSaved(saved);
     } catch (err) {
       alert('操作失败：' + err.message);
     }
@@ -79,7 +71,7 @@ export default function ScheduleModal({ schedule, onClose, onSaved, defaultPlann
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={e => e.stopPropagation()}>
-        <h2>{isEdit ? '✏️ 修改日程' : '➕ 新建日程'}</h2>
+        <h2>{isEdit ? '修改日程' : '新建日程'}</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>日程名称 *</label>
@@ -92,6 +84,13 @@ export default function ScheduleModal({ schedule, onClose, onSaved, defaultPlann
             />
           </div>
 
+          <div className="form-group">
+            <label>类型</label>
+            <select value={form.is_planned ? 'planned' : 'actual'} onChange={e => handleChange('is_planned', e.target.value === 'planned')}>
+              <option value="planned">计划日程</option>
+              <option value="actual">实际记录</option>
+            </select>
+          </div>
 
           <div className="form-group">
             <label>所属项目</label>
@@ -102,6 +101,17 @@ export default function ScheduleModal({ schedule, onClose, onSaved, defaultPlann
               ))}
             </select>
           </div>
+
+          <div className="form-group">
+            <label>关联待办</label>
+            <select value={form.linked_todo_ids[0] || ''} onChange={e => handleLinkedTodo(e.target.value)}>
+              <option value="">不关联待办</option>
+              {todos.map(todo => (
+                <option key={todo.id} value={todo.id}>{todo.name}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="form-group">
             <label>开始时间 *</label>
             <input
@@ -122,61 +132,8 @@ export default function ScheduleModal({ schedule, onClose, onSaved, defaultPlann
             />
           </div>
 
-          {/* 日程分类暂时隐藏，以后可能恢复
           <div className="form-group">
-            <label>属性分类</label>
-            <input
-              value={form.category}
-              onChange={e => handleChange('category', e.target.value)}
-              placeholder="默认：普通日程"
-            />
-          </div>
-          */}
-
-          {/* 性质分类暂时隐藏；后续需要时可恢复这整段。
-          <div className="form-group">
-            <label>性质分类</label>
-            <select value={form.nature} onChange={e => handleChange('nature', e.target.value)}>
-              {NATURES.map(n => (
-                <option key={n.value} value={n.value}>{n.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {form.nature === 'relax' && (
-            <div className="form-group">
-              <label>摸鱼建议</label>
-              <input
-                value={form.relax_suggestion}
-                onChange={e => handleChange('relax_suggestion', e.target.value)}
-                placeholder="例如：看一集动漫放松一下"
-              />
-            </div>
-          )}
-
-          {form.nature === 'free_arrange' && (
-            <div className="form-group">
-              <label>指定关联任务（最多2个）</label>
-              {[0, 1].map(idx => (
-                <select
-                  key={idx}
-                  value={form.linked_todo_ids[idx] || ''}
-                  onChange={e => handleLinkedTodo(idx, e.target.value)}
-                  onFocus={loadTodos}
-                  style={{ marginBottom: idx === 0 ? 8 : 0 }}
-                >
-                  <option value="">不指定</option>
-                  {todos.map(t => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              ))}
-            </div>
-          )}
-          */}
-
-          <div className="form-group">
-            <label>地点（可选）</label>
+            <label>地点</label>
             <input
               value={form.location}
               onChange={e => handleChange('location', e.target.value)}
@@ -189,7 +146,7 @@ export default function ScheduleModal({ schedule, onClose, onSaved, defaultPlann
             <textarea
               value={form.notes}
               onChange={e => handleChange('notes', e.target.value)}
-              placeholder="可选备注..."
+              placeholder="可选备注"
             />
           </div>
 

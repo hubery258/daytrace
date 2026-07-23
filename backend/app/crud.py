@@ -244,6 +244,26 @@ async def get_schedules(
     return list(result.scalars().all())
 
 
+async def get_overlapping_schedules(
+    db: AsyncSession,
+    *,
+    start_time: datetime,
+    end_time: datetime,
+    is_planned: bool,
+    exclude_id: Optional[int] = None,
+) -> List[models.Schedule]:
+    stmt = select(models.Schedule).where(
+        models.Schedule.is_planned == is_planned,
+        models.Schedule.start_time < end_time,
+        models.Schedule.end_time > start_time,
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(models.Schedule.id != exclude_id)
+    stmt = stmt.order_by(models.Schedule.start_time.asc())
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
 async def get_current_schedule(db: AsyncSession) -> Optional[models.Schedule]:
     """Get the schedule that is currently active (start <= now <= end)."""
     now = datetime.now()
@@ -275,6 +295,117 @@ async def delete_schedule(db: AsyncSession, schedule_id: int) -> bool:
     await db.delete(schedule)
     await db.commit()
     return True
+
+
+# ============ Timer CRUD ============
+
+ACTIVE_TIMER_STATUSES = (models.TimerStatus.running, models.TimerStatus.paused)
+
+
+async def get_current_timer(db: AsyncSession) -> Optional[models.TimerSession]:
+    result = await db.execute(
+        select(models.TimerSession)
+        .where(models.TimerSession.status.in_(ACTIVE_TIMER_STATUSES))
+        .order_by(models.TimerSession.created_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_timer(db: AsyncSession, timer_id: int) -> Optional[models.TimerSession]:
+    result = await db.execute(select(models.TimerSession).where(models.TimerSession.id == timer_id))
+    return result.scalar_one_or_none()
+
+
+async def start_timer(db: AsyncSession, data: schemas.TimerStart) -> models.TimerSession:
+    now = datetime.now()
+    timer = models.TimerSession(
+        **data.model_dump(),
+        status=models.TimerStatus.running,
+        started_at=now,
+        last_resumed_at=now,
+        paused_seconds=0,
+    )
+    db.add(timer)
+    await db.commit()
+    await db.refresh(timer)
+    return timer
+
+
+async def update_timer_details(db: AsyncSession, timer: models.TimerSession, data: schemas.TimerUpdate) -> models.TimerSession:
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(timer, key, value)
+    timer.updated_at = datetime.now()
+    await db.commit()
+    await db.refresh(timer)
+    return timer
+
+
+async def pause_timer(db: AsyncSession, timer: models.TimerSession) -> models.TimerSession:
+    timer.status = models.TimerStatus.paused
+    timer.paused_at = datetime.now()
+    timer.updated_at = timer.paused_at
+    await db.commit()
+    await db.refresh(timer)
+    return timer
+
+
+async def resume_timer(db: AsyncSession, timer: models.TimerSession) -> models.TimerSession:
+    now = datetime.now()
+    if timer.paused_at:
+        timer.paused_seconds = (timer.paused_seconds or 0) + max(0, int((now - timer.paused_at).total_seconds()))
+    timer.status = models.TimerStatus.running
+    timer.last_resumed_at = now
+    timer.paused_at = None
+    timer.updated_at = now
+    await db.commit()
+    await db.refresh(timer)
+    return timer
+
+
+async def finish_timer(db: AsyncSession, timer: models.TimerSession) -> models.TimerSession:
+    now = datetime.now()
+    if timer.status == models.TimerStatus.paused and timer.paused_at:
+        timer.paused_seconds = (timer.paused_seconds or 0) + max(0, int((now - timer.paused_at).total_seconds()))
+        timer.paused_at = None
+    timer.status = models.TimerStatus.completed
+    timer.ended_at = now
+    timer.updated_at = now
+    await db.commit()
+    await db.refresh(timer)
+    return timer
+
+
+async def cancel_timer(db: AsyncSession, timer: models.TimerSession) -> models.TimerSession:
+    now = datetime.now()
+    if timer.status == models.TimerStatus.paused and timer.paused_at:
+        timer.paused_seconds = (timer.paused_seconds or 0) + max(0, int((now - timer.paused_at).total_seconds()))
+    timer.status = models.TimerStatus.canceled
+    timer.ended_at = now
+    timer.paused_at = None
+    timer.updated_at = now
+    await db.commit()
+    await db.refresh(timer)
+    return timer
+
+
+async def attach_timer_schedule(db: AsyncSession, timer: models.TimerSession, schedule_id: int) -> models.TimerSession:
+    timer.created_schedule_id = schedule_id
+    timer.updated_at = datetime.now()
+    await db.commit()
+    await db.refresh(timer)
+    return timer
+
+
+async def get_recent_timers(db: AsyncSession, limit: int = 10) -> List[models.TimerSession]:
+    result = await db.execute(
+        select(models.TimerSession)
+        .where(models.TimerSession.status.in_([models.TimerStatus.completed, models.TimerStatus.canceled]))
+        .order_by(models.TimerSession.updated_at.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
 
 
 # ============ DailyLog CRUD ============

@@ -11,6 +11,14 @@ router = APIRouter(prefix="/api/schedules", tags=["schedules"])
 
 @router.post("/", response_model=schemas.ScheduleOut, status_code=201)
 async def create_schedule(data: schemas.ScheduleCreate, db: AsyncSession = Depends(get_db)):
+    overlaps = await crud.get_overlapping_schedules(
+        db,
+        start_time=data.start_time,
+        end_time=data.end_time,
+        is_planned=data.is_planned,
+    )
+    if overlaps:
+        raise HTTPException(status_code=409, detail="Schedule overlaps with an existing item in the same lane")
     return await crud.create_schedule(db, data)
 
 
@@ -50,11 +58,22 @@ async def get_schedule(schedule_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.put("/{schedule_id}", response_model=schemas.ScheduleOut)
 async def update_schedule(schedule_id: int, data: schemas.ScheduleUpdate, db: AsyncSession = Depends(get_db)):
-    schedule = await crud.update_schedule(db, schedule_id, data)
-    if not schedule:
-        raise HTTPException(status_code=404, detail="日程不存在")
-    return schedule
-
+    current = await crud.get_schedule(db, schedule_id)
+    if not current:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    start_time = data.start_time or current.start_time
+    end_time = data.end_time or current.end_time
+    is_planned = data.is_planned if data.is_planned is not None else current.is_planned
+    overlaps = await crud.get_overlapping_schedules(
+        db,
+        start_time=start_time,
+        end_time=end_time,
+        is_planned=is_planned,
+        exclude_id=schedule_id,
+    )
+    if overlaps:
+        raise HTTPException(status_code=409, detail="Schedule overlaps with an existing item in the same lane")
+    return await crud.update_schedule(db, schedule_id, data)
 
 @router.delete("/{schedule_id}", status_code=204)
 async def delete_schedule(schedule_id: int, db: AsyncSession = Depends(get_db)):
