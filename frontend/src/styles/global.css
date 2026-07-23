@@ -1737,3 +1737,21 @@ body {
     flex-direction: column;
   }
 }
+
+.ai-followup-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f9fafb;
+  padding: 14px;
+  margin: 12px 0;
+}
+
+.ai-followup-panel ol {
+  margin: 8px 0 12px 20px;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.ai-followup-panel li {
+  margin-bottom: 6px;
+}

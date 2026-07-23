@@ -1,8 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { callChatCompletion, getAiConfig } from '../ai/aiClient';
-import { parseAiDraftResponse } from '../ai/aiDraftParser';
-import { AI_DRAFT_SYSTEM_PROMPT, buildAiCreateDraftUserMessage } from '../ai/aiPrompts';
+import { parseAiDraftResponse, parseAiQuestionsResponse } from '../ai/aiDraftParser';
+import {
+  AI_CLARIFICATION_SYSTEM_PROMPT,
+  AI_DRAFT_SYSTEM_PROMPT,
+  buildAiCreateDraftUserMessage,
+  buildClarificationUserMessage,
+} from '../ai/aiPrompts';
 import AiDraftReviewModal from '../components/AiDraftReviewModal';
 import { projectApi, scheduleApi, todoApi } from '../api/client';
 import { todayStr } from '../utils/time';
@@ -24,6 +29,9 @@ export default function AiCreatePage() {
   const [warnings, setWarnings] = useState([]);
   const [errors, setErrors] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [clarifyLoading, setClarifyLoading] = useState(false);
+  const [clarifyQuestions, setClarifyQuestions] = useState([]);
+  const [clarifyAnswer, setClarifyAnswer] = useState('');
   const [showReview, setShowReview] = useState(false);
   const [createdMessage, setCreatedMessage] = useState('');
 
@@ -33,10 +41,7 @@ export default function AiCreatePage() {
     const [projectData, todoData, scheduleData] = await Promise.all([
       projectApi.list().catch(() => []),
       todoApi.list({ is_completed: false }).catch(() => []),
-      scheduleApi.list({
-        date_from: `${today}T00:00:00`,
-        date_to: `${tomorrow}T23:59:59`,
-      }).catch(() => []),
+      scheduleApi.list({ date_from: `${today}T00:00:00`, date_to: `${tomorrow}T23:59:59` }).catch(() => []),
     ]);
     setProjects(projectData);
     setTodos(todoData);
@@ -44,48 +49,83 @@ export default function AiCreatePage() {
     return { projectData, todoData, scheduleData };
   };
 
-  useEffect(() => {
-    loadContext();
-  }, []);
+  useEffect(() => { loadContext(); }, []);
 
-  const handleGenerate = async () => {
-    if (!text.trim()) {
-      setErrors(['请先描述你想创建什么。']);
-      return;
-    }
-
-    setLoading(true);
+  const resetDraftState = () => {
     setErrors([]);
     setWarnings([]);
     setDrafts([]);
     setCreatedMessage('');
+  };
+
+  const buildRequestText = () => {
+    if (!clarifyQuestions.length || !clarifyAnswer.trim()) return text;
+    return `${text}\n\nClarifying questions:\n${clarifyQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n\nUser answers:\n${clarifyAnswer}`;
+  };
+
+  const handleClarify = async () => {
+    if (!text.trim()) {
+      setErrors(['Describe your rough need first.']);
+      return;
+    }
+    setClarifyLoading(true);
+    resetDraftState();
+    setClarifyQuestions([]);
+    setClarifyAnswer('');
+    try {
+      const { projectData, todoData, scheduleData } = await loadContext();
+      const raw = await callChatCompletion({
+        systemPrompt: AI_CLARIFICATION_SYSTEM_PROMPT,
+        userMessage: buildClarificationUserMessage({
+          text,
+          dateContext: { today, tomorrow },
+          projects: projectData,
+          todos: todoData,
+          schedules: scheduleData,
+        }),
+        maxTokens: 600,
+        temperature: 0.35,
+      });
+      const result = parseAiQuestionsResponse(raw, 'clarification');
+      setClarifyQuestions(result.questions);
+      setErrors(result.errors);
+    } catch (err) {
+      setErrors([err.message || 'AI clarification failed.']);
+    } finally {
+      setClarifyLoading(false);
+    }
+  };
+
+  const handleGenerate = async () => {
+    if (!text.trim()) {
+      setErrors(['Describe what you want to create first.']);
+      return;
+    }
+
+    setLoading(true);
+    resetDraftState();
 
     try {
       const { projectData, todoData, scheduleData } = await loadContext();
-      const userMessage = buildAiCreateDraftUserMessage({
-        text,
-        dateContext: { today, tomorrow },
-        projects: projectData,
-        todos: todoData,
-        schedules: scheduleData,
-      });
       const raw = await callChatCompletion({
         systemPrompt: AI_DRAFT_SYSTEM_PROMPT,
-        userMessage,
+        userMessage: buildAiCreateDraftUserMessage({
+          text: buildRequestText(),
+          dateContext: { today, tomorrow },
+          projects: projectData,
+          todos: todoData,
+          schedules: scheduleData,
+        }),
         maxTokens: 1800,
         temperature: 0.25,
       });
-      const result = parseAiDraftResponse(raw, {
-        projects: projectData,
-        todos: todoData,
-        schedules: scheduleData,
-      });
+      const result = parseAiDraftResponse(raw, { projects: projectData, todos: todoData, schedules: scheduleData });
       setWarnings(result.warnings);
       setErrors(result.errors);
       setDrafts(result.drafts);
       setShowReview(result.drafts.length > 0);
     } catch (err) {
-      setErrors([err.message || 'AI 生成失败']);
+      setErrors([err.message || 'AI draft generation failed.']);
     } finally {
       setLoading(false);
     }
@@ -94,73 +134,73 @@ export default function AiCreatePage() {
   const handleCreated = async (created) => {
     setShowReview(false);
     setDrafts([]);
-    setCreatedMessage(`已创建 ${created.length} 条待办/日程。`);
+    setCreatedMessage(`Created ${created.length} todo/schedule item(s).`);
     await loadContext();
   };
 
   return (
     <div className="ai-create-page">
-      <div className="detail-back">
-        <Link to="/">返回首页</Link>
-      </div>
+      <div className="detail-back"><Link to="/">Back to home</Link></div>
 
       <div className="page-header">
         <div>
-          <h1>AI 新建</h1>
-          <p className="hint-line">用自然语言生成待办或日程草稿，确认后才会写入。</p>
+          <h1>AI Create</h1>
+          <p className="hint-line">Describe a plan. AI returns drafts only after you review them.</p>
         </div>
       </div>
 
       <div className="card">
-        {!hasApiKey && (
-          <div className="ai-draft-warning">
-            还没有配置 API Key。请先去 <Link to="/settings">设置页</Link> 配置本地 AI Key。
-          </div>
-        )}
+        {!hasApiKey && <div className="ai-draft-warning">No API Key yet. Configure it in <Link to="/settings">Settings</Link>.</div>}
 
         <div className="form-group">
-          <label>描述你想创建的待办或日程</label>
+          <label>What do you want to create?</label>
           <textarea
             value={text}
             onChange={e => setText(e.target.value)}
-            placeholder="例如：我想要读完一本有九章的书，每一章一个待办，每个 DDL 比上一个后推 3 天"
+            placeholder="Example: I want to finish a nine-chapter book. Make one todo per chapter and move each DDL 3 days later."
             style={{ minHeight: 160 }}
           />
         </div>
 
         <div className="ai-context-strip">
-          <span>今天：{today}</span>
-          <span>明天：{tomorrow}</span>
-          <span>项目：{projects.length}</span>
-          <span>未完成待办：{todos.length}</span>
-          <span>今明日程：{schedules.length}</span>
+          <span>Today: {today}</span>
+          <span>Tomorrow: {tomorrow}</span>
+          <span>Projects: {projects.length}</span>
+          <span>Open todos: {todos.length}</span>
+          <span>Schedules: {schedules.length}</span>
         </div>
 
+        {clarifyQuestions.length > 0 && (
+          <div className="ai-followup-panel">
+            <strong>Clarify before drafting</strong>
+            <ol>
+              {clarifyQuestions.map((question, index) => <li key={index}>{question}</li>)}
+            </ol>
+            <div className="form-group">
+              <label>Your answer</label>
+              <textarea value={clarifyAnswer} onChange={e => setClarifyAnswer(e.target.value)} placeholder="Answer these questions, then generate drafts." />
+            </div>
+          </div>
+        )}
+
         <div className="form-actions">
-          <button className="btn btn-primary" disabled={!hasApiKey || loading} onClick={handleGenerate}>
-            {loading ? '生成中...' : '生成草稿'}
+          <button className="btn btn-secondary" disabled={!hasApiKey || clarifyLoading || loading} onClick={handleClarify}>
+            {clarifyLoading ? 'Asking...' : 'Help me clarify'}
+          </button>
+          <button className="btn btn-primary" disabled={!hasApiKey || loading || clarifyLoading} onClick={handleGenerate}>
+            {loading ? 'Generating...' : 'Generate drafts'}
           </button>
         </div>
       </div>
 
       {createdMessage && <div className="ai-draft-success">{createdMessage}</div>}
-
-      {warnings.length > 0 && (
-        <div className="ai-draft-warning">
-          {warnings.map((warning, index) => <div key={index}>{warning}</div>)}
-        </div>
-      )}
-
-      {errors.length > 0 && (
-        <div className="ai-draft-error">
-          {errors.map((error, index) => <div key={index}>{error}</div>)}
-        </div>
-      )}
+      {warnings.length > 0 && <div className="ai-draft-warning">{warnings.map((warning, index) => <div key={index}>{warning}</div>)}</div>}
+      {errors.length > 0 && <div className="ai-draft-error">{errors.map((error, index) => <div key={index}>{error}</div>)}</div>}
 
       {drafts.length > 0 && !showReview && (
         <div className="card">
-          <div className="card-header">已生成 {drafts.length} 条草稿</div>
-          <button className="btn btn-primary" onClick={() => setShowReview(true)}>打开确认弹窗</button>
+          <div className="card-header">Generated {drafts.length} draft(s)</div>
+          <button className="btn btn-primary" onClick={() => setShowReview(true)}>Open review</button>
         </div>
       )}
 

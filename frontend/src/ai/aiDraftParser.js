@@ -187,3 +187,26 @@ export function scheduleDraftToPayload(draft) {
     is_planned: draft.is_planned !== false,
   };
 }
+
+export function parseAiQuestionsResponse(rawText, expectedType) {
+  let parsed;
+  try {
+    parsed = JSON.parse(extractJson(rawText));
+  } catch {
+    return { questions: [], errors: ['AI returned non-JSON questions. Please retry.'] };
+  }
+
+  if (expectedType && parsed?.type !== expectedType) {
+    return { questions: [], errors: [`AI returned type ${parsed?.type || 'unknown'}, expected ${expectedType}.`] };
+  }
+
+  const questions = Array.isArray(parsed?.questions)
+    ? parsed.questions.map(q => String(q || '').trim()).filter(Boolean).slice(0, 3)
+    : [];
+
+  if (!questions.length) {
+    return { questions: [], errors: ['AI did not return any usable questions.'] };
+  }
+
+  return { questions, errors: [] };
+}

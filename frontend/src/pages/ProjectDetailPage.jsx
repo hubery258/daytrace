@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { projectApi, todoApi } from '../api/client';
+import { callChatCompletion } from '../ai/aiClient';
+import { parseAiDraftResponse } from '../ai/aiDraftParser';
+import { AI_DRAFT_SYSTEM_PROMPT, buildProjectNextDraftUserMessage } from '../ai/aiPrompts';
+import AiDraftReviewModal from '../components/AiDraftReviewModal';
 import ProjectModal from '../components/ProjectModal';
 import TodoModal from '../components/TodoModal';
 import ScheduleModal from '../components/ScheduleModal';
@@ -39,6 +43,11 @@ export default function ProjectDetailPage() {
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [editTodo, setEditTodo] = useState(null);
   const [editSchedule, setEditSchedule] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [aiWarnings, setAiWarnings] = useState([]);
+  const [aiDrafts, setAiDrafts] = useState([]);
+  const [showAiReview, setShowAiReview] = useState(false);
 
   const loadOverview = useCallback(async () => {
     const data = await projectApi.overview(id);
@@ -65,6 +74,41 @@ export default function ProjectDetailPage() {
   const completeTodo = async (todo) => {
     await todoApi.update(todo.id, { is_completed: true });
     loadOverview();
+  };
+
+
+  const handleAiNextSteps = async () => {
+    if (!localStorage.getItem('simpletasker_api_key')) {
+      setAiError('Please configure API Key in Settings first.');
+      return;
+    }
+    setAiLoading(true);
+    setAiError('');
+    setAiWarnings([]);
+    setAiDrafts([]);
+    try {
+      const raw = await callChatCompletion({
+        systemPrompt: AI_DRAFT_SYSTEM_PROMPT,
+        userMessage: buildProjectNextDraftUserMessage({ project, todos, schedules }),
+        maxTokens: 1400,
+        temperature: 0.3,
+      });
+      const result = parseAiDraftResponse(raw, { projects: [project], todos, schedules });
+      setAiWarnings(result.warnings);
+      setAiDrafts(result.drafts);
+      setShowAiReview(result.drafts.length > 0);
+      setAiError(result.errors.join('\n'));
+    } catch (err) {
+      setAiError(err.message || 'AI generation failed.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleAiCreated = async () => {
+    setShowAiReview(false);
+    setAiDrafts([]);
+    await loadOverview();
   };
 
   const handleDeleteProject = async () => {
@@ -117,6 +161,10 @@ export default function ProjectDetailPage() {
         <button className="btn btn-danger" onClick={handleDeleteProject}>硬删除</button>
       </div>
 
+      {aiError && <div className="ai-draft-error" style={{ whiteSpace: 'pre-wrap' }}>{aiError}</div>}
+      {aiWarnings.length > 0 && <div className="ai-draft-warning">{aiWarnings.map((warning, index) => <div key={index}>{warning}</div>)}</div>}
+      {aiDrafts.length > 0 && !showAiReview && <div className="card"><button className="btn btn-primary" onClick={() => setShowAiReview(true)}>Open {aiDrafts.length} AI draft(s)</button></div>}
+
       <section className="category-section">
         <h2>未完成待办 ({incompleteTodos.length})</h2>
         <div className="card">
@@ -154,6 +202,17 @@ export default function ProjectDetailPage() {
           ))}
         </div>
       </section>
+
+      {showAiReview && (
+        <AiDraftReviewModal
+          drafts={aiDrafts}
+          warnings={aiWarnings}
+          projects={[project]}
+          todos={todos}
+          onClose={() => setShowAiReview(false)}
+          onCreated={handleAiCreated}
+        />
+      )}
 
       {showProjectModal && (
         <ProjectModal
