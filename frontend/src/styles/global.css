@@ -1630,3 +1630,128 @@ body {
     display: none;
   }
 }
+
+/* ===== v0.4 AI Drafts ===== */
+.ai-create-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ai-context-strip,
+.ai-draft-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
+.ai-context-strip span,
+.ai-draft-meta span {
+  background: #f3f4f6;
+  border-radius: 6px;
+  padding: 3px 8px;
+}
+
+.ai-draft-modal {
+  max-width: 720px;
+}
+
+.ai-draft-head,
+.ai-draft-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.ai-draft-head p {
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+}
+
+.ai-draft-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ai-draft-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.ai-draft-card.rejected {
+  opacity: 0.62;
+}
+
+.ai-draft-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ai-draft-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+}
+
+.ai-draft-warning,
+.ai-draft-error,
+.ai-draft-success {
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 0.9rem;
+  margin-bottom: 12px;
+}
+
+.ai-draft-warning {
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.ai-draft-error {
+  background: #fef2f2;
+  color: var(--danger);
+}
+
+.ai-draft-success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+@media (max-width: 600px) {
+  .ai-draft-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-draft-head,
+  .ai-draft-card-head {
+    flex-direction: column;
+  }
+}
+
+.ai-followup-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f9fafb;
+  padding: 14px;
+  margin: 12px 0;
+}
+
+.ai-followup-panel ol {
+  margin: 8px 0 12px 20px;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.ai-followup-panel li {
+  margin-bottom: 6px;
+}

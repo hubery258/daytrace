@@ -1,5 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { projectApi, scheduleApi } from '../api/client';
+import { projectApi, scheduleApi, todoApi } from '../api/client';
+import { callChatCompletion } from '../ai/aiClient';
+import { parseAiDraftResponse } from '../ai/aiDraftParser';
+import { AI_DRAFT_SYSTEM_PROMPT, buildScheduleGapDraftUserMessage } from '../ai/aiPrompts';
+import AiDraftReviewModal from '../components/AiDraftReviewModal';
 import ScheduleModal from '../components/ScheduleModal';
 import ContextMenu from '../components/ContextMenu';
 import { parseAsLocal, formatTime, formatDate, startOfDay, todayStr } from '../utils/time';
@@ -155,6 +159,11 @@ export default function SchedulePage() {
   const [viewMode, setViewMode] = useState('day');
   const [weekLane, setWeekLane] = useState('planned');
   const [monthLane, setMonthLane] = useState('planned');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [aiWarnings, setAiWarnings] = useState([]);
+  const [aiDrafts, setAiDrafts] = useState([]);
+  const [showAiReview, setShowAiReview] = useState(false);
 
   const dateStr = getDateStr(currentDate);
   const weekDays = getWeekDays(currentDate);
@@ -247,6 +256,48 @@ export default function SchedulePage() {
 
   const prevLabel = viewMode === 'month' ? T.prevMonth : viewMode === 'week' ? T.prevWeek : T.prevDay;
   const nextLabel = viewMode === 'month' ? T.nextMonth : viewMode === 'week' ? T.nextWeek : T.nextDay;
+
+
+  const handleAiArrangeGaps = async () => {
+    if (!localStorage.getItem('simpletasker_api_key')) {
+      setAiError('请先在设置页配置 API Key。');
+      return;
+    }
+    setAiLoading(true);
+    setAiError('');
+    setAiWarnings([]);
+    setAiDrafts([]);
+    try {
+      const [todos, projectData, daySchedules] = await Promise.all([
+        todoApi.list({ is_completed: false }).catch(() => []),
+        projectApi.list().catch(() => []),
+        scheduleApi.list({ date_from: dateStr + 'T00:00:00', date_to: dateStr + 'T23:59:59' }).catch(() => []),
+      ]);
+      setProjects(projectData);
+      const raw = await callChatCompletion({
+        systemPrompt: AI_DRAFT_SYSTEM_PROMPT,
+        userMessage: buildScheduleGapDraftUserMessage({ date: dateStr, todos, projects: projectData, schedules: daySchedules }),
+        maxTokens: 1400,
+        temperature: 0.25,
+      });
+      const result = parseAiDraftResponse(raw, { projects: projectData, todos, schedules: daySchedules });
+      const scheduleDrafts = result.drafts.filter(draft => draft.draft_type === 'schedule');
+      setAiWarnings(result.warnings);
+      setAiDrafts(scheduleDrafts);
+      setShowAiReview(scheduleDrafts.length > 0);
+      setAiError(result.errors.join('\n'));
+    } catch (err) {
+      setAiError(err.message || 'AI安排失败。');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleAiCreated = async () => {
+    setShowAiReview(false);
+    setAiDrafts([]);
+    await loadSchedules();
+  };
 
   const handleJumpDate = () => {
     if (!jumpDate) return;
@@ -497,6 +548,7 @@ export default function SchedulePage() {
           <button className={viewMode === 'week' ? 'active' : ''} onClick={() => setViewMode('week')}>{T.weekView}</button>
           <button className={viewMode === 'month' ? 'active' : ''} onClick={() => setViewMode('month')}>{T.monthView}</button>
         </div>
+        <button className="btn btn-sm btn-secondary" disabled={aiLoading} onClick={handleAiArrangeGaps}>{aiLoading ? 'AI 安排中...' : 'AI安排空档'}</button>
         <div className="week-nav improved">
           <button className="btn btn-sm btn-secondary" onClick={goPrev}>{prevLabel}</button>
           <button className="btn btn-sm btn-secondary" onClick={goToday}>{T.today}</button>
@@ -551,6 +603,21 @@ export default function SchedulePage() {
             </div>
           </div>
         </>
+      )}
+
+      {aiError && <div className="ai-draft-error" style={{ whiteSpace: 'pre-wrap' }}>{aiError}</div>}
+      {aiWarnings.length > 0 && <div className="ai-draft-warning">{aiWarnings.map((warning, index) => <div key={index}>{warning}</div>)}</div>}
+      {aiDrafts.length > 0 && !showAiReview && <div className="card"><button className="btn btn-primary" onClick={() => setShowAiReview(true)}>打开 {aiDrafts.length} 条日程草稿</button></div>}
+
+      {showAiReview && (
+        <AiDraftReviewModal
+          drafts={aiDrafts}
+          warnings={aiWarnings}
+          projects={projects}
+          todos={[]}
+          onClose={() => setShowAiReview(false)}
+          onCreated={handleAiCreated}
+        />
       )}
 
       {showModal && (
