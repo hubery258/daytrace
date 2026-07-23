@@ -65,7 +65,7 @@ export default function AiCreatePage() {
 
   const handleClarify = async () => {
     if (!text.trim()) {
-      setErrors(['Describe your rough need first.']);
+      setErrors(['请先描述你的大致需求。']);
       return;
     }
     setClarifyLoading(true);
@@ -90,7 +90,7 @@ export default function AiCreatePage() {
       setClarifyQuestions(result.questions);
       setErrors(result.errors);
     } catch (err) {
-      setErrors([err.message || 'AI clarification failed.']);
+      setErrors([err.message || 'AI澄清需求失败。']);
     } finally {
       setClarifyLoading(false);
     }
@@ -98,7 +98,7 @@ export default function AiCreatePage() {
 
   const handleGenerate = async () => {
     if (!text.trim()) {
-      setErrors(['Describe what you want to create first.']);
+      setErrors(['请先描述你想创建什么。']);
       return;
     }
 
@@ -125,7 +125,7 @@ export default function AiCreatePage() {
       setDrafts(result.drafts);
       setShowReview(result.drafts.length > 0);
     } catch (err) {
-      setErrors([err.message || 'AI draft generation failed.']);
+      setErrors([err.message || 'AI草稿生成失败。']);
     } finally {
       setLoading(false);
     }
@@ -134,61 +134,61 @@ export default function AiCreatePage() {
   const handleCreated = async (created) => {
     setShowReview(false);
     setDrafts([]);
-    setCreatedMessage(`Created ${created.length} todo/schedule item(s).`);
+    setCreatedMessage(`已创建 ${created.length} 条待办/日程。`);
     await loadContext();
   };
 
   return (
     <div className="ai-create-page">
-      <div className="detail-back"><Link to="/">Back to home</Link></div>
+      <div className="detail-back"><Link to="/">返回首页</Link></div>
 
       <div className="page-header">
         <div>
-          <h1>AI Create</h1>
-          <p className="hint-line">Describe a plan. AI returns drafts only after you review them.</p>
+          <h1>AI新建</h1>
+          <p className="hint-line">描述你的计划或需求，AI只会返回草稿，需要你确认后才写入。</p>
         </div>
       </div>
 
       <div className="card">
-        {!hasApiKey && <div className="ai-draft-warning">No API Key yet. Configure it in <Link to="/settings">Settings</Link>.</div>}
+        {!hasApiKey && <div className="ai-draft-warning">还没有配置 API Key。请先到 <Link to="/settings">设置页</Link>.</div>}
 
         <div className="form-group">
-          <label>What do you want to create?</label>
+          <label>你想创建什么？</label>
           <textarea
             value={text}
             onChange={e => setText(e.target.value)}
-            placeholder="Example: I want to finish a nine-chapter book. Make one todo per chapter and move each DDL 3 days later."
+            placeholder="例如：我想读完一本九章的书，每一章一个待办，每个 DDL 比上一个后推 3 天。"
             style={{ minHeight: 160 }}
           />
         </div>
 
         <div className="ai-context-strip">
-          <span>Today: {today}</span>
-          <span>Tomorrow: {tomorrow}</span>
-          <span>Projects: {projects.length}</span>
-          <span>Open todos: {todos.length}</span>
-          <span>Schedules: {schedules.length}</span>
+          <span>今天：{today}</span>
+          <span>明天：{tomorrow}</span>
+          <span>项目：{projects.length}</span>
+          <span>未完成待办：{todos.length}</span>
+          <span>今明日程：{schedules.length}</span>
         </div>
 
         {clarifyQuestions.length > 0 && (
           <div className="ai-followup-panel">
-            <strong>Clarify before drafting</strong>
+            <strong>生成草稿前先澄清</strong>
             <ol>
               {clarifyQuestions.map((question, index) => <li key={index}>{question}</li>)}
             </ol>
             <div className="form-group">
-              <label>Your answer</label>
-              <textarea value={clarifyAnswer} onChange={e => setClarifyAnswer(e.target.value)} placeholder="Answer these questions, then generate drafts." />
+              <label>你的回答</label>
+              <textarea value={clarifyAnswer} onChange={e => setClarifyAnswer(e.target.value)} placeholder="回答这些问题，然后生成草稿。" />
             </div>
           </div>
         )}
 
         <div className="form-actions">
           <button className="btn btn-secondary" disabled={!hasApiKey || clarifyLoading || loading} onClick={handleClarify}>
-            {clarifyLoading ? 'Asking...' : 'Help me clarify'}
+            {clarifyLoading ? '提问中...' : '帮我澄清需求'}
           </button>
           <button className="btn btn-primary" disabled={!hasApiKey || loading || clarifyLoading} onClick={handleGenerate}>
-            {loading ? 'Generating...' : 'Generate drafts'}
+            {loading ? '生成中...' : '生成草稿'}
           </button>
         </div>
       </div>
@@ -199,8 +199,8 @@ export default function AiCreatePage() {
 
       {drafts.length > 0 && !showReview && (
         <div className="card">
-          <div className="card-header">Generated {drafts.length} draft(s)</div>
-          <button className="btn btn-primary" onClick={() => setShowReview(true)}>Open review</button>
+          <div className="card-header">已生成 {drafts.length} 条草稿</div>
+          <button className="btn btn-primary" onClick={() => setShowReview(true)}>打开确认弹窗</button>
         </div>
       )}
 

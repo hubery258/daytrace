@@ -79,7 +79,7 @@ export default function ProjectDetailPage() {
 
   const handleAiNextSteps = async () => {
     if (!localStorage.getItem('simpletasker_api_key')) {
-      setAiError('Please configure API Key in Settings first.');
+      setAiError('请先在设置页配置 API Key。');
       return;
     }
     setAiLoading(true);
@@ -99,7 +99,7 @@ export default function ProjectDetailPage() {
       setShowAiReview(result.drafts.length > 0);
       setAiError(result.errors.join('\n'));
     } catch (err) {
-      setAiError(err.message || 'AI generation failed.');
+      setAiError(err.message || 'AI生成失败。');
     } finally {
       setAiLoading(false);
     }
@@ -163,7 +163,7 @@ export default function ProjectDetailPage() {
 
       {aiError && <div className="ai-draft-error" style={{ whiteSpace: 'pre-wrap' }}>{aiError}</div>}
       {aiWarnings.length > 0 && <div className="ai-draft-warning">{aiWarnings.map((warning, index) => <div key={index}>{warning}</div>)}</div>}
-      {aiDrafts.length > 0 && !showAiReview && <div className="card"><button className="btn btn-primary" onClick={() => setShowAiReview(true)}>Open {aiDrafts.length} AI draft(s)</button></div>}
+      {aiDrafts.length > 0 && !showAiReview && <div className="card"><button className="btn btn-primary" onClick={() => setShowAiReview(true)}>打开 {aiDrafts.length} 条AI草稿</button></div>}
 
       <section className="category-section">
         <h2>未完成待办 ({incompleteTodos.length})</h2>

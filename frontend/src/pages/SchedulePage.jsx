@@ -260,7 +260,7 @@ export default function SchedulePage() {
 
   const handleAiArrangeGaps = async () => {
     if (!localStorage.getItem('simpletasker_api_key')) {
-      setAiError('Please configure API Key in Settings first.');
+      setAiError('请先在设置页配置 API Key。');
       return;
     }
     setAiLoading(true);
@@ -287,7 +287,7 @@ export default function SchedulePage() {
       setShowAiReview(scheduleDrafts.length > 0);
       setAiError(result.errors.join('\n'));
     } catch (err) {
-      setAiError(err.message || 'AI arrange failed.');
+      setAiError(err.message || 'AI安排失败。');
     } finally {
       setAiLoading(false);
     }
@@ -548,7 +548,7 @@ export default function SchedulePage() {
           <button className={viewMode === 'week' ? 'active' : ''} onClick={() => setViewMode('week')}>{T.weekView}</button>
           <button className={viewMode === 'month' ? 'active' : ''} onClick={() => setViewMode('month')}>{T.monthView}</button>
         </div>
-        <button className="btn btn-sm btn-secondary" disabled={aiLoading} onClick={handleAiArrangeGaps}>{aiLoading ? 'AI...' : 'AI arrange gaps'}</button>
+        <button className="btn btn-sm btn-secondary" disabled={aiLoading} onClick={handleAiArrangeGaps}>{aiLoading ? 'AI 安排中...' : 'AI安排空档'}</button>
         <div className="week-nav improved">
           <button className="btn btn-sm btn-secondary" onClick={goPrev}>{prevLabel}</button>
           <button className="btn btn-sm btn-secondary" onClick={goToday}>{T.today}</button>
@@ -607,7 +607,7 @@ export default function SchedulePage() {
 
       {aiError && <div className="ai-draft-error" style={{ whiteSpace: 'pre-wrap' }}>{aiError}</div>}
       {aiWarnings.length > 0 && <div className="ai-draft-warning">{aiWarnings.map((warning, index) => <div key={index}>{warning}</div>)}</div>}
-      {aiDrafts.length > 0 && !showAiReview && <div className="card"><button className="btn btn-primary" onClick={() => setShowAiReview(true)}>Open {aiDrafts.length} schedule draft(s)</button></div>}
+      {aiDrafts.length > 0 && !showAiReview && <div className="card"><button className="btn btn-primary" onClick={() => setShowAiReview(true)}>打开 {aiDrafts.length} 条日程草稿</button></div>}
 
       {showAiReview && (
         <AiDraftReviewModal
