@@ -1,8 +1,12 @@
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from typing import Optional, List
 from sqlalchemy import select, and_, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from . import models, schemas
+
+
+def beijing_now() -> datetime:
+    return datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None)
 
 
 # ============ Project CRUD ============
@@ -318,7 +322,7 @@ async def get_timer(db: AsyncSession, timer_id: int) -> Optional[models.TimerSes
 
 
 async def start_timer(db: AsyncSession, data: schemas.TimerStart) -> models.TimerSession:
-    now = datetime.now()
+    now = beijing_now()
     timer = models.TimerSession(
         **data.model_dump(),
         status=models.TimerStatus.running,
@@ -336,7 +340,7 @@ async def update_timer_details(db: AsyncSession, timer: models.TimerSession, dat
     update_data = data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(timer, key, value)
-    timer.updated_at = datetime.now()
+    timer.updated_at = beijing_now()
     await db.commit()
     await db.refresh(timer)
     return timer
@@ -344,7 +348,7 @@ async def update_timer_details(db: AsyncSession, timer: models.TimerSession, dat
 
 async def pause_timer(db: AsyncSession, timer: models.TimerSession) -> models.TimerSession:
     timer.status = models.TimerStatus.paused
-    timer.paused_at = datetime.now()
+    timer.paused_at = beijing_now()
     timer.updated_at = timer.paused_at
     await db.commit()
     await db.refresh(timer)
@@ -352,7 +356,7 @@ async def pause_timer(db: AsyncSession, timer: models.TimerSession) -> models.Ti
 
 
 async def resume_timer(db: AsyncSession, timer: models.TimerSession) -> models.TimerSession:
-    now = datetime.now()
+    now = beijing_now()
     if timer.paused_at:
         timer.paused_seconds = (timer.paused_seconds or 0) + max(0, int((now - timer.paused_at).total_seconds()))
     timer.status = models.TimerStatus.running
@@ -365,7 +369,7 @@ async def resume_timer(db: AsyncSession, timer: models.TimerSession) -> models.T
 
 
 async def finish_timer(db: AsyncSession, timer: models.TimerSession) -> models.TimerSession:
-    now = datetime.now()
+    now = beijing_now()
     if timer.status == models.TimerStatus.paused and timer.paused_at:
         timer.paused_seconds = (timer.paused_seconds or 0) + max(0, int((now - timer.paused_at).total_seconds()))
         timer.paused_at = None
@@ -378,7 +382,7 @@ async def finish_timer(db: AsyncSession, timer: models.TimerSession) -> models.T
 
 
 async def cancel_timer(db: AsyncSession, timer: models.TimerSession) -> models.TimerSession:
-    now = datetime.now()
+    now = beijing_now()
     if timer.status == models.TimerStatus.paused and timer.paused_at:
         timer.paused_seconds = (timer.paused_seconds or 0) + max(0, int((now - timer.paused_at).total_seconds()))
     timer.status = models.TimerStatus.canceled
@@ -392,7 +396,7 @@ async def cancel_timer(db: AsyncSession, timer: models.TimerSession) -> models.T
 
 async def attach_timer_schedule(db: AsyncSession, timer: models.TimerSession, schedule_id: int) -> models.TimerSession:
     timer.created_schedule_id = schedule_id
-    timer.updated_at = datetime.now()
+    timer.updated_at = beijing_now()
     await db.commit()
     await db.refresh(timer)
     return timer

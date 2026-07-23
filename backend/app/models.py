@@ -1,5 +1,5 @@
 import enum
-from datetime import datetime, date
+from datetime import datetime, date, timedelta, timezone
 from sqlalchemy import (
     Boolean,
     Column,
@@ -13,6 +13,10 @@ from sqlalchemy import (
     Text,
 )
 from .database import Base
+
+
+def beijing_now() -> datetime:
+    return datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None)
 
 
 class DDLType(str, enum.Enum):
@@ -129,12 +133,12 @@ class TimerSession(Base):
     ended_at = Column(DateTime, nullable=True)
     created_schedule_id = Column(Integer, ForeignKey("schedules.id"), nullable=True)
     notes = Column(Text, default="", nullable=False)
-    created_at = Column(DateTime, default=datetime.now, nullable=False)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+    created_at = Column(DateTime, default=beijing_now, nullable=False)
+    updated_at = Column(DateTime, default=beijing_now, onupdate=beijing_now, nullable=False)
 
     @property
     def elapsed_seconds(self) -> int:
-        end = self.ended_at or datetime.now()
+        end = self.ended_at or beijing_now()
         active_seconds = max(0, int((end - self.started_at).total_seconds()))
         paused_total = self.paused_seconds or 0
         if self.status == TimerStatus.paused and self.paused_at:
