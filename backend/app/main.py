@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from .database import async_engine, Base
-from .routers import logs, projects, schedules, todos, zju
+from .routers import logs, projects, schedules, timer, todos, zju
 
 
 async def ensure_sqlite_schema_compat(conn):
@@ -25,6 +25,24 @@ async def ensure_sqlite_schema_compat(conn):
         "schedules",
         {
             "project_id": "project_id INTEGER",
+        },
+    )
+    await add_missing_columns(
+        "timer_sessions",
+        {
+            "name": "name VARCHAR(200) DEFAULT ''",
+            "status": "status VARCHAR(20) DEFAULT 'running'",
+            "project_id": "project_id INTEGER",
+            "linked_todo_id": "linked_todo_id INTEGER",
+            "started_at": "started_at DATETIME",
+            "last_resumed_at": "last_resumed_at DATETIME",
+            "paused_at": "paused_at DATETIME",
+            "paused_seconds": "paused_seconds INTEGER DEFAULT 0",
+            "ended_at": "ended_at DATETIME",
+            "created_schedule_id": "created_schedule_id INTEGER",
+            "notes": "notes TEXT DEFAULT ''",
+            "created_at": "created_at DATETIME",
+            "updated_at": "updated_at DATETIME",
         },
     )
     await add_missing_columns(
@@ -91,6 +109,7 @@ app.add_middleware(
 
 app.include_router(todos.router)
 app.include_router(schedules.router)
+app.include_router(timer.router)
 app.include_router(projects.router)
 app.include_router(logs.router)
 app.include_router(zju.router)

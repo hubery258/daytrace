@@ -41,6 +41,13 @@ class ProjectStatus(str, enum.Enum):
     canceled = "canceled"
 
 
+class TimerStatus(str, enum.Enum):
+    running = "running"
+    paused = "paused"
+    completed = "completed"
+    canceled = "canceled"
+
+
 class Project(Base):
     __tablename__ = "projects"
 
@@ -105,6 +112,34 @@ class Schedule(Base):
     is_planned = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+
+class TimerSession(Base):
+    __tablename__ = "timer_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(200), nullable=False)
+    status = Column(SAEnum(TimerStatus), default=TimerStatus.running, nullable=False)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    linked_todo_id = Column(Integer, ForeignKey("todos.id"), nullable=True)
+    started_at = Column(DateTime, nullable=False)
+    last_resumed_at = Column(DateTime, nullable=True)
+    paused_at = Column(DateTime, nullable=True)
+    paused_seconds = Column(Integer, default=0, nullable=False)
+    ended_at = Column(DateTime, nullable=True)
+    created_schedule_id = Column(Integer, ForeignKey("schedules.id"), nullable=True)
+    notes = Column(Text, default="", nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+    @property
+    def elapsed_seconds(self) -> int:
+        end = self.ended_at or datetime.now()
+        active_seconds = max(0, int((end - self.started_at).total_seconds()))
+        paused_total = self.paused_seconds or 0
+        if self.status == TimerStatus.paused and self.paused_at:
+            paused_total += max(0, int((end - self.paused_at).total_seconds()))
+        return max(0, active_seconds - paused_total)
 
 
 class DailyLog(Base):

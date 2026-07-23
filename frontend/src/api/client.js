@@ -66,6 +66,23 @@ export const scheduleApi = {
   week: (startDate) => request(`/schedules/week/?start_date=${startDate.toISOString()}`),
 };
 
+// ============ Timer ============
+export const timerApi = {
+  current: () => request('/timer/current'),
+  start: (data) => request('/timer/start', { method: 'POST', body: JSON.stringify(data) }),
+  updateCurrent: (data) => request('/timer/current', { method: 'PUT', body: JSON.stringify(data) }),
+  pause: () => request('/timer/pause', { method: 'POST' }),
+  resume: () => request('/timer/resume', { method: 'POST' }),
+  finish: () => request('/timer/finish', { method: 'POST' }),
+  cancel: () => request('/timer/cancel', { method: 'POST' }),
+  attachSchedule: (timerId, scheduleId) => request(`/timer/${timerId}/schedule`, {
+    method: 'POST',
+    body: JSON.stringify({ schedule_id: scheduleId }),
+  }),
+  recent: (limit = 10) => request(`/timer/recent?${new URLSearchParams({ limit }).toString()}`),
+};
+
+
 // ============ DailyLog ============
 export const logApi = {
   list: (params = {}) => {

@@ -1,6 +1,7 @@
 import { Routes, Route, NavLink } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import SchedulePage from './pages/SchedulePage';
+import TimerPage from './pages/TimerPage';
 import TodoSummaryPage from './pages/TodoSummaryPage';
 import ProjectListPage from './pages/ProjectListPage';
 import ProjectDetailPage from './pages/ProjectDetailPage';
@@ -13,25 +14,28 @@ export default function App() {
     <div className="app">
       <nav className="nav-bar">
         <NavLink to="/" end className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
-          🏠 首页
+          首页
         </NavLink>
         <NavLink to="/schedule" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
-          📅 日程
+          日程
+        </NavLink>
+        <NavLink to="/timer" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+          计时
         </NavLink>
         <NavLink to="/projects" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
-          🗂️ 项目
+          项目
         </NavLink>
         <NavLink to="/todos" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
-          📋 待办汇总
+          待办汇总
         </NavLink>
         <NavLink to="/summary" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
-          📝 今日总结
+          今日总结
         </NavLink>
         <NavLink to="/zju" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
-          🎓 ZJU
+          ZJU
         </NavLink>
         <NavLink to="/settings" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
-          ⚙️
+          设置
         </NavLink>
       </nav>
       <main className="main-content">
@@ -39,6 +43,7 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/schedule" element={<SchedulePage />} />
+          <Route path="/timer" element={<TimerPage />} />
           <Route path="/projects" element={<ProjectListPage />} />
           <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
           <Route path="/todos" element={<TodoSummaryPage />} />

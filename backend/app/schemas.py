@@ -3,7 +3,7 @@ from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from .models import DDLType, ProjectStatus, ScheduleNature, TodoStatus
+from .models import DDLType, ProjectStatus, ScheduleNature, TimerStatus, TodoStatus
 
 
 # ============ Project ============
@@ -208,6 +208,47 @@ class ScheduleOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ============ Timer ============
+
+class TimerStart(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    project_id: Optional[int] = None
+    linked_todo_id: Optional[int] = None
+    notes: str = ""
+
+
+class TimerUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    project_id: Optional[int] = None
+    linked_todo_id: Optional[int] = None
+    notes: Optional[str] = None
+
+
+class TimerOut(BaseModel):
+    id: int
+    name: str
+    status: TimerStatus
+    project_id: Optional[int] = None
+    linked_todo_id: Optional[int] = None
+    started_at: datetime
+    last_resumed_at: Optional[datetime] = None
+    paused_at: Optional[datetime] = None
+    paused_seconds: int = 0
+    ended_at: Optional[datetime] = None
+    created_schedule_id: Optional[int] = None
+    notes: str
+    created_at: datetime
+    updated_at: datetime
+    elapsed_seconds: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+class TimerAttachSchedule(BaseModel):
+    schedule_id: int
 
 
 # ============ DailyLog ============
