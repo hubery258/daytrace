@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from .database import async_engine, Base
-from .routers import logs, projects, schedules, timer, todos, zju
+from .routers import logs, projects, recurrence, schedules, timer, todos, zju
 
 
 async def ensure_sqlite_schema_compat(conn):
@@ -19,12 +19,18 @@ async def ensure_sqlite_schema_compat(conn):
         "todos",
         {
             "project_id": "project_id INTEGER",
+            "recurrence_rule_id": "recurrence_rule_id INTEGER",
+            "recurrence_date": "recurrence_date DATE",
+            "is_recurrence_exception": "is_recurrence_exception BOOLEAN DEFAULT 0",
         },
     )
     await add_missing_columns(
         "schedules",
         {
             "project_id": "project_id INTEGER",
+            "recurrence_rule_id": "recurrence_rule_id INTEGER",
+            "recurrence_date": "recurrence_date DATE",
+            "is_recurrence_exception": "is_recurrence_exception BOOLEAN DEFAULT 0",
         },
     )
     await add_missing_columns(
@@ -95,7 +101,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="日迹 API",
     description="个人效率助手 - 待办 & 日程 & 项目 & AI 分析",
-    version="0.2.0",
+    version="0.5.0",
     lifespan=lifespan,
 )
 
@@ -111,6 +117,7 @@ app.include_router(todos.router)
 app.include_router(schedules.router)
 app.include_router(timer.router)
 app.include_router(projects.router)
+app.include_router(recurrence.router)
 app.include_router(logs.router)
 app.include_router(zju.router)
 

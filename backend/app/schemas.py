@@ -3,7 +3,16 @@ from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from .models import DDLType, ProjectStatus, ScheduleNature, TimerStatus, TodoStatus
+from .models import (
+    DDLType,
+    ProjectStatus,
+    RecurrenceEntityType,
+    RecurrenceFrequency,
+    RecurrenceRuleStatus,
+    ScheduleNature,
+    TimerStatus,
+    TodoStatus,
+)
 
 
 # ============ Project ============
@@ -67,7 +76,7 @@ class TodoCreate(BaseModel):
     ddl_type: DDLType = DDLType.none
     ddl_date: Optional[datetime] = None
     reminder_days: Optional[int] = Field(None, ge=0)
-    category: str = "任务"
+    category: str = "浠诲姟"
     status: TodoStatus = TodoStatus.not_focusing
     waiting_reply_person: Optional[str] = Field(None, max_length=100)
     notes: str = ""
@@ -77,10 +86,10 @@ class TodoCreate(BaseModel):
         if self.ddl_type == DDLType.none:
             self.ddl_date = None
             self.reminder_days = None
-            if not self.category or self.category == "任务":
+            if not self.category or self.category == "浠诲姟":
                 self.category = "计划箱"
         elif not self.category or self.category == "计划箱":
-            self.category = "任务"
+            self.category = "浠诲姟"
         if self.status != TodoStatus.waiting_reply:
             self.waiting_reply_person = None
         return self
@@ -90,7 +99,7 @@ class TodoCreate(BaseModel):
     def check_ddl_date(cls, v, info):
         ddl_type = info.data.get("ddl_type")
         if ddl_type in (DDLType.hard, DDLType.soft) and v is None:
-            raise ValueError("选择了硬性或弹性 DDL 时必须指定 ddl 日期")
+            raise ValueError("ddl_date is required for hard or soft DDL")
         return v
 
     @field_validator("reminder_days")
@@ -98,7 +107,7 @@ class TodoCreate(BaseModel):
     def check_reminder_days(cls, v, info):
         ddl_type = info.data.get("ddl_type")
         if ddl_type in (DDLType.hard, DDLType.soft) and v is None:
-            raise ValueError("选择了硬性或弹性 DDL 时必须指定提醒日期")
+            raise ValueError("ddl_date is required for hard or soft DDL")
         return v
 
 
@@ -123,8 +132,8 @@ class TodoUpdate(BaseModel):
             if self.category in (None, "", "任务"):
                 self.category = "计划箱"
         elif self.ddl_type in (DDLType.hard, DDLType.soft):
-            if self.category in (None, "", "计划箱"):
-                self.category = "任务"
+            if self.category in (None, "", "任务"):
+                self.category = "浠诲姟"
         if self.status is not None and self.status != TodoStatus.waiting_reply:
             self.waiting_reply_person = None
         return self
@@ -143,6 +152,9 @@ class TodoOut(BaseModel):
     notes: str
     is_completed: bool
     completed_at: Optional[datetime] = None
+    recurrence_rule_id: Optional[int] = None
+    recurrence_date: Optional[date] = None
+    is_recurrence_exception: bool = False
     created_at: datetime
     updated_at: datetime
     is_hard_ddl_near: bool = False
@@ -172,7 +184,7 @@ class ScheduleCreate(BaseModel):
     def check_end_after_start(cls, v, info):
         start = info.data.get("start_time")
         if start and v <= start:
-            raise ValueError("结束时间必须在开始时间之后")
+            raise ValueError("end_time must be after start_time")
         return v
 
 
@@ -203,6 +215,9 @@ class ScheduleOut(BaseModel):
     location: Optional[str] = None
     notes: str
     is_planned: bool
+    recurrence_rule_id: Optional[int] = None
+    recurrence_date: Optional[date] = None
+    is_recurrence_exception: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -210,6 +225,82 @@ class ScheduleOut(BaseModel):
         from_attributes = True
 
 
+
+# ============ Recurrence ============
+
+class RecurrenceRuleBase(BaseModel):
+    entity_type: RecurrenceEntityType
+    template_json: dict[str, Any] = Field(default_factory=dict)
+    frequency: RecurrenceFrequency
+    start_date: date
+    end_date: Optional[date] = None
+    weekdays: Optional[List[int]] = None
+    month_day: Optional[int] = Field(None, ge=1, le=31)
+    project_id: Optional[int] = None
+    status: RecurrenceRuleStatus = RecurrenceRuleStatus.active
+
+    @model_validator(mode="after")
+    def validate_rule_shape(self):
+        if self.end_date and self.end_date < self.start_date:
+            raise ValueError("end_date must be on or after start_date")
+        if self.frequency == RecurrenceFrequency.weekly:
+            if not self.weekdays:
+                raise ValueError("weekly recurrence requires weekdays")
+            invalid = [day for day in self.weekdays if day < 1 or day > 7]
+            if invalid:
+                raise ValueError("weekdays must use 1-7, where Monday is 1")
+            self.weekdays = sorted(set(self.weekdays))
+        else:
+            self.weekdays = None
+        if self.frequency == RecurrenceFrequency.monthly:
+            if self.month_day is None:
+                raise ValueError("monthly recurrence requires month_day")
+        else:
+            self.month_day = None
+        if self.entity_type == RecurrenceEntityType.schedule:
+            self.template_json["is_planned"] = True
+        return self
+
+
+class RecurrenceRuleCreate(RecurrenceRuleBase):
+    pass
+
+
+class RecurrenceRuleUpdate(BaseModel):
+    template_json: Optional[dict[str, Any]] = None
+    frequency: Optional[RecurrenceFrequency] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    weekdays: Optional[List[int]] = None
+    month_day: Optional[int] = Field(None, ge=1, le=31)
+    project_id: Optional[int] = None
+    status: Optional[RecurrenceRuleStatus] = None
+
+
+class RecurrenceRuleOut(RecurrenceRuleBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class RecurrenceGenerateRequest(BaseModel):
+    entity_type: Optional[RecurrenceEntityType] = None
+    date_from: date
+    date_to: date
+
+    @model_validator(mode="after")
+    def validate_window(self):
+        if self.date_to < self.date_from:
+            raise ValueError("date_to must be on or after date_from")
+        return self
+
+
+class RecurrenceGenerateOut(BaseModel):
+    created_todo_ids: List[int] = Field(default_factory=list)
+    created_schedule_ids: List[int] = Field(default_factory=list)
 # ============ Timer ============
 
 class TimerStart(BaseModel):

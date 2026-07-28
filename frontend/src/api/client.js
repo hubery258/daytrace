@@ -11,7 +11,7 @@ async function request(path, options = {}) {
   if (res.status === 204) return null;
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || '请求失败');
+    throw new Error(err.detail || '鐠囬攱鐪版径杈Е');
   }
   return res.json();
 }
@@ -66,6 +66,24 @@ export const scheduleApi = {
   week: (startDate) => request(`/schedules/week/?start_date=${startDate.toISOString()}`),
 };
 
+
+// ============ Recurrence Rules ============
+export const recurrenceApi = {
+  list: (params = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null) qs.set(k, v);
+    });
+    return request(`/recurrence-rules/?${qs.toString()}`);
+  },
+  get: (id) => request(`/recurrence-rules/${id}`),
+  create: (data) => request('/recurrence-rules/', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id, data) => request(`/recurrence-rules/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  syncTodo: (todoId, data) => request(`/recurrence-rules/from-todo/${todoId}/sync`, { method: 'POST', body: JSON.stringify(data) }),
+  syncSchedule: (scheduleId, data) => request(`/recurrence-rules/from-schedule/${scheduleId}/sync`, { method: 'POST', body: JSON.stringify(data) }),
+  delete: (id, deleteFutureInstances = false) => request(`/recurrence-rules/${id}?${new URLSearchParams({ delete_future_instances: deleteFutureInstances }).toString()}`, { method: 'DELETE' }),
+  generate: (data) => request('/recurrence-rules/generate', { method: 'POST', body: JSON.stringify(data) }),
+};
 // ============ Timer ============
 export const timerApi = {
   current: () => request('/timer/current'),
