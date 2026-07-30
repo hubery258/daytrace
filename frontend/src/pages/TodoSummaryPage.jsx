@@ -1,8 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
-import { todoApi } from '../api/client';
+import { todoApi, recurrenceApi } from '../api/client';
 import TodoModal from '../components/TodoModal';
 import ContextMenu from '../components/ContextMenu';
-import { parseAsLocal } from '../utils/time';
+import { parseAsLocal, todayStr } from '../utils/time';
+
+function addDays(dateStr, days) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 export default function TodoSummaryPage() {
   const [todos, setTodos] = useState([]);
@@ -10,11 +16,14 @@ export default function TodoSummaryPage() {
   const [editTodo, setEditTodo] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
 
-  const loadTodos = useCallback(() => {
-    todoApi.list({ is_completed: false }).then(setTodos).catch(console.error);
+  const loadTodos = useCallback(async () => {
+    const today = todayStr();
+    await recurrenceApi.generate({ entity_type: 'todo', date_from: today, date_to: addDays(today, 7) });
+    const data = await todoApi.list({ is_completed: false });
+    setTodos(data);
   }, []);
 
-  useEffect(() => { loadTodos(); }, [loadTodos]);
+  useEffect(() => { loadTodos().catch(console.error); }, [loadTodos]);
 
   const grouped = {};
   todos.forEach(t => {
@@ -24,9 +33,9 @@ export default function TodoSummaryPage() {
   });
 
   const statusEmoji = {
-    waiting_reply: '⏳',
-    focusing: '⭐',
-    not_focusing: '📌',
+    waiting_reply: '等待',
+    focusing: '关注',
+    not_focusing: '任务',
   };
 
   const handleContextMenu = (e, todo) => {
@@ -43,20 +52,27 @@ export default function TodoSummaryPage() {
 
   const handleDelete = async () => {
     if (!contextMenu) return;
-    await todoApi.delete(contextMenu.todo.id);
+    const todo = contextMenu.todo;
+    if (todo.recurrence_rule_id) {
+      const deleteAll = window.confirm('这是重复待办实例。点击“确定”删除所有未来未完成实例并停止规则；点击“取消”只删除当前一个。');
+      if (deleteAll) await recurrenceApi.delete(todo.recurrence_rule_id, true);
+      else await todoApi.delete(todo.id);
+    } else {
+      await todoApi.delete(todo.id);
+    }
     setContextMenu(null);
     loadTodos();
   };
 
   const contextMenuItems = contextMenu ? [
-    { label: '✏️ 修改', onClick: handleEdit },
-    { label: '🗑️ 删除', onClick: handleDelete, danger: true },
+    { label: '修改', onClick: handleEdit },
+    { label: '删除', onClick: handleDelete, danger: true },
   ] : [];
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h1 style={{ fontSize: '1.2rem' }}>📋 待办汇总</h1>
+        <h1 style={{ fontSize: '1.2rem' }}>待办汇总</h1>
         <button className="btn btn-sm btn-secondary" onClick={() => { setEditTodo(null); setShowTodoModal(true); }}>
           + 新建待办
         </button>
@@ -64,13 +80,13 @@ export default function TodoSummaryPage() {
 
       {Object.keys(grouped).length === 0 && (
         <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '40px' }}>
-          暂无待办，点击右上角新建吧！
+          暂无待办，点击右上角新建。
         </div>
       )}
 
       {Object.entries(grouped).map(([category, items]) => (
         <div key={category} className="category-section">
-          <h2>📁 {category} ({items.length})</h2>
+          <h2>{category} ({items.length})</h2>
           <div className="card">
             {items.map(todo => (
               <div
@@ -82,11 +98,12 @@ export default function TodoSummaryPage() {
               >
                 <span style={{ marginRight: 8 }}>{statusEmoji[todo.status] || ''}</span>
                 <span className="todo-name">{todo.name}</span>
+                {todo.recurrence_rule_id && <span className="todo-meta">重复</span>}
                 {todo.ddl_date && (
                   <span className="todo-meta">
                     {parseAsLocal(todo.ddl_date).toLocaleDateString('zh-CN')}
-                    {todo.is_hard_ddl_near && ' 🔴'}
-                    {todo.is_soft_ddl_near && ' 🟡'}
+                    {todo.is_hard_ddl_near && ' 硬'}
+                    {todo.is_soft_ddl_near && ' 软'}
                   </span>
                 )}
               </div>

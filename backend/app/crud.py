@@ -196,21 +196,28 @@ async def update_todo(db: AsyncSession, todo_id: int, data: schemas.TodoUpdate) 
     update_data = data.model_dump(exclude_unset=True)
     if "is_completed" in update_data and update_data["is_completed"]:
         update_data["completed_at"] = datetime.now()
+    edited_fields = set(update_data) - {"is_completed", "completed_at"}
+    if todo.recurrence_rule_id and edited_fields:
+        update_data["is_recurrence_exception"] = True
     for key, value in update_data.items():
         setattr(todo, key, value)
     await db.commit()
     await db.refresh(todo)
     return todo
 
-
 async def delete_todo(db: AsyncSession, todo_id: int) -> bool:
     todo = await get_todo(db, todo_id)
     if not todo:
         return False
+    if todo.recurrence_rule_id and todo.recurrence_date:
+        db.add(models.RecurrenceException(
+            recurrence_rule_id=todo.recurrence_rule_id,
+            entity_type=models.RecurrenceEntityType.todo,
+            recurrence_date=todo.recurrence_date,
+        ))
     await db.delete(todo)
     await db.commit()
     return True
-
 
 # ============ Schedule CRUD ============
 
@@ -285,21 +292,27 @@ async def update_schedule(db: AsyncSession, schedule_id: int, data: schemas.Sche
     if not schedule:
         return None
     update_data = data.model_dump(exclude_unset=True)
+    if schedule.recurrence_rule_id and update_data:
+        update_data["is_recurrence_exception"] = True
     for key, value in update_data.items():
         setattr(schedule, key, value)
     await db.commit()
     await db.refresh(schedule)
     return schedule
 
-
 async def delete_schedule(db: AsyncSession, schedule_id: int) -> bool:
     schedule = await get_schedule(db, schedule_id)
     if not schedule:
         return False
+    if schedule.recurrence_rule_id and schedule.recurrence_date:
+        db.add(models.RecurrenceException(
+            recurrence_rule_id=schedule.recurrence_rule_id,
+            entity_type=models.RecurrenceEntityType.schedule,
+            recurrence_date=schedule.recurrence_date,
+        ))
     await db.delete(schedule)
     await db.commit()
     return True
-
 
 # ============ Timer CRUD ============
 
@@ -494,3 +507,393 @@ async def delete_log_template(db: AsyncSession, template_id: int) -> bool:
     await db.delete(template)
     await db.commit()
     return True
+
+# ============ Recurrence CRUD ============
+
+async def create_recurrence_rule(db: AsyncSession, data: schemas.RecurrenceRuleCreate) -> models.RecurrenceRule:
+    values = data.model_dump()
+    rule = models.RecurrenceRule(**values)
+    db.add(rule)
+    await db.commit()
+    await db.refresh(rule)
+    return rule
+
+
+async def get_recurrence_rule(db: AsyncSession, rule_id: int) -> Optional[models.RecurrenceRule]:
+    result = await db.execute(select(models.RecurrenceRule).where(models.RecurrenceRule.id == rule_id))
+    return result.scalar_one_or_none()
+
+
+async def get_recurrence_rules(
+    db: AsyncSession,
+    entity_type: Optional[models.RecurrenceEntityType] = None,
+    include_archived: bool = False,
+) -> List[models.RecurrenceRule]:
+    stmt = select(models.RecurrenceRule)
+    if entity_type:
+        stmt = stmt.where(models.RecurrenceRule.entity_type == entity_type)
+    if not include_archived:
+        stmt = stmt.where(models.RecurrenceRule.status != models.RecurrenceRuleStatus.archived)
+    stmt = stmt.order_by(models.RecurrenceRule.created_at.desc())
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def update_recurrence_rule(db: AsyncSession, rule_id: int, data: schemas.RecurrenceRuleUpdate) -> Optional[models.RecurrenceRule]:
+    rule = await get_recurrence_rule(db, rule_id)
+    if not rule:
+        return None
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(rule, key, value)
+    rule.updated_at = datetime.now()
+    await db.commit()
+    await db.refresh(rule)
+    return rule
+
+
+async def delete_recurrence_rule(db: AsyncSession, rule_id: int, delete_future_instances: bool = False) -> bool:
+    rule = await get_recurrence_rule(db, rule_id)
+    if not rule:
+        return False
+    rule.status = models.RecurrenceRuleStatus.archived
+    rule.updated_at = datetime.now()
+    if delete_future_instances:
+        today = beijing_now().date()
+        if rule.entity_type == models.RecurrenceEntityType.todo:
+            result = await db.execute(select(models.Todo).where(
+                models.Todo.recurrence_rule_id == rule_id,
+                models.Todo.recurrence_date >= today,
+                models.Todo.is_completed == False,
+            ))
+            for todo in result.scalars().all():
+                await db.delete(todo)
+        else:
+            start = datetime.combine(today, datetime.min.time())
+            result = await db.execute(select(models.Schedule).where(
+                models.Schedule.recurrence_rule_id == rule_id,
+                models.Schedule.start_time >= start,
+            ))
+            for schedule in result.scalars().all():
+                await db.delete(schedule)
+    await db.commit()
+    return True
+
+
+def _iter_dates(date_from: date, date_to: date) -> List[date]:
+    days = []
+    cursor = date_from
+    while cursor <= date_to:
+        days.append(cursor)
+        cursor += timedelta(days=1)
+    return days
+
+
+def _rule_matches(rule: models.RecurrenceRule, day: date) -> bool:
+    if day < rule.start_date:
+        return False
+    if rule.end_date and day > rule.end_date:
+        return False
+    if rule.frequency == models.RecurrenceFrequency.daily:
+        return True
+    if rule.frequency == models.RecurrenceFrequency.weekly:
+        return day.isoweekday() in (rule.weekdays or [])
+    if rule.frequency == models.RecurrenceFrequency.monthly:
+        return day.day == rule.month_day
+    return False
+
+
+async def _has_recurrence_instance(db: AsyncSession, rule: models.RecurrenceRule, day: date) -> bool:
+    model = models.Todo if rule.entity_type == models.RecurrenceEntityType.todo else models.Schedule
+    result = await db.execute(select(model.id).where(
+        model.recurrence_rule_id == rule.id,
+        model.recurrence_date == day,
+    ).limit(1))
+    return result.scalar_one_or_none() is not None
+
+
+async def _has_deleted_exception(db: AsyncSession, rule: models.RecurrenceRule, day: date) -> bool:
+    result = await db.execute(select(models.RecurrenceException.id).where(
+        models.RecurrenceException.recurrence_rule_id == rule.id,
+        models.RecurrenceException.entity_type == rule.entity_type,
+        models.RecurrenceException.recurrence_date == day,
+        models.RecurrenceException.action == models.RecurrenceExceptionAction.deleted,
+    ).limit(1))
+    return result.scalar_one_or_none() is not None
+
+
+def _parse_time(value: Optional[str], fallback_hour: int, fallback_minute: int = 0):
+    if not value:
+        return datetime.min.time().replace(hour=fallback_hour, minute=fallback_minute)
+    hour, minute = value.split(":")[:2]
+    return datetime.min.time().replace(hour=int(hour), minute=int(minute))
+
+
+def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
+
+
+def _build_todo_from_rule(rule: models.RecurrenceRule, day: date) -> models.Todo:
+    template = dict(rule.template_json or {})
+    ddl_mode = template.pop("ddl_mode", "none")
+    ddl_time = template.pop("ddl_time", "23:59")
+    ddl_offset_days = int(template.pop("ddl_offset_days", 0) or 0)
+    template.pop("recurrence", None)
+    template["project_id"] = rule.project_id
+    template.setdefault("name", "Recurring todo")
+    template.setdefault("category", "task")
+    template.setdefault("status", models.TodoStatus.not_focusing)
+    template.setdefault("notes", "")
+    template.setdefault("waiting_reply_person", None)
+    template.setdefault("is_completed", False)
+    if ddl_mode == "same_day_time":
+        template["ddl_type"] = template.get("ddl_type") if template.get("ddl_type") != "none" else models.DDLType.hard
+        template["ddl_date"] = datetime.combine(day, _parse_time(ddl_time, 23, 59))
+        template["reminder_days"] = template.get("reminder_days") if template.get("reminder_days") is not None else 0
+    elif ddl_mode == "offset_days":
+        template["ddl_type"] = template.get("ddl_type") if template.get("ddl_type") != "none" else models.DDLType.hard
+        template["ddl_date"] = datetime.combine(day + timedelta(days=ddl_offset_days), _parse_time(ddl_time, 23, 59))
+        template["reminder_days"] = template.get("reminder_days") if template.get("reminder_days") is not None else 0
+    else:
+        template["ddl_type"] = models.DDLType.none
+        template["ddl_date"] = None
+        template["reminder_days"] = None
+    return models.Todo(
+        **template,
+        recurrence_rule_id=rule.id,
+        recurrence_date=day,
+        is_recurrence_exception=False,
+    )
+
+
+def _build_schedule_from_rule(rule: models.RecurrenceRule, day: date) -> models.Schedule:
+    template = dict(rule.template_json or {})
+    start_template = _parse_datetime(template.pop("start_time", None))
+    end_template = _parse_datetime(template.pop("end_time", None))
+    start_time = datetime.combine(day, start_template.time() if start_template else _parse_time(None, 9, 0))
+    if end_template and start_template:
+        duration = end_template - start_template
+    else:
+        duration = timedelta(hours=1)
+    end_time = start_time + duration
+    template["project_id"] = rule.project_id
+    template.setdefault("name", "Recurring schedule")
+    template.setdefault("category", "schedule")
+    template.setdefault("nature", models.ScheduleNature.no_other_task)
+    template.setdefault("relax_suggestion", None)
+    template.setdefault("linked_todo_ids", [])
+    template.setdefault("location", None)
+    template.setdefault("notes", "")
+    template["is_planned"] = True
+    return models.Schedule(
+        **template,
+        start_time=start_time,
+        end_time=end_time,
+        recurrence_rule_id=rule.id,
+        recurrence_date=day,
+        is_recurrence_exception=False,
+    )
+
+
+async def generate_recurrence_instances(db: AsyncSession, data: schemas.RecurrenceGenerateRequest) -> dict:
+    created_todo_ids: List[int] = []
+    created_schedule_ids: List[int] = []
+    rules = await get_recurrence_rules(db, entity_type=data.entity_type)
+    rules = [rule for rule in rules if rule.status == models.RecurrenceRuleStatus.active]
+    for rule in rules:
+        for day in _iter_dates(data.date_from, data.date_to):
+            if not _rule_matches(rule, day):
+                continue
+            if await _has_recurrence_instance(db, rule, day):
+                continue
+            if await _has_deleted_exception(db, rule, day):
+                continue
+            if rule.entity_type == models.RecurrenceEntityType.todo:
+                todo = _build_todo_from_rule(rule, day)
+                db.add(todo)
+                await db.flush()
+                created_todo_ids.append(todo.id)
+            else:
+                schedule = _build_schedule_from_rule(rule, day)
+                overlaps = await get_overlapping_schedules(
+                    db,
+                    start_time=schedule.start_time,
+                    end_time=schedule.end_time,
+                    is_planned=True,
+                )
+                if overlaps:
+                    continue
+                db.add(schedule)
+                await db.flush()
+                created_schedule_ids.append(schedule.id)
+    await db.commit()
+    return {"created_todo_ids": created_todo_ids, "created_schedule_ids": created_schedule_ids}
+TODO_TEMPLATE_FIELDS = {
+    "name",
+    "ddl_type",
+    "ddl_date",
+    "reminder_days",
+    "category",
+    "status",
+    "waiting_reply_person",
+    "notes",
+}
+
+SCHEDULE_TEMPLATE_FIELDS = {
+    "name",
+    "start_time",
+    "end_time",
+    "category",
+    "nature",
+    "relax_suggestion",
+    "linked_todo_ids",
+    "location",
+    "notes",
+    "is_planned",
+}
+
+
+def _apply_todo_generated_values(target: models.Todo, generated: models.Todo):
+    fields = [
+        "project_id",
+        "name",
+        "ddl_type",
+        "ddl_date",
+        "reminder_days",
+        "category",
+        "status",
+        "waiting_reply_person",
+        "notes",
+    ]
+    for field in fields:
+        setattr(target, field, getattr(generated, field))
+    target.is_recurrence_exception = False
+    target.updated_at = datetime.now()
+
+
+def _apply_schedule_generated_values(target: models.Schedule, generated: models.Schedule):
+    fields = [
+        "project_id",
+        "name",
+        "start_time",
+        "end_time",
+        "category",
+        "nature",
+        "relax_suggestion",
+        "linked_todo_ids",
+        "location",
+        "notes",
+        "is_planned",
+    ]
+    for field in fields:
+        setattr(target, field, getattr(generated, field))
+    target.is_recurrence_exception = False
+    target.updated_at = datetime.now()
+
+
+def _sync_todo_ddl_template(template: dict, todo: models.Todo, update_data: dict) -> dict:
+    ddl_type = update_data.get("ddl_type", todo.ddl_type)
+    ddl_type_value = ddl_type.value if hasattr(ddl_type, "value") else ddl_type
+    template["ddl_type"] = ddl_type_value
+    if ddl_type_value == models.DDLType.none.value:
+        template["ddl_mode"] = "none"
+        template["ddl_date"] = None
+        template["reminder_days"] = None
+        return template
+
+    ddl_date = update_data.get("ddl_date", todo.ddl_date)
+    if isinstance(ddl_date, str):
+        ddl_date = _parse_datetime(ddl_date)
+    if ddl_date and todo.recurrence_date:
+        offset = (ddl_date.date() - todo.recurrence_date).days
+        template["ddl_mode"] = "same_day_time" if offset == 0 else "offset_days"
+        template["ddl_offset_days"] = max(0, offset)
+        template["ddl_time"] = ddl_date.strftime("%H:%M")
+    template["reminder_days"] = update_data.get("reminder_days", todo.reminder_days)
+    return template
+
+
+async def sync_recurrence_from_todo(db: AsyncSession, todo_id: int, data: schemas.TodoUpdate) -> Optional[models.Todo]:
+    todo = await get_todo(db, todo_id)
+    if not todo or not todo.recurrence_rule_id:
+        return None
+    rule = await get_recurrence_rule(db, todo.recurrence_rule_id)
+    if not rule or rule.entity_type != models.RecurrenceEntityType.todo:
+        return None
+
+    update_data = data.model_dump(exclude_unset=True, mode="json")
+    template = dict(rule.template_json or {})
+    for key, value in update_data.items():
+        if key == "project_id":
+            rule.project_id = value
+        elif key in TODO_TEMPLATE_FIELDS:
+            template[key] = value
+    template = _sync_todo_ddl_template(template, todo, update_data)
+    rule.template_json = template
+    rule.updated_at = datetime.now()
+
+    today = beijing_now().date()
+    result = await db.execute(select(models.Todo).where(
+        models.Todo.recurrence_rule_id == rule.id,
+        models.Todo.recurrence_date >= today,
+        models.Todo.is_completed == False,
+        models.Todo.is_recurrence_exception == False,
+    ))
+    instances = list(result.scalars().all())
+    for instance in instances:
+        if not instance.recurrence_date:
+            continue
+        generated = _build_todo_from_rule(rule, instance.recurrence_date)
+        _apply_todo_generated_values(instance, generated)
+
+    await db.commit()
+    await db.refresh(todo)
+    return todo
+
+
+async def sync_recurrence_from_schedule(db: AsyncSession, schedule_id: int, data: schemas.ScheduleUpdate) -> Optional[models.Schedule]:
+    schedule = await get_schedule(db, schedule_id)
+    if not schedule or not schedule.recurrence_rule_id:
+        return None
+    rule = await get_recurrence_rule(db, schedule.recurrence_rule_id)
+    if not rule or rule.entity_type != models.RecurrenceEntityType.schedule:
+        return None
+
+    update_data = data.model_dump(exclude_unset=True, mode="json")
+    template = dict(rule.template_json or {})
+    for key, value in update_data.items():
+        if key == "project_id":
+            rule.project_id = value
+        elif key in SCHEDULE_TEMPLATE_FIELDS:
+            template[key] = value
+    template["is_planned"] = True
+    rule.template_json = template
+    rule.updated_at = datetime.now()
+
+    today = beijing_now().date()
+    result = await db.execute(select(models.Schedule).where(
+        models.Schedule.recurrence_rule_id == rule.id,
+        models.Schedule.recurrence_date >= today,
+        models.Schedule.is_recurrence_exception == False,
+    ))
+    instances = list(result.scalars().all())
+    for instance in instances:
+        if not instance.recurrence_date:
+            continue
+        generated = _build_schedule_from_rule(rule, instance.recurrence_date)
+        overlaps = await get_overlapping_schedules(
+            db,
+            start_time=generated.start_time,
+            end_time=generated.end_time,
+            is_planned=True,
+            exclude_id=instance.id,
+        )
+        if overlaps:
+            continue
+        _apply_schedule_generated_values(instance, generated)
+
+    await db.commit()
+    await db.refresh(schedule)
+    return schedule

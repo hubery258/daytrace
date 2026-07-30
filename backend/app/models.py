@@ -52,6 +52,27 @@ class TimerStatus(str, enum.Enum):
     canceled = "canceled"
 
 
+class RecurrenceEntityType(str, enum.Enum):
+    todo = "todo"
+    schedule = "schedule"
+
+
+class RecurrenceFrequency(str, enum.Enum):
+    daily = "daily"
+    weekly = "weekly"
+    monthly = "monthly"
+
+
+class RecurrenceRuleStatus(str, enum.Enum):
+    active = "active"
+    paused = "paused"
+    archived = "archived"
+
+
+class RecurrenceExceptionAction(str, enum.Enum):
+    deleted = "deleted"
+
+
 class Project(Base):
     __tablename__ = "projects"
 
@@ -71,6 +92,9 @@ class Todo(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    recurrence_rule_id = Column(Integer, ForeignKey("recurrence_rules.id"), nullable=True)
+    recurrence_date = Column(Date, nullable=True)
+    is_recurrence_exception = Column(Boolean, default=False, nullable=False)
     name = Column(String(200), nullable=False)
     ddl_type = Column(SAEnum(DDLType), default=DDLType.none, nullable=False)
     ddl_date = Column(DateTime, nullable=True)
@@ -104,6 +128,9 @@ class Schedule(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    recurrence_rule_id = Column(Integer, ForeignKey("recurrence_rules.id"), nullable=True)
+    recurrence_date = Column(Date, nullable=True)
+    is_recurrence_exception = Column(Boolean, default=False, nullable=False)
     name = Column(String(200), nullable=False)
     start_time = Column(DateTime, nullable=False)
     end_time = Column(DateTime, nullable=False)
@@ -116,6 +143,34 @@ class Schedule(Base):
     is_planned = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+
+class RecurrenceRule(Base):
+    __tablename__ = "recurrence_rules"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    entity_type = Column(SAEnum(RecurrenceEntityType), nullable=False)
+    template_json = Column(JSON, default=dict, nullable=False)
+    frequency = Column(SAEnum(RecurrenceFrequency), nullable=False)
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=True)
+    weekdays = Column(JSON, nullable=True)
+    month_day = Column(Integer, nullable=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    status = Column(SAEnum(RecurrenceRuleStatus), default=RecurrenceRuleStatus.active, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+
+class RecurrenceException(Base):
+    __tablename__ = "recurrence_exceptions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    recurrence_rule_id = Column(Integer, ForeignKey("recurrence_rules.id"), nullable=False)
+    entity_type = Column(SAEnum(RecurrenceEntityType), nullable=False)
+    recurrence_date = Column(Date, nullable=False)
+    action = Column(SAEnum(RecurrenceExceptionAction), default=RecurrenceExceptionAction.deleted, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
 
 
 class TimerSession(Base):

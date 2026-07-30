@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { projectApi, scheduleApi, todoApi } from '../api/client';
+import { projectApi, recurrenceApi, scheduleApi, todoApi } from '../api/client';
 import { callChatCompletion } from '../ai/aiClient';
 import { parseAiDraftResponse } from '../ai/aiDraftParser';
 import { AI_DRAFT_SYSTEM_PROMPT, buildScheduleGapDraftUserMessage } from '../ai/aiPrompts';
@@ -190,7 +190,7 @@ export default function SchedulePage() {
       setWeekSchedules(week);
       setMonthSchedules(month);
     } catch (err) {
-      console.error('Load schedules failed', err);
+      setAiError(err.message || 'AI schedule arrangement failed.');
     }
   }, [currentDate]);
 
@@ -260,7 +260,7 @@ export default function SchedulePage() {
 
   const handleAiArrangeGaps = async () => {
     if (!localStorage.getItem('simpletasker_api_key')) {
-      setAiError('请先在设置页配置 API Key。');
+      setAiError('Please configure API Key in Settings first.');
       return;
     }
     setAiLoading(true);
@@ -287,7 +287,7 @@ export default function SchedulePage() {
       setShowAiReview(scheduleDrafts.length > 0);
       setAiError(result.errors.join('\n'));
     } catch (err) {
-      setAiError(err.message || 'AI安排失败。');
+      setAiError(err.message || 'AI schedule arrangement failed.');
     } finally {
       setAiLoading(false);
     }
@@ -314,7 +314,14 @@ export default function SchedulePage() {
 
   const handleDeleteSchedule = async () => {
     if (!contextMenu) return;
-    await scheduleApi.delete(contextMenu.schedule.id);
+    const schedule = contextMenu.schedule;
+    if (schedule.recurrence_rule_id) {
+      const deleteAll = window.confirm('Recurring schedule. OK = delete all future planned instances and stop the rule. Cancel = delete only this instance.');
+      if (deleteAll) await recurrenceApi.delete(schedule.recurrence_rule_id, true);
+      else await scheduleApi.delete(schedule.id);
+    } else {
+      await scheduleApi.delete(schedule.id);
+    }
     setContextMenu(null);
     loadSchedules();
   };
@@ -548,7 +555,7 @@ export default function SchedulePage() {
           <button className={viewMode === 'week' ? 'active' : ''} onClick={() => setViewMode('week')}>{T.weekView}</button>
           <button className={viewMode === 'month' ? 'active' : ''} onClick={() => setViewMode('month')}>{T.monthView}</button>
         </div>
-        <button className="btn btn-sm btn-secondary" disabled={aiLoading} onClick={handleAiArrangeGaps}>{aiLoading ? 'AI 安排中...' : 'AI安排空档'}</button>
+        <button className="btn btn-sm btn-secondary" disabled={aiLoading} onClick={handleAiArrangeGaps}>{aiLoading ? "AI arranging..." : "AI arrange gaps"}</button>
         <div className="week-nav improved">
           <button className="btn btn-sm btn-secondary" onClick={goPrev}>{prevLabel}</button>
           <button className="btn btn-sm btn-secondary" onClick={goToday}>{T.today}</button>
@@ -607,7 +614,7 @@ export default function SchedulePage() {
 
       {aiError && <div className="ai-draft-error" style={{ whiteSpace: 'pre-wrap' }}>{aiError}</div>}
       {aiWarnings.length > 0 && <div className="ai-draft-warning">{aiWarnings.map((warning, index) => <div key={index}>{warning}</div>)}</div>}
-      {aiDrafts.length > 0 && !showAiReview && <div className="card"><button className="btn btn-primary" onClick={() => setShowAiReview(true)}>打开 {aiDrafts.length} 条日程草稿</button></div>}
+      {aiDrafts.length > 0 && !showAiReview && <div className="card"><button className="btn btn-primary" onClick={() => setShowAiReview(true)}>Open {aiDrafts.length} schedule drafts</button></div>}
 
       {showAiReview && (
         <AiDraftReviewModal
