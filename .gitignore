@@ -14,7 +14,8 @@ dist/
 
 # Database
 *.db
-data/
+/data/
+/backend/data/
 
 # Environment
 .env
@@ -33,6 +34,16 @@ Thumbs.db
 # Logs
 *.log
 
-#docs
-docs/
+# Local docs stay ignored, except the reusable packaging guide.
+docs/*
+!docs/build-packaging-guide.md
 .agents/
+# Packaging outputs
+/backend/build/
+/backend/*.spec
+/release/
+/.android-sdk/
+/.downloads/
+/.jdk-21/
+/.gradle-cache/
+/.android-avd/

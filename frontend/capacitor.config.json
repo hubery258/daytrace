@@ -1,0 +1,13 @@
+{
+  "appId": "com.riji.app",
+  "appName": "日迹",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "CapacitorSQLite": {
+      "androidIsEncryption": false
+    }
+  }
+}

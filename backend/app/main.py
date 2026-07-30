@@ -1,10 +1,28 @@
 from contextlib import asynccontextmanager
+import uuid
+import os
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from .database import async_engine, Base
-from .routers import logs, projects, recurrence, schedules, timer, todos, zju
+from .routers import data_portability, logs, projects, recurrence, schedules, timer, todos, zju
+
+class SPAStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope):
+        try:
+            response = await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            return await super().get_response("index.html", scope)
+        if response.status_code == 404:
+            return await super().get_response("index.html", scope)
+        return response
+
 
 
 async def ensure_sqlite_schema_compat(conn):
@@ -16,8 +34,13 @@ async def ensure_sqlite_schema_compat(conn):
                 await conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_sql}"))
 
     await add_missing_columns(
+        "projects",
+        {"uuid": "uuid VARCHAR(36)"},
+    )
+    await add_missing_columns(
         "todos",
         {
+            "uuid": "uuid VARCHAR(36)",
             "project_id": "project_id INTEGER",
             "recurrence_rule_id": "recurrence_rule_id INTEGER",
             "recurrence_date": "recurrence_date DATE",
@@ -27,6 +50,7 @@ async def ensure_sqlite_schema_compat(conn):
     await add_missing_columns(
         "schedules",
         {
+            "uuid": "uuid VARCHAR(36)",
             "project_id": "project_id INTEGER",
             "recurrence_rule_id": "recurrence_rule_id INTEGER",
             "recurrence_date": "recurrence_date DATE",
@@ -34,8 +58,13 @@ async def ensure_sqlite_schema_compat(conn):
         },
     )
     await add_missing_columns(
+        "recurrence_rules",
+        {"uuid": "uuid VARCHAR(36)"},
+    )
+    await add_missing_columns(
         "timer_sessions",
         {
+            "uuid": "uuid VARCHAR(36)",
             "name": "name VARCHAR(200) DEFAULT ''",
             "status": "status VARCHAR(20) DEFAULT 'running'",
             "project_id": "project_id INTEGER",
@@ -51,6 +80,8 @@ async def ensure_sqlite_schema_compat(conn):
             "updated_at": "updated_at DATETIME",
         },
     )
+    await add_missing_columns("daily_logs", {"uuid": "uuid VARCHAR(36)"})
+    await add_missing_columns("log_templates", {"uuid": "uuid VARCHAR(36)"})
     await add_missing_columns(
         "zju_credentials",
         {
@@ -89,6 +120,27 @@ async def ensure_sqlite_schema_compat(conn):
     )
 
 
+
+    uuid_tables = (
+        "projects",
+        "todos",
+        "schedules",
+        "daily_logs",
+        "log_templates",
+        "timer_sessions",
+        "recurrence_rules",
+    )
+    for table_name in uuid_tables:
+        result = await conn.execute(text(f"SELECT id FROM {table_name} WHERE uuid IS NULL OR uuid = ''"))
+        for row in result.fetchall():
+            await conn.execute(
+                text(f"UPDATE {table_name} SET uuid = :uuid WHERE id = :id"),
+                {"uuid": str(uuid.uuid4()), "id": row[0]},
+            )
+        await conn.execute(
+            text(f"CREATE UNIQUE INDEX IF NOT EXISTS ix_{table_name}_uuid ON {table_name}(uuid)")
+        )
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with async_engine.begin() as conn:
@@ -101,7 +153,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="日迹 API",
     description="个人效率助手 - 待办 & 日程 & 项目 & AI 分析",
-    version="0.5.0",
+    version="0.6.0",
     lifespan=lifespan,
 )
 
@@ -119,9 +171,15 @@ app.include_router(timer.router)
 app.include_router(projects.router)
 app.include_router(recurrence.router)
 app.include_router(logs.router)
+app.include_router(data_portability.router)
 app.include_router(zju.router)
 
 
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
+
+
+frontend_dir = os.environ.get("RIJI_FRONTEND_DIR")
+if frontend_dir and (Path(frontend_dir) / "index.html").is_file():
+    app.mount("/", SPAStaticFiles(directory=frontend_dir, html=True), name="frontend")

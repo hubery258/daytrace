@@ -39,6 +39,7 @@ class ProjectUpdate(BaseModel):
 
 class ProjectOut(BaseModel):
     id: int
+    uuid: str
     name: str
     description: str
     status: ProjectStatus
@@ -141,6 +142,7 @@ class TodoUpdate(BaseModel):
 
 class TodoOut(BaseModel):
     id: int
+    uuid: str
     project_id: Optional[int] = None
     name: str
     ddl_type: DDLType
@@ -204,6 +206,7 @@ class ScheduleUpdate(BaseModel):
 
 class ScheduleOut(BaseModel):
     id: int
+    uuid: str
     project_id: Optional[int] = None
     name: str
     start_time: datetime
@@ -279,6 +282,7 @@ class RecurrenceRuleUpdate(BaseModel):
 
 class RecurrenceRuleOut(RecurrenceRuleBase):
     id: int
+    uuid: str
     created_at: datetime
     updated_at: datetime
 
@@ -319,6 +323,7 @@ class TimerUpdate(BaseModel):
 
 class TimerOut(BaseModel):
     id: int
+    uuid: str
     name: str
     status: TimerStatus
     project_id: Optional[int] = None
@@ -357,6 +362,7 @@ class DailyLogUpdate(BaseModel):
 
 class DailyLogOut(BaseModel):
     id: int
+    uuid: str
     log_date: date
     completed_todo_ids: List[int] = []
     log_text: str
@@ -381,6 +387,7 @@ class LogTemplateUpdate(BaseModel):
 
 class LogTemplateOut(BaseModel):
     id: int
+    uuid: str
     name: str
     content: str
     created_at: datetime

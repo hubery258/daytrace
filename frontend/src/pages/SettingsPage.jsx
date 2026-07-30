@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import DataPortabilityPanel from '../components/DataPortabilityPanel';
 
 const STORAGE_KEY_API_KEY = 'simpletasker_api_key';
 const STORAGE_KEY_API_BASE = 'simpletasker_api_base';
@@ -106,6 +107,8 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      <DataPortabilityPanel />
 
       <div style={{ marginTop: 16, display: 'flex', gap: 8, alignItems: 'center' }}>
         <button className="btn btn-primary" onClick={handleSave}>

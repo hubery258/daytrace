@@ -1755,3 +1755,67 @@ body {
 .ai-followup-panel li {
   margin-bottom: 6px;
 }
+
+.data-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.data-preview-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.8rem;
+}
+
+.data-preview-item span {
+  color: var(--text-secondary);
+}
+
+@media (max-width: 760px) {
+  body {
+    overscroll-behavior-y: none;
+  }
+
+  .app {
+    width: 100%;
+    padding: env(safe-area-inset-top) 12px calc(24px + env(safe-area-inset-bottom));
+  }
+
+  .nav-bar {
+    gap: 2px;
+    margin: 0 -12px 16px;
+    padding: 10px 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .nav-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-link {
+    flex: 0 0 auto;
+    padding: 7px 11px;
+    font-size: 0.82rem;
+  }
+
+  .card {
+    padding: 14px;
+  }
+
+  .modal-content {
+    width: calc(100vw - 20px);
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+  }
+
+  .data-preview-grid {
+    grid-template-columns: 1fr;
+  }
+}
