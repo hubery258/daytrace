@@ -1,6 +1,12 @@
+import { Capacitor } from '@capacitor/core';
+import { mobileRequest } from '../data/mobileDatabase';
 const BASE_URL = '/api';
 
 async function request(path, options = {}) {
+  if (Capacitor.isNativePlatform()) {
+    return mobileRequest(path, options);
+  }
+
   const url = `${BASE_URL}${path}`;
   const config = {
     headers: { 'Content-Type': 'application/json' },
@@ -11,7 +17,7 @@ async function request(path, options = {}) {
   if (res.status === 204) return null;
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || '鐠囬攱鐪版径杈Е');
+    throw new Error(err.detail || '请求失败');
   }
   return res.json();
 }
@@ -145,6 +151,13 @@ export const zjuApi = {
 };
 
 // ============ Health ============
+// ============ Data portability ============
+export const dataApi = {
+  export: () => request('/data/export'),
+  previewImport: (dataPackage) => request('/data/import/preview', { method: 'POST', body: JSON.stringify({ package: dataPackage, mode: 'merge' }) }),
+  import: (dataPackage) => request('/data/import', { method: 'POST', body: JSON.stringify({ package: dataPackage, mode: 'merge' }) }),
+};
+
 export const healthApi = {
   check: () => request('/health/'),
 };

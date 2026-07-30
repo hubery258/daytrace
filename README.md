@@ -4,26 +4,28 @@
 
 目前它适合单人本地使用：先规划日程和待办，过程中关注当前最重要的任务，晚上在今日总结里回看完成情况、记录日志，并可用自己的 OpenAI-compatible API Key 生成效率分析和明日建议。
 
-## MVP 范围
+## 当前范围
 
 - 待办：支持 DDL 类型、提醒天数、分类、关注状态、等待答复状态和备注。
 - 日程：支持规划日程和实际记录，共用一条 0-24 点时间轴做左右对照。
 - 首页：显示当前日程、等待答复、关注中任务、临近 DDL。
 - 今日总结：保存完成待办和日志，并支持 AI 分析。
 - 设置：本地保存 API Key、API 地址、模型名和提示词。
+- v0.6：Electron 桌面体验版、Capacitor Android 工程和基础 JSON 导入导出。
 
-暂不进入 MVP 的内容包括：登录同步、手机端/桌面端、ZJU 脚本平台、课程表爬虫、循环任务、复杂子任务、AI 直接修改日程。
+当前不包含账号同步、系统级提醒、通用脚本平台和 AI 越过用户确认直接修改数据。
 
 ## 数据与隐私
 
 - 默认使用 SQLite，本地单机即可运行。
 - API Key 仅保存在浏览器 `localStorage`，不会上传到后端。
-- MVP 阶段没有登录和多设备同步。
+- JSON 导出覆盖核心个人数据，不包含 AI API Key、ZJU 密码、Cookie、Session 或 token。
+- v0.6 没有登录和多设备同步；不同端通过 JSON 手动迁移。
 
 ## 环境要求
 
 - Python 3.11+
-- Node.js 20+
+- Node.js 20+；构建 Capacitor 8 Android 工程建议 Node.js 22+
 - 可选：Docker + Docker Compose
 
 ## 本地开发运行
@@ -65,6 +67,23 @@ npm run dev
 ```bash
 npm.cmd run dev
 ```
+
+
+## v0.6 体验版构建
+
+Windows 桌面 portable：
+
+```powershell
+.\scripts\build-desktop.ps1
+```
+
+Android debug APK（需要 JDK 21、Android SDK Platform 36 和 `ANDROID_HOME`）：
+
+```powershell
+.\scripts\build-android.ps1 -AndroidSdk "C:\path\to\Android\Sdk" -JavaHome "C:\path\to\jdk-21"
+```
+
+构建产物不会提交到 Git。详细的数据目录、导入规则、已知限制和镜像参数见 `docs/v0.6-packaging.md`。
 
 ## Docker Compose 运行
 

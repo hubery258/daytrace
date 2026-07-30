@@ -1,22 +1,74 @@
 {
-  "name": "simpletasker-frontend",
+  "name": "riji-frontend",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.6.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "desktop:dev": "npm run build && electron electron/main.cjs",
+    "desktop:dir": "npm run build && electron-builder --dir",
+    "desktop:build": "npm run build && electron-builder",
+    "android:sync": "npm run build && cap sync android",
+    "android:open": "cap open android",
+    "android:apk": "npm run android:sync && cd android && gradlew.bat assembleDebug"
   },
   "dependencies": {
+    "@capacitor-community/sqlite": "^8.1.0",
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/core": "^8.4.2",
+    "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/share": "^8.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.0"
+    "react-router-dom": "6.30.4"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.4.2",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
     "vite": "^5.4.2"
-  }
+  },
+  "main": "electron/main.cjs",
+  "build": {
+    "appId": "com.riji.desktop",
+    "productName": "日迹",
+    "asar": true,
+    "directories": {
+      "output": "../release/desktop"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist",
+        "to": "frontend"
+      },
+      {
+        "from": "../backend/dist/riji-sidecar.exe",
+        "to": "sidecar/riji-sidecar.exe"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "riji-desktop-${version}.${ext}"
+    },
+    "electronDist": "node_modules/electron/dist",
+    "compression": "store"
+  },
+  "description": "日迹本地优先个人效率工具桌面体验版",
+  "author": "日迹项目"
 }

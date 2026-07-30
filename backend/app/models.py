@@ -1,4 +1,5 @@
 import enum
+import uuid as uuid_lib
 from datetime import datetime, date, timedelta, timezone
 from sqlalchemy import (
     Boolean,
@@ -17,6 +18,9 @@ from .database import Base
 
 def beijing_now() -> datetime:
     return datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None)
+
+def new_uuid() -> str:
+    return str(uuid_lib.uuid4())
 
 
 class DDLType(str, enum.Enum):
@@ -77,6 +81,7 @@ class Project(Base):
     __tablename__ = "projects"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String(36), default=new_uuid, unique=True, nullable=False, index=True)
     name = Column(String(200), nullable=False)
     description = Column(Text, default="", nullable=False)
     status = Column(SAEnum(ProjectStatus), default=ProjectStatus.active, nullable=False)
@@ -91,6 +96,7 @@ class Todo(Base):
     __tablename__ = "todos"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String(36), default=new_uuid, unique=True, nullable=False, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
     recurrence_rule_id = Column(Integer, ForeignKey("recurrence_rules.id"), nullable=True)
     recurrence_date = Column(Date, nullable=True)
@@ -127,6 +133,7 @@ class Schedule(Base):
     __tablename__ = "schedules"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String(36), default=new_uuid, unique=True, nullable=False, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
     recurrence_rule_id = Column(Integer, ForeignKey("recurrence_rules.id"), nullable=True)
     recurrence_date = Column(Date, nullable=True)
@@ -149,6 +156,7 @@ class RecurrenceRule(Base):
     __tablename__ = "recurrence_rules"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String(36), default=new_uuid, unique=True, nullable=False, index=True)
     entity_type = Column(SAEnum(RecurrenceEntityType), nullable=False)
     template_json = Column(JSON, default=dict, nullable=False)
     frequency = Column(SAEnum(RecurrenceFrequency), nullable=False)
@@ -177,6 +185,7 @@ class TimerSession(Base):
     __tablename__ = "timer_sessions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String(36), default=new_uuid, unique=True, nullable=False, index=True)
     name = Column(String(200), nullable=False)
     status = Column(SAEnum(TimerStatus), default=TimerStatus.running, nullable=False)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
@@ -205,6 +214,7 @@ class DailyLog(Base):
     __tablename__ = "daily_logs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String(36), default=new_uuid, unique=True, nullable=False, index=True)
     log_date = Column(Date, unique=True, nullable=False)
     completed_todo_ids = Column(JSON, default=list, nullable=False)
     log_text = Column(Text, default="", nullable=False)
@@ -216,6 +226,7 @@ class LogTemplate(Base):
     __tablename__ = "log_templates"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String(36), default=new_uuid, unique=True, nullable=False, index=True)
     name = Column(String(100), nullable=False)
     content = Column(Text, default="", nullable=False)
     created_at = Column(DateTime, default=datetime.now, nullable=False)

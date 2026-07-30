@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { projectApi, todoApi } from '../api/client';
+import { logApi, projectApi, todoApi } from '../api/client';
 import { callChatCompletion } from '../ai/aiClient';
 import { parseAiDraftResponse } from '../ai/aiDraftParser';
 import { AI_DRAFT_SYSTEM_PROMPT, buildProjectNextDraftUserMessage } from '../ai/aiPrompts';
@@ -73,6 +73,16 @@ export default function ProjectDetailPage() {
 
   const completeTodo = async (todo) => {
     await todoApi.update(todo.id, { is_completed: true });
+    const today = todayStr();
+    const existingLog = await logApi.get(today).catch(() => null);
+    const completedIds = existingLog
+      ? Array.from(new Set([...existingLog.completed_todo_ids, todo.id]))
+      : [todo.id];
+    await logApi.upsert({
+      log_date: today,
+      completed_todo_ids: completedIds,
+      log_text: existingLog?.log_text || '',
+    });
     loadOverview();
   };
 
