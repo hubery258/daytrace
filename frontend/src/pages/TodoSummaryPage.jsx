@@ -32,12 +32,6 @@ export default function TodoSummaryPage() {
     grouped[cat].push(t);
   });
 
-  const statusEmoji = {
-    waiting_reply: '等待',
-    focusing: '关注',
-    not_focusing: '任务',
-  };
-
   const handleContextMenu = (e, todo) => {
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY, todo });
@@ -70,42 +64,46 @@ export default function TodoSummaryPage() {
   ] : [];
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h1 style={{ fontSize: '1.2rem' }}>待办汇总</h1>
-        <button className="btn btn-sm btn-secondary" onClick={() => { setEditTodo(null); setShowTodoModal(true); }}>
-          + 新建待办
+    <div className="todo-summary-page">
+      <header className="page-hero page-hero-compact">
+        <div>
+          <div className="eyebrow">收拢琐事，留出余地</div>
+          <h1>待办</h1>
+          <p>按分类整理仍需推进的事项，普通状态不再占用注意力。</p>
+        </div>
+        <button className="btn btn-primary" onClick={() => { setEditTodo(null); setShowTodoModal(true); }}>
+          新建待办
         </button>
-      </div>
+      </header>
 
       {Object.keys(grouped).length === 0 && (
-        <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '40px' }}>
+        <div className="card empty-state">
           暂无待办，点击右上角新建。
         </div>
       )}
 
       {Object.entries(grouped).map(([category, items]) => (
         <div key={category} className="category-section">
-          <h2>{category} ({items.length})</h2>
+          <h2>{category}<span>{items.length}</span></h2>
           <div className="card">
             {items.map(todo => (
               <div
                 key={todo.id}
-                className="todo-item"
+                className={`todo-item ${todo.status === 'focusing' ? 'is-focusing' : ''}`}
                 onContextMenu={e => handleContextMenu(e, todo)}
                 onClick={() => { setEditTodo(todo); setShowTodoModal(true); }}
-                style={{ cursor: 'pointer' }}
               >
-                <span style={{ marginRight: 8 }}>{statusEmoji[todo.status] || ''}</span>
+                {todo.status === 'focusing' && <span className="todo-focus-marker" title="正在关注" aria-label="正在关注" />}
+                {todo.status === 'waiting_reply' && <span className="todo-state-note">等待答复</span>}
                 <span className="todo-name">{todo.name}</span>
                 {todo.recurrence_rule_id && <span className="todo-meta">重复</span>}
                 {todo.ddl_date && (
                   <span className="todo-meta">
                     {parseAsLocal(todo.ddl_date).toLocaleDateString('zh-CN')}
-                    {todo.is_hard_ddl_near && ' 硬'}
-                    {todo.is_soft_ddl_near && ' 软'}
                   </span>
                 )}
+                {todo.is_hard_ddl_near && <span className="deadline-type hard">硬性</span>}
+                {todo.is_soft_ddl_near && <span className="deadline-type soft">弹性</span>}
               </div>
             ))}
           </div>

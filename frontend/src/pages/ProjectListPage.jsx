@@ -39,11 +39,15 @@ export default function ProjectListPage() {
   }, [loadProjects]);
 
   return (
-    <div>
-      <div className="page-header">
-        <h1>项目</h1>
+    <div className="project-list-page">
+      <header className="page-hero page-hero-compact">
+        <div>
+          <div className="eyebrow">把长一点的路，拆成下一步</div>
+          <h1>项目</h1>
+          <p>聚合待办与日程，持续看见真正需要推进的方向。</p>
+        </div>
         <button className="btn btn-primary" onClick={() => setShowModal(true)}>新建项目</button>
-      </div>
+      </header>
 
       <div className="filter-row">
         {[

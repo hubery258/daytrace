@@ -10,6 +10,9 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $frontendDir = Join-Path $repoRoot 'frontend'
 
 if ($AndroidSdk) {
+    if (-not [IO.Path]::IsPathRooted($AndroidSdk)) {
+        $AndroidSdk = [IO.Path]::GetFullPath((Join-Path $repoRoot $AndroidSdk))
+    }
     $env:ANDROID_HOME = $AndroidSdk
     $env:ANDROID_SDK_ROOT = $AndroidSdk
 }
@@ -18,6 +21,16 @@ if (-not $env:ANDROID_HOME -or -not (Test-Path -LiteralPath $env:ANDROID_HOME)) 
 }
 
 if ($JavaHome) {
+    if (-not [IO.Path]::IsPathRooted($JavaHome)) {
+        $JavaHome = [IO.Path]::GetFullPath((Join-Path $repoRoot $JavaHome))
+    }
+    $providedJava = Join-Path $JavaHome 'bin\java.exe'
+    if (-not (Test-Path -LiteralPath $providedJava)) {
+        $providedJava = Get-ChildItem -LiteralPath $JavaHome -Recurse -Filter java.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\bin\\java\.exe$' } |
+            Select-Object -First 1
+        if ($providedJava) { $JavaHome = $providedJava.Directory.Parent.FullName }
+    }
     $env:JAVA_HOME = $JavaHome
 } else {
     $localJdkRoot = Join-Path $repoRoot '.jdk-21'
@@ -63,7 +76,8 @@ try {
     $apk = Join-Path $frontendDir 'android\app\build\outputs\apk\debug\app-debug.apk'
     if (-not (Test-Path -LiteralPath $apk)) { throw "Missing Android artifact: $apk" }
     $releaseDir = Join-Path $repoRoot 'release\android'
-    $stableApk = Join-Path $releaseDir 'riji-android-0.6.0-debug.apk'
+    $appVersion = ([System.IO.File]::ReadAllText((Join-Path $frontendDir 'package.json'), [System.Text.Encoding]::UTF8) | ConvertFrom-Json).version
+    $stableApk = Join-Path $releaseDir "riji-android-$appVersion-debug.apk"
     New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
     Copy-Item -LiteralPath $apk -Destination $stableApk -Force
     Write-Host "apk: $apk"

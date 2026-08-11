@@ -548,7 +548,14 @@ export default function SchedulePage() {
   const isToday = dateStr === todayStr();
 
   return (
-    <div>
+    <div className="schedule-page">
+      <header className="page-hero page-hero-compact schedule-page-hero">
+        <div>
+          <div className="eyebrow">让计划与现实，在同一天相遇</div>
+          <h1>日程</h1>
+          <p>并置原先的安排与真实发生的时间，留下一天完整的轮廓。</p>
+        </div>
+      </header>
       <div className="schedule-toolbar">
         <div className="segmented-control" aria-label={T.switchScheduleView}>
           <button className={viewMode === 'day' ? 'active' : ''} onClick={() => setViewMode('day')}>{T.dayView}</button>

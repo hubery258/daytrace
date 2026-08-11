@@ -9,11 +9,12 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 & (Join-Path $PSScriptRoot 'build-sidecar.ps1') -PythonPath $PythonPath
 
 $frontendDir = Join-Path $repoRoot 'frontend'
+$appVersion = ([System.IO.File]::ReadAllText((Join-Path $frontendDir 'package.json'), [System.Text.Encoding]::UTF8) | ConvertFrom-Json).version
 $buildTag = Get-Date -Format 'yyyyMMdd-HHmmss'
 $tempOutputRelative = "../release/desktop-build-$buildTag"
 $tempOutput = Join-Path $repoRoot "release\desktop-build-$buildTag"
 $stableDir = Join-Path $repoRoot 'release\desktop'
-$stableArtifact = Join-Path $stableDir 'riji-desktop-0.6.0.exe'
+$stableArtifact = Join-Path $stableDir "riji-desktop-$appVersion.exe"
 Push-Location $frontendDir
 try {
     if ($ElectronMirror) { $env:ELECTRON_MIRROR = $ElectronMirror }
@@ -32,7 +33,7 @@ try {
     Pop-Location
 }
 
-$builtArtifact = Join-Path $tempOutput 'riji-desktop-0.6.0.exe'
+$builtArtifact = Join-Path $tempOutput "riji-desktop-$appVersion.exe"
 if (-not (Test-Path -LiteralPath $builtArtifact)) { throw "Missing desktop artifact: $builtArtifact" }
 New-Item -ItemType Directory -Path $stableDir -Force | Out-Null
 Copy-Item -LiteralPath $builtArtifact -Destination $stableArtifact -Force

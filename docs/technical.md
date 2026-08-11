@@ -7,9 +7,11 @@
 - 前端：React + Vite。
 - 后端：FastAPI + SQLAlchemy。
 - 数据库：SQLite。
-- 部署：Docker Compose，可运行前端 Nginx 静态服务和后端 FastAPI 服务。
+- Web / Docker 部署：Docker Compose，可运行前端 Nginx 静态服务和后端 FastAPI 服务。
+- 桌面端体验版：Electron + FastAPI sidecar + SQLite。
+- Android 体验版：Capacitor + WebView + 本地 SQLite 数据层。
 
-MVP 以本地单机可持续使用为目标，后续如果进入多设备同步，再评估账号系统、远端数据库和同步策略。
+MVP 以本地单机可持续使用为目标。v1.0.0 前不引入账号体系和多端同步；后续如果进入多设备同步，再评估账号系统、远端数据库、同步协议和冲突处理策略。
 
 ## 前端
 
@@ -24,11 +26,13 @@ MVP 以本地单机可持续使用为目标，后续如果进入多设备同步�
 
 主要页面：
 
-- `HomePage.jsx`：首页，展示当前日程、等待答复、关注任务和临近 DDL。
+- `HomePage.jsx`：首页，展示当前日程、等待答复、关注任务、项目和临近 DDL。
 - `SchedulePage.jsx`：日程页，展示计划日程和实际记录的共轴对照。
 - `TodoSummaryPage.jsx`：待办汇总页。
+- `ProjectListPage.jsx` / `ProjectDetailPage.jsx`：项目列表和项目详情。
+- `TimerPage.jsx`：计时页，结束计时后生成实际记录。
 - `DailySummaryPage.jsx`：今日总结和 AI 分析。
-- `SettingsPage.jsx`：AI 配置。
+- `SettingsPage.jsx`：AI 配置；v0.7 起承载页面/模块开关。
 - `ZjuPage.jsx`：ZJU 集成。
 
 ## 后端
@@ -58,10 +62,13 @@ MVP 以本地单机可持续使用为目标，后续如果进入多设备同步�
 
 核心表：
 
+- `projects`：项目。
 - `todos`：待办。
 - `schedules`：计划日程和实际记录。
 - `daily_logs`：每日总结。
 - `log_templates`：日志模板。
+- `timer_sessions`：计时会话。
+- `recurrence_rules`：重复任务和重复日程规则。
 
 ZJU 相关表：
 
@@ -82,8 +89,9 @@ AI 分析目前由前端直接调用 OpenAI-compatible Chat Completions API：
 当前约定：
 
 - AI 只读取用户提供的待办、日程和日志上下文。
-- AI 输出效率分析和建议。
-- AI 不直接写入待办或日程。
+- AI 输出效率分析、复盘建议和待办/日程草稿。
+- AI 草稿必须经用户确认后才写入待办或日程。
+- AI 不生成项目草稿，不越过用户确认直接修改数据库。
 
 ## ZJU 集成
 
@@ -101,6 +109,31 @@ ZJU 集成通过后端访问外部系统，并将外部数据标准化后返回�
 - 不输出密码、Cookie、session、token。
 - 不提供自动签到、刷课、自动答题、自动提交等能力。
 - 不做任意脚本运行入口。
+
+
+## 桌面端与 Android 体验版
+
+v0.6.x 已完成多端体验版验证：
+
+- Windows 桌面端采用 Electron 启动前端窗口，并拉起本地 FastAPI sidecar。
+- 桌面端 sidecar 使用随机回环端口，前端与 API 同源；Electron 退出时结束 sidecar。
+- 桌面端 SQLite 数据位于 Electron `userData` 目录下的 `data/riji.db`。
+- Android 端采用 Capacitor + WebView，使用本地 SQLite 数据层，不在 Android 中长期运行 Python/FastAPI。
+- Android 与桌面端目前使用独立本地数据，通过 JSON 手动迁移，不做实时同步。
+
+v0.7.x 已在不改变多端基础架构的前提下，完成 React 全站视觉统一、品牌资产接入和基于 `localStorage` 的页面/模块展示配置。
+
+## 数据导入导出
+
+v0.6.x 已支持基础 JSON 导入导出，用于手动迁移和未来同步模型验证：
+
+- 导出核心个人数据：项目、待办、日程、每日总结、日志模板、计时会话和重复规则。
+- 导入前展示预览，校验 `app: riji` 与 `schema_version: 0.6.0`。
+- 导入采用按 UUID 合并的原子流程；相同 UUID 以导入包为准，未出现在包中的本地数据保留。
+- 日程关联待办、项目归属、完成待办等关系在 JSON 中使用 UUID，写入本机数据库时再映射为本地整数 ID。
+- AI API Key、ZJU 密码、Pintia Cookie、session、token 和 ZJU 缓存默认不导出。
+
+v0.8.x 应在此基础上升级为正式级备份、恢复、兼容检查和恢复指引；v1.1.x 再考虑账号同步、冲突解决和后台同步队列。
 
 ## 部署与运行
 
@@ -154,4 +187,6 @@ python -m compileall app
 - 关注中待办最多 3 个的规则需要确认后端是否完全兜底。
 - 今日总结页需要确认是否真正使用设置页保存的模型名。
 - SQLite 迁移仍是轻量兼容逻辑，未来表结构继续增长时应评估正式迁移工具。
+- JSON 导入导出已经能验证基础迁移，但 v0.8 仍需要补正式备份、恢复失败处理和升级兼容检查。
+- 页面/模块开关是本地展示配置，不影响底层数据，也不承担权限隔离职责；隐藏路由仍可通过直接地址访问。
 - ZJU client 较集中，后续可以按 Courses、ZDBK、成绩、课表拆分。

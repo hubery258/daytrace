@@ -69,7 +69,7 @@ npm.cmd run dev
 ```
 
 
-## v0.6 体验版构建
+## v0.7 体验版构建
 
 Windows 桌面 portable：
 
@@ -83,7 +83,7 @@ Android debug APK（需要 JDK 21、Android SDK Platform 36 和 `ANDROID_HOME`�
 .\scripts\build-android.ps1 -AndroidSdk "C:\path\to\Android\Sdk" -JavaHome "C:\path\to\jdk-21"
 ```
 
-构建产物不会提交到 Git。详细的数据目录、导入规则、已知限制和镜像参数见 `docs/v0.6-packaging.md`。
+构建产物不会提交到 Git。详细的数据目录、导入规则、已知限制和镜像参数见 `docs/build-packaging-guide.md`。
 
 ## Docker Compose 运行
 

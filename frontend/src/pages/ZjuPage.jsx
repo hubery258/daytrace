@@ -303,8 +303,14 @@ export default function ZjuPage() {
   });
 
   return (
-    <div>
-      <h1 style={{ fontSize: '1.2rem', marginBottom: 20 }}>ZJU 集成</h1>
+    <div className="zju-page">
+      <header className="page-hero page-hero-compact">
+        <div>
+          <div className="eyebrow">校园安排，也回到自己的日常</div>
+          <h1>ZJU 集成</h1>
+          <p>只读获取并预览确认，再把学习任务、课表与成绩带回本地。</p>
+        </div>
+      </header>
 
       <div className="card">
         <div className="card-header">ZJU 凭据</div>
