@@ -13,6 +13,12 @@ if (-not $PythonPath) {
     $PythonPath = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 }
 if (-not $PythonPath) { $PythonPath = 'python' }
+if ($PythonPath -ne 'python' -and -not [IO.Path]::IsPathRooted($PythonPath)) {
+    $PythonPath = [IO.Path]::GetFullPath((Join-Path $repoRoot $PythonPath))
+}
+if ($PythonPath -ne 'python' -and -not (Test-Path -LiteralPath $PythonPath)) {
+    throw "Python executable not found: $PythonPath"
+}
 
 Push-Location $backendDir
 try {

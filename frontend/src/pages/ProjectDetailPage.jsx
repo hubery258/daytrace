@@ -131,7 +131,7 @@ export default function ProjectDetailPage() {
   };
 
   return (
-    <div>
+    <div className="project-detail-page">
       <div className="detail-back"><Link to="/projects">返回项目列表</Link></div>
 
       <section className="project-detail-head">

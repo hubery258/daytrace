@@ -244,8 +244,15 @@ export default function DailySummaryPage() {
 
   return (
     <div className="summary-layout">
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-        <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} max={TODAY} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.95rem' }} />
+      <header className="page-hero page-hero-compact">
+        <div>
+          <div className="eyebrow">回望不是停下，是为了更清楚地继续</div>
+          <h1>{isToday ? '今日总结' : '往日记录'}</h1>
+          <p>把完成、感受与真实投入放在一起，安静地收好这一天。</p>
+        </div>
+      </header>
+      <div className="summary-date-bar">
+        <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} max={TODAY} />
         <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{isToday ? '今日总结' : '往日记录'}</span>
       </div>
 

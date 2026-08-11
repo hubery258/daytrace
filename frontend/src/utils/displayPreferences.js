@@ -1,0 +1,55 @@
+export const DISPLAY_PREFERENCES_STORAGE_KEY = 'riji_display_preferences_v1';
+export const DISPLAY_PREFERENCES_EVENT = 'riji:display-preferences-changed';
+
+export const DEFAULT_DISPLAY_PREFERENCES = Object.freeze({
+  pages: Object.freeze({
+    home: true,
+    schedule: true,
+    timer: true,
+    projects: true,
+    todos: true,
+    summary: true,
+    zju: true,
+  }),
+  homeModules: Object.freeze({
+    currentSchedule: true,
+    waitingReplies: true,
+    focusingTodos: true,
+    projects: true,
+    nearDeadlines: true,
+  }),
+});
+
+function mergeKnownFlags(defaults, candidate) {
+  return Object.fromEntries(
+    Object.entries(defaults).map(([key, fallback]) => [
+      key,
+      typeof candidate?.[key] === 'boolean' ? candidate[key] : fallback,
+    ]),
+  );
+}
+
+export function readDisplayPreferences() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(DISPLAY_PREFERENCES_STORAGE_KEY) || '{}');
+    return {
+      pages: mergeKnownFlags(DEFAULT_DISPLAY_PREFERENCES.pages, stored.pages),
+      homeModules: mergeKnownFlags(DEFAULT_DISPLAY_PREFERENCES.homeModules, stored.homeModules),
+    };
+  } catch {
+    return {
+      pages: { ...DEFAULT_DISPLAY_PREFERENCES.pages },
+      homeModules: { ...DEFAULT_DISPLAY_PREFERENCES.homeModules },
+    };
+  }
+}
+
+export function writeDisplayPreferences(preferences) {
+  const normalized = {
+    pages: mergeKnownFlags(DEFAULT_DISPLAY_PREFERENCES.pages, preferences.pages),
+    homeModules: mergeKnownFlags(DEFAULT_DISPLAY_PREFERENCES.homeModules, preferences.homeModules),
+  };
+  localStorage.setItem(DISPLAY_PREFERENCES_STORAGE_KEY, JSON.stringify(normalized));
+  window.dispatchEvent(new CustomEvent(DISPLAY_PREFERENCES_EVENT, { detail: normalized }));
+  return normalized;
+}
