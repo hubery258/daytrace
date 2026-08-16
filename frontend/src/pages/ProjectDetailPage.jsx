@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { logApi, projectApi, todoApi } from '../api/client';
+import { projectApi, todoApi } from '../api/client';
 import { callChatCompletion } from '../ai/aiClient';
 import { parseAiDraftResponse } from '../ai/aiDraftParser';
 import { AI_DRAFT_SYSTEM_PROMPT, buildProjectNextDraftUserMessage } from '../ai/aiPrompts';
@@ -8,7 +8,7 @@ import AiDraftReviewModal from '../components/AiDraftReviewModal';
 import ProjectModal from '../components/ProjectModal';
 import TodoModal from '../components/TodoModal';
 import ScheduleModal from '../components/ScheduleModal';
-import { parseAsLocal, todayStr } from '../utils/time';
+import { BEIJING_TIME_ZONE, parseAsLocal, todayStr } from '../utils/time';
 
 const STATUS_LABELS = {
   active: '进行中',
@@ -20,12 +20,12 @@ const STATUS_LABELS = {
 
 function formatDate(date) {
   if (!date) return '';
-  return new Date(`${date}T00:00:00`).toLocaleDateString('zh-CN');
+  return new Date(`${date}T00:00:00+08:00`).toLocaleDateString('zh-CN', { timeZone: BEIJING_TIME_ZONE });
 }
 
 function formatDateTime(value) {
   if (!value) return '';
-  return parseAsLocal(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return parseAsLocal(value).toLocaleString('zh-CN', { timeZone: BEIJING_TIME_ZONE, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
 function progressLabel(count, done, progress) {
@@ -72,18 +72,8 @@ export default function ProjectDetailPage() {
   };
 
   const completeTodo = async (todo) => {
-    await todoApi.update(todo.id, { is_completed: true });
-    const today = todayStr();
-    const existingLog = await logApi.get(today).catch(() => null);
-    const completedIds = existingLog
-      ? Array.from(new Set([...existingLog.completed_todo_ids, todo.id]))
-      : [todo.id];
-    await logApi.upsert({
-      log_date: today,
-      completed_todo_ids: completedIds,
-      log_text: existingLog?.log_text || '',
-    });
-    loadOverview();
+    await todoApi.complete(todo.id, todayStr());
+    await loadOverview();
   };
 
 
@@ -182,7 +172,7 @@ export default function ProjectDetailPage() {
             <div key={todo.id} className="todo-item" onClick={() => { setEditTodo(todo); setShowTodoModal(true); }}>
               <div className="todo-circle" onClick={(e) => { e.stopPropagation(); completeTodo(todo); }} />
               <span className="todo-name">{todo.name}</span>
-              {todo.ddl_date && <span className="todo-meta">{parseAsLocal(todo.ddl_date).toLocaleDateString('zh-CN')}</span>}
+              {todo.ddl_date && <span className="todo-meta">{parseAsLocal(todo.ddl_date).toLocaleDateString('zh-CN', { timeZone: BEIJING_TIME_ZONE })}</span>}
             </div>
           ))}
         </div>

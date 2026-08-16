@@ -81,6 +81,17 @@ function now() {
   return new Date().toISOString();
 }
 
+function beijingNow() {
+  return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().replace(/Z$/, '');
+}
+
+function parseDateTime(value) {
+  if (!value) return new Date(Number.NaN);
+  const text = String(value);
+  if (/(?:Z|[+-]\d{2}:\d{2})$/i.test(text)) return new Date(text);
+  return new Date(`${text.length === 10 ? `${text}T00:00:00` : text}+08:00`);
+}
+
 function uuid() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
@@ -139,14 +150,14 @@ function normalizeRow(table, row) {
 
 function ddlNear(todo, type) {
   if (todo.ddl_type !== type || !todo.ddl_date || todo.reminder_days == null || todo.is_completed) return false;
-  return new Date(todo.ddl_date).getTime() - Date.now() <= Number(todo.reminder_days) * 86400000;
+  return parseDateTime(todo.ddl_date).getTime() - Date.now() <= Number(todo.reminder_days) * 86400000;
 }
 
 function elapsedSeconds(timer) {
-  const end = timer.ended_at ? new Date(timer.ended_at) : new Date();
+  const end = timer.ended_at ? parseDateTime(timer.ended_at) : new Date();
   let paused = Number(timer.paused_seconds || 0);
-  if (timer.status === 'paused' && timer.paused_at) paused += Math.max(0, (end - new Date(timer.paused_at)) / 1000);
-  return Math.max(0, Math.floor((end - new Date(timer.started_at)) / 1000 - paused));
+  if (timer.status === 'paused' && timer.paused_at) paused += Math.max(0, (end - parseDateTime(timer.paused_at)) / 1000);
+  return Math.max(0, Math.floor((end - parseDateTime(timer.started_at)) / 1000 - paused));
 }
 
 async function rows(table, where = '', values = [], order = 'id ASC') {
@@ -186,12 +197,20 @@ async function update(table, id, data, transaction = true) {
 
 function projectOutput(project, todos = [], schedules = []) {
   const completed = todos.filter((item) => item.is_completed).length;
+  const nextTodo = todos
+    .filter((item) => !item.is_completed)
+    .sort((left, right) => {
+      if (left.ddl_date && right.ddl_date) return parseDateTime(left.ddl_date) - parseDateTime(right.ddl_date) || String(left.created_at).localeCompare(String(right.created_at));
+      if (left.ddl_date) return -1;
+      if (right.ddl_date) return 1;
+      return String(left.created_at).localeCompare(String(right.created_at));
+    })[0] || null;
   return {
     ...project,
     todo_count: todos.length,
     completed_todo_count: completed,
     progress: todos.length ? completed / todos.length : null,
-    next_todo: todos.find((item) => !item.is_completed) || null,
+    next_todo: nextTodo,
     recent_schedules: schedules.slice(0, 3),
   };
 }
@@ -291,6 +310,34 @@ async function todosRequest(method, pathname, params, body) {
       completed_at: null, created_at: stamp, updated_at: stamp,
     });
   }
+  const completeMatch = pathname.match(/^\/todos\/(\d+)\/complete$/);
+  if (method === 'POST' && completeMatch) {
+    const id = Number(completeMatch[1]);
+    const db = await getDatabase();
+    await db.beginTransaction();
+    try {
+      const current = await one('todos', 'id = ?', [id]);
+      if (!current) throw new Error('待办不存在');
+      const stamp = beijingNow();
+      await update('todos', id, { is_completed: true, completed_at: current.completed_at || stamp, updated_at: stamp }, false);
+
+      const logDate = body.log_date;
+      const log = await one('daily_logs', 'log_date = ?', [logDate]);
+      if (log) {
+        const completedIds = Array.from(new Set([...(log.completed_todo_ids || []), id]));
+        await update('daily_logs', log.id, { completed_todo_ids: completedIds, updated_at: stamp }, false);
+      } else {
+        await insert('daily_logs', {
+          uuid: uuid(), log_date: logDate, completed_todo_ids: [id], log_text: '', created_at: stamp, updated_at: stamp,
+        }, false);
+      }
+      await db.commitTransaction();
+      return one('todos', 'id = ?', [id]);
+    } catch (error) {
+      await db.rollbackTransaction();
+      throw error;
+    }
+  }
   const match = pathname.match(/^\/todos\/(\d+)$/);
   if (!match) return undefined;
   const id = Number(match[1]);
@@ -310,17 +357,22 @@ async function todosRequest(method, pathname, params, body) {
 
 async function schedulesRequest(method, pathname, params, body) {
   if (method === 'GET' && pathname === '/schedules/current') {
-    const stamp = now();
-    const found = await rows('schedules', 'start_time <= ? AND end_time >= ?', [stamp, stamp], 'start_time ASC');
-    return found[0] || null;
+    const stamp = Date.now();
+    const found = await rows('schedules', '', [], 'start_time ASC');
+    return found.find((item) => parseDateTime(item.start_time).getTime() <= stamp && parseDateTime(item.end_time).getTime() > stamp) || null;
   }
   if (method === 'GET' && (pathname === '/schedules/' || pathname === '/schedules/week/')) {
     const clauses = []; const values = [];
     if (params.has('is_planned')) { clauses.push('is_planned = ?'); values.push(params.get('is_planned') === 'true' ? 1 : 0); }
-    if (params.has('date_from')) { clauses.push('start_time >= ?'); values.push(params.get('date_from')); }
-    if (params.has('date_to')) { clauses.push('end_time <= ?'); values.push(params.get('date_to')); }
     if (params.has('project_id')) { clauses.push('project_id = ?'); values.push(params.get('project_id')); }
-    return rows('schedules', clauses.join(' AND '), values, 'start_time ASC');
+    const found = await rows('schedules', clauses.join(' AND '), values, 'start_time ASC');
+    const dateFrom = params.has('date_from') ? parseDateTime(params.get('date_from')).getTime() : null;
+    const dateTo = params.has('date_to') ? parseDateTime(params.get('date_to')).getTime() : null;
+    return found.filter((item) => {
+      const start = parseDateTime(item.start_time).getTime();
+      const end = parseDateTime(item.end_time).getTime();
+      return (dateFrom == null || end > dateFrom) && (dateTo == null || start < dateTo);
+    });
   }
   if (method === 'POST' && pathname === '/schedules/') {
     if (new Date(body.end_time) <= new Date(body.start_time)) throw new Error('结束时间必须晚于开始时间');
@@ -363,10 +415,76 @@ async function logsRequest(method, pathname, params, body) {
   }
   if (method === 'POST' && pathname === '/logs/') {
     const current = await one('daily_logs', 'log_date = ?', [body.log_date]);
-    if (current) return update('daily_logs', current.id, { completed_todo_ids: body.completed_todo_ids || [], log_text: body.log_text || '', updated_at: now() });
+    if (current) return update('daily_logs', current.id, {
+      completed_todo_ids: Array.from(new Set([...(current.completed_todo_ids || []), ...(body.completed_todo_ids || [])])),
+      log_text: body.log_text || '',
+      updated_at: beijingNow(),
+    });
     const stamp = now();
     return insert('daily_logs', { uuid: uuid(), log_date: body.log_date, completed_todo_ids: body.completed_todo_ids || [], log_text: body.log_text || '', created_at: stamp, updated_at: stamp });
   }
+}
+
+async function getActiveTimer() {
+  const found = await rows('timer_sessions', "status IN ('running', 'paused')", [], 'created_at DESC');
+  return found[0] || null;
+}
+
+async function timerRequest(method, pathname, params, body) {
+  if (method === 'GET' && pathname === '/timer/current') return getActiveTimer();
+  if (method === 'GET' && pathname === '/timer/recent') {
+    const limit = Math.max(1, Math.min(50, Number(params.get('limit') || 10)));
+    const found = await rows('timer_sessions', "status IN ('completed', 'canceled')", [], 'updated_at DESC');
+    return found.slice(0, limit);
+  }
+  if (method === 'POST' && pathname === '/timer/start') {
+    if (await getActiveTimer()) throw new Error('已有进行中的计时');
+    const stamp = beijingNow();
+    return insert('timer_sessions', {
+      uuid: uuid(), name: body.name, status: 'running', project_id: body.project_id ?? null,
+      linked_todo_id: body.linked_todo_id ?? null, started_at: stamp, last_resumed_at: stamp,
+      paused_at: null, paused_seconds: 0, ended_at: null, created_schedule_id: null,
+      notes: body.notes || '', created_at: stamp, updated_at: stamp,
+    });
+  }
+  if (method === 'PUT' && pathname === '/timer/current') {
+    const timer = await getActiveTimer();
+    if (!timer) throw new Error('没有进行中的计时');
+    return update('timer_sessions', timer.id, { ...body, updated_at: beijingNow() });
+  }
+  if (method === 'POST' && ['/timer/pause', '/timer/resume', '/timer/finish', '/timer/cancel'].includes(pathname)) {
+    const timer = await getActiveTimer();
+    if (!timer) throw new Error('没有进行中的计时');
+    const stamp = beijingNow();
+    if (pathname === '/timer/pause') {
+      if (timer.status !== 'running') throw new Error('计时当前不是运行状态');
+      return update('timer_sessions', timer.id, { status: 'paused', paused_at: stamp, updated_at: stamp });
+    }
+    if (pathname === '/timer/resume') {
+      if (timer.status !== 'paused') throw new Error('计时当前不是暂停状态');
+      const pausedSeconds = Number(timer.paused_seconds || 0)
+        + Math.max(0, Math.floor((parseDateTime(stamp) - parseDateTime(timer.paused_at)) / 1000));
+      return update('timer_sessions', timer.id, {
+        status: 'running', last_resumed_at: stamp, paused_at: null, paused_seconds: pausedSeconds, updated_at: stamp,
+      });
+    }
+    let pausedSeconds = Number(timer.paused_seconds || 0);
+    if (timer.status === 'paused' && timer.paused_at) {
+      pausedSeconds += Math.max(0, Math.floor((parseDateTime(stamp) - parseDateTime(timer.paused_at)) / 1000));
+    }
+    return update('timer_sessions', timer.id, {
+      status: pathname === '/timer/finish' ? 'completed' : 'canceled', ended_at: stamp,
+      paused_at: null, paused_seconds: pausedSeconds, updated_at: stamp,
+    });
+  }
+  const attachMatch = pathname.match(/^\/timer\/(\d+)\/schedule$/);
+  if (method === 'POST' && attachMatch) {
+    const timer = await one('timer_sessions', 'id = ?', [Number(attachMatch[1])]);
+    if (!timer) throw new Error('计时记录不存在');
+    if (timer.status !== 'completed') throw new Error('只有已结束计时可以关联日程');
+    return update('timer_sessions', timer.id, { created_schedule_id: body.schedule_id, updated_at: beijingNow() });
+  }
+  return undefined;
 }
 
 async function templatesRequest(method, pathname, body) {
@@ -480,7 +598,7 @@ export async function mobileRequest(path, options = {}) {
   const body = options.body ? JSON.parse(options.body) : {};
   const url = new URL(path, 'https://riji.local');
   const pathname = url.pathname;
-  const handlers = [projectsRequest, todosRequest, schedulesRequest, logsRequest];
+  const handlers = [projectsRequest, todosRequest, schedulesRequest, logsRequest, timerRequest];
   for (const handler of handlers) {
     const value = await handler(method, pathname, url.searchParams, body);
     if (value !== undefined) return value;
@@ -491,11 +609,8 @@ export async function mobileRequest(path, options = {}) {
   if (dataValue !== undefined) return dataValue;
   if (method === 'POST' && pathname === '/recurrence-rules/generate') return { created_todo_ids: [], created_schedule_ids: [] };
   if (method === 'GET' && pathname === '/recurrence-rules/') return rows('recurrence_rules');
-  if (method === 'GET' && pathname === '/timer/current') return null;
-  if (method === 'GET' && pathname === '/timer/recent') return [];
   if (method === 'GET' && pathname === '/health/') return { status: 'ok', storage: 'capacitor-sqlite' };
   if (pathname.startsWith('/zju/')) throw new Error('安卓体验版暂不支持 ZJU 集成');
-  if (pathname.startsWith('/timer/')) throw new Error('安卓体验版暂不支持计时后台流程');
   if (pathname.startsWith('/recurrence-rules/')) throw new Error('安卓体验版暂不支持重复规则编辑');
   throw new Error(`安卓本地数据层尚未实现：${method} ${pathname}`);
 }

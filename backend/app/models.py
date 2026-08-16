@@ -116,16 +116,16 @@ class Todo(Base):
 
     @property
     def is_hard_ddl_near(self) -> bool:
-        if self.ddl_type != DDLType.hard or not self.ddl_date or not self.reminder_days:
+        if self.ddl_type != DDLType.hard or not self.ddl_date or self.reminder_days is None:
             return False
-        now = datetime.now()
+        now = beijing_now()
         return (self.ddl_date - now).days <= self.reminder_days
 
     @property
     def is_soft_ddl_near(self) -> bool:
-        if self.ddl_type != DDLType.soft or not self.ddl_date or not self.reminder_days:
+        if self.ddl_type != DDLType.soft or not self.ddl_date or self.reminder_days is None:
             return False
-        now = datetime.now()
+        now = beijing_now()
         return (self.ddl_date - now).days <= self.reminder_days
 
 

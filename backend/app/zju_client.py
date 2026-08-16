@@ -12,6 +12,13 @@ from http.cookiejar import CookieJar
 from typing import Any, Optional
 
 
+BEIJING_TIMEZONE = timezone(timedelta(hours=8))
+
+
+def _beijing_now() -> datetime:
+    return datetime.now(BEIJING_TIMEZONE).replace(tzinfo=None)
+
+
 class ZjuClientError(Exception):
     pass
 
@@ -39,7 +46,7 @@ def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
     normalized = value.replace("Z", "+00:00")
     parsed = datetime.fromisoformat(normalized)
     if parsed.tzinfo is not None:
-        parsed = parsed.astimezone().replace(tzinfo=None)
+        parsed = parsed.astimezone(BEIJING_TIMEZONE).replace(tzinfo=None)
     return parsed
 
 
@@ -337,7 +344,7 @@ class ZjuCoursesClient:
         courses_data = self.fetch_json(f"https://courses.zju.edu.cn/api/my-courses?{params}")
         courses = list({course.get("id"): course for course in courses_data.get("courses", [])}.values())
 
-        now = datetime.now()
+        now = _beijing_now()
         todos: list[ExternalTodo] = []
 
         for course in courses:
@@ -493,7 +500,7 @@ def fetch_pintia_todos(cookie: str, timeout: int = 12) -> list[ExternalTodo]:
     except urllib.error.URLError as exc:
         raise ZjuClientError(f"Pintia network connection failed: {exc.reason}") from exc
 
-    now = datetime.now()
+    now = _beijing_now()
     output: list[ExternalTodo] = []
     for item in data.get("problemSets", []):
         end_at = _parse_datetime(item.get("endAt"))

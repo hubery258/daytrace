@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { projectApi, recurrenceApi, scheduleApi, todoApi } from '../api/client';
 import { toLocalISO } from '../utils/time';
 
@@ -27,6 +28,10 @@ const FREQUENCIES = [
   { value: 'weekly', label: '每周' },
   { value: 'monthly', label: '每月' },
 ];
+
+function shouldAutoFocus() {
+  return !Capacitor.isNativePlatform() && !window.matchMedia('(max-width: 600px)').matches;
+}
 
 export default function ScheduleModal({
   schedule,
@@ -150,7 +155,7 @@ export default function ScheduleModal({
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>日程名称 *</label>
-            <input value={form.name} onChange={e => handleChange('name', e.target.value)} placeholder="输入日程名称" required autoFocus />
+            <input value={form.name} onChange={e => handleChange('name', e.target.value)} placeholder="输入日程名称" required autoFocus={shouldAutoFocus()} />
           </div>
 
           <div className="form-group">

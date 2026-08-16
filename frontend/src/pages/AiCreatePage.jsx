@@ -10,13 +10,7 @@ import {
 } from '../ai/aiPrompts';
 import AiDraftReviewModal from '../components/AiDraftReviewModal';
 import { projectApi, scheduleApi, todoApi } from '../api/client';
-import { todayStr } from '../utils/time';
-
-function addDays(dateString, days) {
-  const date = new Date(`${dateString}T00:00:00`);
-  date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
-}
+import { addDays, todayStr } from '../utils/time';
 
 export default function AiCreatePage() {
   const today = todayStr();
@@ -41,7 +35,7 @@ export default function AiCreatePage() {
     const [projectData, todoData, scheduleData] = await Promise.all([
       projectApi.list().catch(() => []),
       todoApi.list({ is_completed: false }).catch(() => []),
-      scheduleApi.list({ date_from: `${today}T00:00:00`, date_to: `${tomorrow}T23:59:59` }).catch(() => []),
+      scheduleApi.list({ date_from: `${today}T00:00:00`, date_to: `${addDays(tomorrow, 1)}T00:00:00` }).catch(() => []),
     ]);
     setProjects(projectData);
     setTodos(todoData);

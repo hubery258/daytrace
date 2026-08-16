@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { todoApi, recurrenceApi } from '../api/client';
 import TodoModal from '../components/TodoModal';
 import ContextMenu from '../components/ContextMenu';
-import { parseAsLocal, todayStr } from '../utils/time';
+import { BEIJING_TIME_ZONE, parseAsLocal, todayStr } from '../utils/time';
 
 function addDays(dateStr, days) {
   const d = new Date(`${dateStr}T00:00:00`);
@@ -99,7 +99,7 @@ export default function TodoSummaryPage() {
                 {todo.recurrence_rule_id && <span className="todo-meta">重复</span>}
                 {todo.ddl_date && (
                   <span className="todo-meta">
-                    {parseAsLocal(todo.ddl_date).toLocaleDateString('zh-CN')}
+                    {parseAsLocal(todo.ddl_date).toLocaleDateString('zh-CN', { timeZone: BEIJING_TIME_ZONE })}
                   </span>
                 )}
                 {todo.is_hard_ddl_near && <span className="deadline-type hard">硬性</span>}

@@ -65,7 +65,7 @@ export default function DataPortabilityPanel() {
       const result = await dataApi.import(pendingPackage);
       setMessage(`导入完成：新增 ${result.created} 条，更新 ${result.updated} 条。刷新页面后可查看全部数据。`);
       setPendingPackage(null); setPreview(null);
-    } catch (err) { setError(err.message || '导入失败，数据库未更改'); }
+    } catch (err) { setError(`导入失败，数据库已回滚且未删除本地数据：${err.message || '未知错误'}`); }
     finally { setBusy(false); }
   };
 
@@ -73,7 +73,7 @@ export default function DataPortabilityPanel() {
     <div className="card">
       <div className="card-header">数据导入导出</div>
       <p style={{ color: 'var(--text-secondary)', fontSize: '0.86rem', lineHeight: 1.6 }}>
-        JSON 数据包覆盖项目、待办、日程、每日总结、日志模板、计时会话和重复规则。合并以 UUID 为准，导入包内容优先。
+        JSON 数据包覆盖项目、待办、日程、每日总结、日志模板、计时会话和重复规则。当前仅支持合并导入：以 UUID 为准，导入包内容优先，未出现在包中的本地数据不会删除。
       </p>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         <button className="btn btn-secondary" disabled={busy} onClick={handleExport}>导出 JSON</button>

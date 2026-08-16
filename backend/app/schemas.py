@@ -140,6 +140,10 @@ class TodoUpdate(BaseModel):
         return self
 
 
+class TodoCompleteRequest(BaseModel):
+    log_date: date
+
+
 class TodoOut(BaseModel):
     id: int
     uuid: str

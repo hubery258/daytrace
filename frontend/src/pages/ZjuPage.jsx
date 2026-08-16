@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { zjuApi } from '../api/client';
+import { BEIJING_TIME_ZONE, parseAsLocal, todayStr } from '../utils/time';
 
 function defaultAcademicYear() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const start = now.getMonth() + 1 >= 8 ? year : year - 1;
+  const [year, month] = todayStr().split('-').map(Number);
+  const start = month >= 8 ? year : year - 1;
   return `${start}-${start + 1}`;
 }
 
 
 function academicYearOptions() {
   const firstYear = 2022;
-  const currentYear = new Date().getFullYear();
+  const currentYear = Number(todayStr().slice(0, 4));
   const lastYear = Math.max(firstYear, currentYear);
   return Array.from({ length: lastYear - firstYear + 1 }, (_, index) => {
     const start = firstYear + index;
@@ -20,7 +20,13 @@ function academicYearOptions() {
 }
 function formatDateTime(value) {
   if (!value) return '';
-  return new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return parseAsLocal(value).toLocaleString('zh-CN', {
+    timeZone: BEIJING_TIME_ZONE,
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function formatNumber(value, digits = 2) {
@@ -392,7 +398,7 @@ export default function ZjuPage() {
                 <div className="todo-name">
                   <div>{item.course_name ? `[${item.course_name}] ` : ''}{item.title}</div>
                   <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                    {item.source} · {item.type || 'task'} · {item.ddl_at ? new Date(item.ddl_at).toLocaleString() : '无截止时间'}
+                    {item.source} · {item.type || 'task'} · {item.ddl_at ? formatDateTime(item.ddl_at) : '无截止时间'}
                   </div>
                 </div>
                 <div className="todo-meta">{item.reason}</div>
@@ -424,7 +430,7 @@ export default function ZjuPage() {
         </div>
         <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 10 }}>
           校历只会在点击“拉取并缓存校历”时访问 Celechron CDN；预览课表只使用本地缓存。
-          当前缓存：{calendarState?.has_cache ? `已缓存（${calendarState.fetched_at ? new Date(calendarState.fetched_at).toLocaleString() : '时间未知'}）` : '未缓存'}
+          当前缓存：{calendarState?.has_cache ? `已缓存（${calendarState.fetched_at ? formatDateTime(calendarState.fetched_at) : '时间未知'}）` : '未缓存'}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <button className="btn btn-secondary" onClick={handleFetchCalendar} disabled={scheduleBusy}>拉取并缓存校历</button>
@@ -469,7 +475,7 @@ export default function ZjuPage() {
           </div>
         </div>
         <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 10 }}>
-          成绩仅做本地只读概览和估算，不写回学校系统。当前缓存：{gradeState?.has_cache ? `已缓存（${gradeState.fetched_at ? new Date(gradeState.fetched_at).toLocaleString() : '时间未知'}）` : '未缓存'}。
+          成绩仅做本地只读概览和估算，不写回学校系统。当前缓存：{gradeState?.has_cache ? `已缓存（${gradeState.fetched_at ? formatDateTime(gradeState.fetched_at) : '时间未知'}）` : '未缓存'}。
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <button className="btn btn-secondary" onClick={handleReadGradeCache} disabled={gradeBusy}>读取缓存</button>

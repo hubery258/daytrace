@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { todoApi, scheduleApi, logApi, recurrenceApi, projectApi } from '../api/client';
+import { todoApi, scheduleApi, recurrenceApi, projectApi } from '../api/client';
 import TodoModal from '../components/TodoModal';
 import ScheduleModal from '../components/ScheduleModal';
 import ContextMenu from '../components/ContextMenu';
-import { parseAsLocal, formatTime, todayStr } from '../utils/time';
+import { BEIJING_TIME_ZONE, parseAsLocal, formatTime, todayStr } from '../utils/time';
 import { DISPLAY_PREFERENCES_EVENT, readDisplayPreferences } from '../utils/displayPreferences';
 
 function addDays(dateStr, days) {
@@ -78,23 +78,11 @@ export default function HomePage() {
   const handleComplete = async (todo) => {
     setCompletingIds(prev => new Set([...prev, todo.id]));
     try {
-      await todoApi.update(todo.id, { is_completed: true });
-      const today = todayStr();
-      const existingLog = await logApi.get(today).catch(() => null);
-      const completedIds = existingLog
-        ? Array.from(new Set([...existingLog.completed_todo_ids, todo.id]))
-        : [todo.id];
-      await logApi.upsert({ log_date: today, completed_todo_ids: completedIds, log_text: existingLog?.log_text || '' });
-      setTimeout(() => {
-        setCompletingIds(prev => {
-          const next = new Set(prev);
-          next.delete(todo.id);
-          return next;
-        });
-        loadData();
-      }, 300);
+      await todoApi.complete(todo.id, todayStr());
+      await loadData();
     } catch (err) {
       console.error('完成任务失败', err);
+    } finally {
       setCompletingIds(prev => {
         const next = new Set(prev);
         next.delete(todo.id);
@@ -159,7 +147,7 @@ export default function HomePage() {
       {todo.recurrence_rule_id && <span className="todo-meta">重复</span>}
       {showDdlType && todo.is_hard_ddl_near && <span className="deadline-type hard">硬性</span>}
       {showDdlType && todo.is_soft_ddl_near && <span className="deadline-type soft">弹性</span>}
-      {todo.ddl_date && <span className="todo-meta">{parseAsLocal(todo.ddl_date).toLocaleDateString('zh-CN')}</span>}
+      {todo.ddl_date && <span className="todo-meta">{parseAsLocal(todo.ddl_date).toLocaleDateString('zh-CN', { timeZone: BEIJING_TIME_ZONE })}</span>}
     </div>
   );
 
@@ -286,7 +274,7 @@ export default function HomePage() {
             ) : availableTodos.map(todo => (
               <div key={todo.id} className="todo-item" onClick={() => handleAddToFocusing(todo.id)}>
                 <span className="todo-name">{todo.name}</span>
-                {todo.ddl_date && <span className="todo-meta">{parseAsLocal(todo.ddl_date).toLocaleDateString('zh-CN')}</span>}
+                {todo.ddl_date && <span className="todo-meta">{parseAsLocal(todo.ddl_date).toLocaleDateString('zh-CN', { timeZone: BEIJING_TIME_ZONE })}</span>}
               </div>
             ))}
             <div className="form-actions">

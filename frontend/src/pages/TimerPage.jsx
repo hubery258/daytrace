@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { projectApi, timerApi, todoApi } from '../api/client';
 import ScheduleModal from '../components/ScheduleModal';
-import { parseAsLocal } from '../utils/time';
+import { BEIJING_TIME_ZONE, parseAsLocal } from '../utils/time';
 
 function pad(n) {
   return String(n).padStart(2, '0');
@@ -32,7 +32,7 @@ function toDateTimeLocal(value) {
 
 function formatDateTime(value) {
   if (!value) return '';
-  return parseAsLocal(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return parseAsLocal(value).toLocaleString('zh-CN', { timeZone: BEIJING_TIME_ZONE, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
 export default function TimerPage() {
@@ -42,6 +42,7 @@ export default function TimerPage() {
   const [todos, setTodos] = useState([]);
   const [nowTick, setNowTick] = useState(Date.now());
   const [finishTimer, setFinishTimer] = useState(null);
+  const [actionBusy, setActionBusy] = useState(false);
   const [form, setForm] = useState({ name: '', project_id: '', linked_todo_id: '', notes: '' });
 
   const loadTimer = useCallback(async () => {
@@ -73,6 +74,8 @@ export default function TimerPage() {
 
   const handleStart = async (e) => {
     e.preventDefault();
+    if (actionBusy) return;
+    setActionBusy(true);
     try {
       const started = await timerApi.start({
         name: form.name,
@@ -84,17 +87,26 @@ export default function TimerPage() {
       setForm({ name: '', project_id: '', linked_todo_id: '', notes: '' });
     } catch (err) {
       alert('开始计时失败：' + err.message);
+    } finally {
+      await loadTimer().catch(err => console.error('刷新当前计时失败', err));
+      setActionBusy(false);
     }
   };
 
   const refreshAfterAction = async (action) => {
+    if (actionBusy) return;
+    setActionBusy(true);
     try {
       const updated = await action();
-      setTimer(updated.status === 'running' || updated.status === 'paused' ? updated : null);
       if (updated.status === 'completed') setFinishTimer(updated);
-      await loadRecent();
     } catch (err) {
       alert('操作失败：' + err.message);
+    } finally {
+      const results = await Promise.allSettled([loadTimer(), loadRecent()]);
+      results.forEach(result => {
+        if (result.status === 'rejected') console.error('刷新计时状态失败', result.reason);
+      });
+      setActionBusy(false);
     }
   };
 
@@ -134,12 +146,12 @@ export default function TimerPage() {
             </div>
             <div className="timer-actions">
               {timer.status === 'running' ? (
-                <button className="btn btn-secondary" onClick={() => refreshAfterAction(timerApi.pause)}>暂停</button>
+                <button className="btn btn-secondary" disabled={actionBusy} onClick={() => refreshAfterAction(timerApi.pause)}>暂停</button>
               ) : (
-                <button className="btn btn-primary" onClick={() => refreshAfterAction(timerApi.resume)}>继续</button>
+                <button className="btn btn-primary" disabled={actionBusy} onClick={() => refreshAfterAction(timerApi.resume)}>继续</button>
               )}
-              <button className="btn btn-primary" onClick={() => refreshAfterAction(timerApi.finish)}>结束</button>
-              <button className="btn btn-danger" onClick={handleCancel}>取消</button>
+              <button className="btn btn-primary" disabled={actionBusy} onClick={() => refreshAfterAction(timerApi.finish)}>结束</button>
+              <button className="btn btn-danger" disabled={actionBusy} onClick={handleCancel}>取消</button>
             </div>
           </div>
         ) : (
@@ -166,7 +178,7 @@ export default function TimerPage() {
               <label>备注</label>
               <textarea value={form.notes} onChange={e => setForm(prev => ({ ...prev, notes: e.target.value }))} placeholder="可选备注" />
             </div>
-            <button className="btn btn-primary" type="submit">开始计时</button>
+            <button className="btn btn-primary" type="submit" disabled={actionBusy}>开始计时</button>
           </form>
         )}
       </section>

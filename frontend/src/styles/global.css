@@ -492,6 +492,15 @@ body {
   transition: transform 0.12s, box-shadow 0.12s;
 }
 
+.timeline-lane .event.density-compact {
+  justify-content: center;
+  padding: 2px 8px;
+}
+
+.timeline-lane .event.density-medium {
+  padding: 3px 8px;
+}
+
 .timeline-lane.planned .event {
   right: 4px;
 }
@@ -1455,6 +1464,15 @@ body {
   line-height: 1.2;
 }
 
+.week-time-event.density-compact {
+  justify-content: center;
+  padding: 2px 5px;
+}
+
+.week-time-event.density-medium {
+  padding: 3px 5px;
+}
+
 .week-time-event.actual {
   border-color: #bbf7d0;
   background: #dcfce7;
@@ -1462,7 +1480,8 @@ body {
 }
 
 .week-time-event span,
-.week-time-event strong {
+.week-time-event strong,
+.week-time-event small {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1476,6 +1495,11 @@ body {
 
 .week-time-event strong {
   font-size: 0.76rem;
+}
+
+.week-time-event small {
+  font-size: 0.64rem;
+  opacity: 0.7;
 }
 
 .month-view-card {

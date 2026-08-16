@@ -49,6 +49,7 @@ export const todoApi = {
   get: (id) => request(`/todos/${id}`),
   create: (data) => request('/todos/', { method: 'POST', body: JSON.stringify(data) }),
   update: (id, data) => request(`/todos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  complete: (id, logDate) => request(`/todos/${id}/complete`, { method: 'POST', body: JSON.stringify({ log_date: logDate }) }),
   delete: (id) => request(`/todos/${id}`, { method: 'DELETE' }),
   focusing: () => request('/todos/focusing'),
   waitingReply: () => request('/todos/waiting-reply'),

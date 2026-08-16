@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { projectApi, recurrenceApi, todoApi } from '../api/client';
 import { toLocalISO, todayStr } from '../utils/time';
 
@@ -74,6 +75,10 @@ function weekdayFromDate(dateStr) {
 
 function weekdayLabel(day) {
   return day === 7 ? '\u5468\u65e5' : `\u5468${day}`;
+}
+
+function shouldAutoFocus() {
+  return !Capacitor.isNativePlatform() && !window.matchMedia('(max-width: 600px)').matches;
 }
 
 export default function TodoModal({ todo, onClose, onSaved, defaultProjectId = null }) {
@@ -181,7 +186,7 @@ export default function TodoModal({ todo, onClose, onSaved, defaultProjectId = n
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>{T.todoName}</label>
-            <input value={form.name} onChange={e => handleChange('name', e.target.value)} placeholder={T.todoNamePlaceholder} required autoFocus />
+            <input value={form.name} onChange={e => handleChange('name', e.target.value)} placeholder={T.todoNamePlaceholder} required autoFocus={shouldAutoFocus()} />
           </div>
 
           <div className="form-group">
