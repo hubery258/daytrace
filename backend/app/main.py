@@ -42,6 +42,7 @@ async def ensure_sqlite_schema_compat(conn):
         {
             "uuid": "uuid VARCHAR(36)",
             "project_id": "project_id INTEGER",
+            "position": "position INTEGER",
             "recurrence_rule_id": "recurrence_rule_id INTEGER",
             "recurrence_date": "recurrence_date DATE",
             "is_recurrence_exception": "is_recurrence_exception BOOLEAN DEFAULT 0",

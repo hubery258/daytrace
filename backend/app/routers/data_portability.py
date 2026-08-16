@@ -23,20 +23,20 @@ async def export_data(db: AsyncSession = Depends(get_db)):
 
 @router.post("/import/preview")
 async def preview_import(data: ImportRequest, db: AsyncSession = Depends(get_db)):
-    if data.mode != "merge":
-        raise HTTPException(status_code=400, detail="v0.6 仅支持 merge 导入模式")
+    if data.mode not in ("merge", "replace"):
+        raise HTTPException(status_code=400, detail="导入模式必须是 merge 或 replace")
     try:
-        return await preview_package(db, data.package)
+        return await preview_package(db, data.package, data.mode)
     except DataPackageError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/import")
 async def commit_import(data: ImportRequest, db: AsyncSession = Depends(get_db)):
-    if data.mode != "merge":
-        raise HTTPException(status_code=400, detail="v0.6 仅支持 merge 导入模式")
+    if data.mode not in ("merge", "replace"):
+        raise HTTPException(status_code=400, detail="导入模式必须是 merge 或 replace")
     try:
-        return await import_package(db, data.package)
+        return await import_package(db, data.package, data.mode)
     except DataPackageError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except (ValueError, TypeError) as exc:

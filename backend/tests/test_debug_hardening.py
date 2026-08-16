@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from app import crud, models, schemas
-from app.data_portability import ENTITY_ORDER, import_package
+from app.data_portability import ENTITY_ORDER, import_package, preview_package
 from app.database import Base
 from app.zju_client import _parse_datetime
 
@@ -142,6 +142,24 @@ class DatabaseHardeningTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result['updated'], 0)
             self.assertEqual([item.name for item in todos], ['仅存在于本地'])
 
+    async def test_replace_import_previews_and_deletes_missing_local_data(self):
+        async with self.sessions() as session:
+            session.add(models.Todo(name='仅存在于本地'))
+            await session.commit()
+            package = {
+                'app': 'riji',
+                'schema_version': '0.6.0',
+                'entities': {name: [] for name in ENTITY_ORDER},
+            }
+
+            preview = await preview_package(session, package, mode='replace')
+            result = await import_package(session, package, mode='replace')
+            todos = list((await session.execute(select(models.Todo))).scalars())
+
+            self.assertEqual(preview['entities']['todos']['delete'], 1)
+            self.assertEqual(result['deleted'], 1)
+            self.assertEqual(todos, [])
+
     async def test_project_next_todo_prefers_earliest_deadline(self):
         async with self.sessions() as session:
             project = models.Project(name='项目')
@@ -156,6 +174,22 @@ class DatabaseHardeningTests(unittest.IsolatedAsyncioTestCase):
 
             overview = await crud.get_project_overview(session, project.id)
             self.assertEqual(overview['next_todo'].name, '最近 DDL')
+
+    async def test_project_next_todo_prefers_manual_position_before_deadline(self):
+        async with self.sessions() as session:
+            project = models.Project(name='项目')
+            session.add(project)
+            await session.flush()
+            session.add_all([
+                models.Todo(project_id=project.id, name='最近 DDL', ddl_type=models.DDLType.hard, ddl_date=datetime(2026, 8, 16)),
+                models.Todo(project_id=project.id, name='手动第二', position=2),
+                models.Todo(project_id=project.id, name='手动第一', position=1),
+            ])
+            await session.commit()
+
+            overview = await crud.get_project_overview(session, project.id)
+            self.assertEqual(overview['next_todo'].name, '手动第一')
+            self.assertEqual([todo.name for todo in overview['todos']], ['手动第一', '手动第二', '最近 DDL'])
 
 
 if __name__ == '__main__':

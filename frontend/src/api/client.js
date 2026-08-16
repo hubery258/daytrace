@@ -155,8 +155,8 @@ export const zjuApi = {
 // ============ Data portability ============
 export const dataApi = {
   export: () => request('/data/export'),
-  previewImport: (dataPackage) => request('/data/import/preview', { method: 'POST', body: JSON.stringify({ package: dataPackage, mode: 'merge' }) }),
-  import: (dataPackage) => request('/data/import', { method: 'POST', body: JSON.stringify({ package: dataPackage, mode: 'merge' }) }),
+  previewImport: (dataPackage, mode = 'merge') => request('/data/import/preview', { method: 'POST', body: JSON.stringify({ package: dataPackage, mode }) }),
+  import: (dataPackage, mode = 'merge') => request('/data/import', { method: 'POST', body: JSON.stringify({ package: dataPackage, mode }) }),
 };
 
 export const healthApi = {

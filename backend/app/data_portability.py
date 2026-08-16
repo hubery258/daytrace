@@ -7,7 +7,7 @@ import uuid as uuid_lib
 from datetime import date, datetime, timezone
 from typing import Any
 
-from sqlalchemy import Date as SADate, DateTime as SADateTime, Enum as SAEnum, select
+from sqlalchemy import Date as SADate, DateTime as SADateTime, Enum as SAEnum, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import models
@@ -35,7 +35,7 @@ SPECS: dict[str, tuple[type, tuple[str, ...]]] = {
         "weekdays", "month_day", "status", "created_at", "updated_at",
     )),
     "todos": (models.Todo, (
-        "name", "ddl_type", "ddl_date", "reminder_days", "category", "status",
+        "name", "position", "ddl_type", "ddl_date", "reminder_days", "category", "status",
         "waiting_reply_person", "notes", "is_completed", "completed_at",
         "recurrence_date", "is_recurrence_exception", "created_at", "updated_at",
     )),
@@ -167,30 +167,40 @@ def validate_package(package: Any) -> dict[str, Any]:
     return normalized
 
 
-async def preview_package(db: AsyncSession, package: Any) -> dict[str, Any]:
+async def preview_package(db: AsyncSession, package: Any, mode: str = "merge") -> dict[str, Any]:
     package = validate_package(package)
     summary: dict[str, dict[str, int]] = {}
     for name in ENTITY_ORDER:
         model, _ = SPECS[name]
         existing_result = await db.execute(select(model))
         existing = list(existing_result.scalars().all())
-        uuids = {item.uuid for item in existing}
-        dates = {item.log_date for item in existing} if name == "daily_logs" else set()
         update_count = 0
+        matched_existing_ids: set[int] = set()
         for item in package["entities"][name]:
-            is_update = item["uuid"] in uuids
+            matched = next((existing_item for existing_item in existing if existing_item.uuid == item["uuid"]), None)
+            is_update = matched is not None
             if name == "daily_logs" and not is_update:
-                is_update = _parse_date(item.get("log_date")) in dates
+                matched = next((existing_item for existing_item in existing if existing_item.log_date == _parse_date(item.get("log_date"))), None)
+                is_update = matched is not None
+            if matched is not None:
+                matched_existing_ids.add(matched.id)
             update_count += int(is_update)
         count = len(package["entities"][name])
-        summary[name] = {"total": count, "create": count - update_count, "update": update_count}
+        summary[name] = {
+            "total": count,
+            "create": count - update_count,
+            "update": update_count,
+            "delete": len(existing) - len(matched_existing_ids) if mode == "replace" else 0,
+        }
     return {
         "app": package["app"],
         "schema_version": package["schema_version"],
         "exported_at": package.get("exported_at"),
-        "conflict_policy": "incoming_package_wins_by_uuid",
+        "mode": mode,
+        "conflict_policy": "replace_local_data" if mode == "replace" else "incoming_package_wins_by_uuid",
         "entities": summary,
         "total": sum(item["total"] for item in summary.values()),
+        "delete_total": sum(item["delete"] for item in summary.values()),
     }
 
 
@@ -250,6 +260,8 @@ async def _upsert_group(db: AsyncSession, name: str, items: list[dict[str, Any]]
             created += 1
         else:
             updated += 1
+            if name == "daily_logs" and instance.uuid != item["uuid"]:
+                instance.uuid = item["uuid"]
         _apply_fields(instance, model, fields, item)
         mapped[item["uuid"]] = instance
     await db.flush()
@@ -265,7 +277,7 @@ def _resolve(mapping: dict[str, Any], item_uuid: Any, label: str) -> int | None:
     return instance.id
 
 
-async def import_package(db: AsyncSession, raw_package: Any) -> dict[str, Any]:
+async def import_package(db: AsyncSession, raw_package: Any, mode: str = "merge") -> dict[str, Any]:
     package = validate_package(raw_package)
     entities = package["entities"]
     maps: dict[str, dict[str, Any]] = {}
@@ -303,14 +315,38 @@ async def import_package(db: AsyncSession, raw_package: Any) -> dict[str, Any]:
             instance.project_id = _resolve(projects, item.get("project_uuid"), "项目")
             instance.linked_todo_id = _resolve(todos, item.get("linked_todo_uuid"), "待办")
             instance.created_schedule_id = _resolve(schedules, item.get("created_schedule_uuid"), "日程")
+
+        deleted: dict[str, int] = {name: 0 for name in ENTITY_ORDER}
+        if mode == "replace":
+            for name in reversed(ENTITY_ORDER):
+                model, _ = SPECS[name]
+                keep_ids = {instance.id for instance in maps[name].values()}
+                existing_result = await db.execute(select(model.id))
+                remove_ids = [item_id for item_id in existing_result.scalars().all() if item_id not in keep_ids]
+                if not remove_ids:
+                    continue
+                if name in ("todos", "schedules"):
+                    entity_type = "todo" if name == "todos" else "schedule"
+                    await db.execute(delete(models.ExternalItem).where(
+                        models.ExternalItem.entity_type == entity_type,
+                        models.ExternalItem.local_entity_id.in_(remove_ids),
+                    ))
+                if name == "recurrence_rules":
+                    await db.execute(delete(models.RecurrenceException).where(
+                        models.RecurrenceException.recurrence_rule_id.in_(remove_ids),
+                    ))
+                await db.execute(delete(model).where(model.id.in_(remove_ids)))
+                deleted[name] = len(remove_ids)
         await db.commit()
     except Exception:
         await db.rollback()
         raise
     return {
         "schema_version": SCHEMA_VERSION,
-        "conflict_policy": "incoming_package_wins_by_uuid",
+        "mode": mode,
+        "conflict_policy": "replace_local_data" if mode == "replace" else "incoming_package_wins_by_uuid",
         "entities": results,
         "created": sum(item["created"] for item in results.values()),
         "updated": sum(item["updated"] for item in results.values()),
+        "deleted": sum(deleted.values()),
     }

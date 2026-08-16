@@ -18,6 +18,8 @@ def _next_todo(todos: List[models.Todo]) -> Optional[models.Todo]:
     return min(
         incomplete,
         key=lambda todo: (
+            todo.position is None,
+            todo.position if todo.position is not None else 0,
             todo.ddl_date is None,
             todo.ddl_date or datetime.max,
             todo.created_at or datetime.max,
@@ -173,7 +175,17 @@ async def get_todos(
         stmt = stmt.where(models.Todo.is_completed == is_completed)
     if project_id is not None:
         stmt = stmt.where(models.Todo.project_id == project_id)
-    stmt = stmt.order_by(models.Todo.created_at.desc())
+    if project_id is not None:
+        stmt = stmt.order_by(
+            models.Todo.position.is_(None).asc(),
+            models.Todo.position.asc(),
+            models.Todo.ddl_date.is_(None).asc(),
+            models.Todo.ddl_date.asc(),
+            models.Todo.created_at.asc(),
+            models.Todo.id.asc(),
+        )
+    else:
+        stmt = stmt.order_by(models.Todo.created_at.desc())
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
@@ -792,6 +804,7 @@ async def generate_recurrence_instances(db: AsyncSession, data: schemas.Recurren
     return {"created_todo_ids": created_todo_ids, "created_schedule_ids": created_schedule_ids}
 TODO_TEMPLATE_FIELDS = {
     "name",
+    "position",
     "ddl_type",
     "ddl_date",
     "reminder_days",
@@ -818,6 +831,7 @@ SCHEDULE_TEMPLATE_FIELDS = {
 def _apply_todo_generated_values(target: models.Todo, generated: models.Todo):
     fields = [
         "project_id",
+        "position",
         "name",
         "ddl_type",
         "ddl_date",

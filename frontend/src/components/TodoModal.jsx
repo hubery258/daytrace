@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { projectApi, recurrenceApi, todoApi } from '../api/client';
 import { toLocalISO, todayStr } from '../utils/time';
+import { PreferenceDateTimeInput, PreferenceTimeInput } from './PreferenceTimeInput';
 
 const T = {
   noDdl: '\u65e0 DDL',
@@ -86,6 +87,7 @@ export default function TodoModal({ todo, onClose, onSaved, defaultProjectId = n
   const [projects, setProjects] = useState([]);
   const [form, setForm] = useState({
     project_id: todo?.project_id ?? defaultProjectId ?? '',
+    position: todo?.position ?? '',
     name: todo?.name || '',
     ddl_type: todo?.ddl_type || 'none',
     ddl_date: todo?.ddl_date ? todo.ddl_date.slice(0, 16) : '',
@@ -130,6 +132,7 @@ export default function TodoModal({ todo, onClose, onSaved, defaultProjectId = n
   const buildPayload = () => ({
     ...form,
     project_id: form.project_id ? Number(form.project_id) : null,
+    position: form.project_id && form.position !== '' ? Number(form.position) : null,
     reminder_days: showDdlFields || recurrence.ddl_mode !== 'none' ? Number(form.reminder_days || 0) : null,
     ddl_date: showDdlFields && form.ddl_date ? toLocalISO(form.ddl_date) : null,
   });
@@ -197,6 +200,21 @@ export default function TodoModal({ todo, onClose, onSaved, defaultProjectId = n
             </select>
           </div>
 
+          {form.project_id && (
+            <div className="form-group">
+              <label>项目内手动顺序</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={form.position}
+                onChange={e => handleChange('position', e.target.value)}
+                placeholder="留空则按 DDL 自动排序"
+              />
+              <div className="field-hint">数字越小越靠前；设置手动顺序的待办优先于自动排序。</div>
+            </div>
+          )}
+
           {!canCreateRule && (
             <>
               <div className="form-group">
@@ -210,7 +228,7 @@ export default function TodoModal({ todo, onClose, onSaved, defaultProjectId = n
                 <>
                   <div className="form-group">
                     <label>{T.ddlDate}</label>
-                    <input type="datetime-local" value={form.ddl_date} onChange={e => handleChange('ddl_date', e.target.value)} required />
+                    <PreferenceDateTimeInput value={form.ddl_date} onChange={value => handleChange('ddl_date', value)} required />
                   </div>
                   <div className="form-group">
                     <label>{T.reminderDays}</label>
@@ -280,8 +298,8 @@ export default function TodoModal({ todo, onClose, onSaved, defaultProjectId = n
                     </select>
                   </div>
                   <div className="form-group">
-                    <label>{T.ddlTime24}</label>
-                    <input type="text" inputMode="numeric" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" placeholder="23:59" title="Use 24-hour time, for example 23:59" value={recurrence.ddl_time} onChange={e => handleRecurrenceChange('ddl_time', e.target.value)} />
+                    <label>DDL 时间</label>
+                    <PreferenceTimeInput value={recurrence.ddl_time} onChange={value => handleRecurrenceChange('ddl_time', value)} />
                   </div>
                   {recurrence.ddl_mode === 'offset_days' && (
                     <div className="form-group">

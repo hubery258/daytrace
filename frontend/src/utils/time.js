@@ -1,3 +1,5 @@
+import { readDisplayPreferences } from './displayPreferences';
+
 /**
  * 将 datetime-local 输入值转为后端可接收的 ISO 字符串。
  * 不携带时区信息，后端当作本地时间（北京时间）直接存储和返回。
@@ -59,7 +61,12 @@ export function dateStrInBeijing(datetimeStr) {
  */
 export function formatTime(datetimeStr) {
   const d = parseAsLocal(datetimeStr);
-  return d.toLocaleTimeString('zh-CN', { timeZone: BEIJING_TIME_ZONE, hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString('zh-CN', {
+    timeZone: BEIJING_TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: readDisplayPreferences().timeFormat === '12h',
+  });
 }
 
 /**

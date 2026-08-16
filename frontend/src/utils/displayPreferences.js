@@ -2,6 +2,7 @@ export const DISPLAY_PREFERENCES_STORAGE_KEY = 'riji_display_preferences_v1';
 export const DISPLAY_PREFERENCES_EVENT = 'riji:display-preferences-changed';
 
 export const DEFAULT_DISPLAY_PREFERENCES = Object.freeze({
+  timeFormat: '24h',
   pages: Object.freeze({
     home: true,
     schedule: true,
@@ -33,11 +34,13 @@ export function readDisplayPreferences() {
   try {
     const stored = JSON.parse(localStorage.getItem(DISPLAY_PREFERENCES_STORAGE_KEY) || '{}');
     return {
+      timeFormat: stored.timeFormat === '12h' ? '12h' : '24h',
       pages: mergeKnownFlags(DEFAULT_DISPLAY_PREFERENCES.pages, stored.pages),
       homeModules: mergeKnownFlags(DEFAULT_DISPLAY_PREFERENCES.homeModules, stored.homeModules),
     };
   } catch {
     return {
+      timeFormat: DEFAULT_DISPLAY_PREFERENCES.timeFormat,
       pages: { ...DEFAULT_DISPLAY_PREFERENCES.pages },
       homeModules: { ...DEFAULT_DISPLAY_PREFERENCES.homeModules },
     };
@@ -46,6 +49,7 @@ export function readDisplayPreferences() {
 
 export function writeDisplayPreferences(preferences) {
   const normalized = {
+    timeFormat: preferences.timeFormat === '12h' ? '12h' : '24h',
     pages: mergeKnownFlags(DEFAULT_DISPLAY_PREFERENCES.pages, preferences.pages),
     homeModules: mergeKnownFlags(DEFAULT_DISPLAY_PREFERENCES.homeModules, preferences.homeModules),
   };

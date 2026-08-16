@@ -492,6 +492,26 @@ body {
   transition: transform 0.12s, box-shadow 0.12s;
 }
 
+.preference-datetime-input,
+.preference-time-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preference-datetime-input > input {
+  flex: 1 1 180px;
+}
+
+.preference-time-input > select {
+  width: auto;
+  min-width: 68px;
+}
+
+.preference-datetime-input .preference-time-input {
+  flex: 0 0 auto;
+}
+
 .timeline-lane .event.density-compact {
   justify-content: center;
   padding: 2px 8px;

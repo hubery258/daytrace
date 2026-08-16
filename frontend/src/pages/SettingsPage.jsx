@@ -96,8 +96,16 @@ export default function SettingsPage() {
     setTimeout(() => setDisplaySaved(false), 1600);
   };
 
+  const updateTimeFormat = (timeFormat) => {
+    const savedPreferences = writeDisplayPreferences({ ...displayPreferences, timeFormat });
+    setDisplayPreferences(savedPreferences);
+    setDisplaySaved(true);
+    setTimeout(() => setDisplaySaved(false), 1600);
+  };
+
   const resetDisplayPreferences = () => {
     const defaults = {
+      timeFormat: DEFAULT_DISPLAY_PREFERENCES.timeFormat,
       pages: { ...DEFAULT_DISPLAY_PREFERENCES.pages },
       homeModules: { ...DEFAULT_DISPLAY_PREFERENCES.homeModules },
     };
@@ -149,6 +157,16 @@ export default function SettingsPage() {
               ))}
             </div>
             <button className="btn btn-quiet reset-display-button" onClick={resetDisplayPreferences}>恢复默认展示</button>
+          </div>
+          <div className="settings-panel">
+            <div className="settings-panel-title"><h3>时间格式</h3><p>控制 DDL 时间输入和日程时间轴的显示方式。</p></div>
+            <div className="form-group">
+              <label htmlFor="time-format">小时制</label>
+              <select id="time-format" value={displayPreferences.timeFormat} onChange={event => updateTimeFormat(event.target.value)}>
+                <option value="24h">24 小时制（23:30）</option>
+                <option value="12h">12 小时制（11:30 PM）</option>
+              </select>
+            </div>
           </div>
         </div>
       </section>

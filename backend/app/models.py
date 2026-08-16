@@ -98,6 +98,7 @@ class Todo(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     uuid = Column(String(36), default=new_uuid, unique=True, nullable=False, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    position = Column(Integer, nullable=True)
     recurrence_rule_id = Column(Integer, ForeignKey("recurrence_rules.id"), nullable=True)
     recurrence_date = Column(Date, nullable=True)
     is_recurrence_exception = Column(Boolean, default=False, nullable=False)
