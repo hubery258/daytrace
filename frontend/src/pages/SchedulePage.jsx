@@ -6,7 +6,7 @@ import { AI_DRAFT_SYSTEM_PROMPT, buildScheduleGapDraftUserMessage } from '../ai/
 import AiDraftReviewModal from '../components/AiDraftReviewModal';
 import ScheduleModal from '../components/ScheduleModal';
 import ContextMenu from '../components/ContextMenu';
-import { parseAsLocal, formatTime, formatDate, startOfDay, todayStr } from '../utils/time';
+import { addDays, dateStrInBeijing, parseAsLocal, formatTime, formatDate, startOfDay, todayStr } from '../utils/time';
 
 const HOUR_HEIGHT = 64;
 const WEEK_HOUR_HEIGHT = 48;
@@ -50,11 +50,6 @@ function getDateStr(d) {
   return `${y}-${m}-${day}`;
 }
 
-function minutesSinceStartOfDay(datetimeStr) {
-  const d = parseAsLocal(datetimeStr);
-  return d.getHours() * 60 + d.getMinutes();
-}
-
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -69,24 +64,55 @@ function minutesToLocalValue(dateStr, minutes) {
   return `${dateStr}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-function getEventStyle(schedule) {
-  const startMinutes = minutesSinceStartOfDay(schedule.start_time);
-  const endMinutes = minutesSinceStartOfDay(schedule.end_time);
-  const duration = Math.max(15, endMinutes - startMinutes);
+function addDaysToDateStr(dateStr, days) {
+  return addDays(dateStr, days);
+}
 
+function getScheduleSegment(schedule, dateStr) {
+  const dayStart = new Date(`${dateStr}T00:00:00+08:00`).getTime();
+  const dayEnd = dayStart + 24 * 60 * 60 * 1000;
+  const scheduleStart = parseAsLocal(schedule.start_time).getTime();
+  const scheduleEnd = parseAsLocal(schedule.end_time).getTime();
+  if (scheduleStart >= dayEnd || scheduleEnd <= dayStart) return null;
+
+  const visibleStart = Math.max(scheduleStart, dayStart);
+  const visibleEnd = Math.min(scheduleEnd, dayEnd);
   return {
-    top: `${(startMinutes / 60) * HOUR_HEIGHT}px`,
-    height: `${Math.max(MIN_EVENT_HEIGHT, (duration / 60) * HOUR_HEIGHT)}px`,
+    startMinutes: (visibleStart - dayStart) / 60000,
+    durationMinutes: Math.max(1, (visibleEnd - visibleStart) / 60000),
+    startsBefore: scheduleStart < dayStart,
+    endsAfter: scheduleEnd > dayEnd,
   };
 }
 
-function getWeekEventStyle(schedule) {
-  const startMinutes = minutesSinceStartOfDay(schedule.start_time);
-  const endMinutes = minutesSinceStartOfDay(schedule.end_time);
-  const duration = Math.max(15, endMinutes - startMinutes);
+function segmentTimeLabel(schedule, segment) {
+  const start = segment.startsBefore ? '00:00' : formatTime(schedule.start_time);
+  const end = segment.endsAfter ? '24:00' : formatTime(schedule.end_time);
+  return `${start}-${end}${segment.startsBefore || segment.endsAfter ? ' · 跨天' : ''}`;
+}
+
+function eventDensity(durationMinutes) {
+  if (durationMinutes < 45) return 'compact';
+  if (durationMinutes < 90) return 'medium';
+  return 'detailed';
+}
+
+function getEventStyle(schedule, dateStr) {
+  const segment = getScheduleSegment(schedule, dateStr);
+  if (!segment) return { display: 'none' };
+
   return {
-    top: `${(startMinutes / 60) * WEEK_HOUR_HEIGHT}px`,
-    height: `${Math.max(24, (duration / 60) * WEEK_HOUR_HEIGHT)}px`,
+    top: `${(segment.startMinutes / 60) * HOUR_HEIGHT}px`,
+    height: `${Math.max(MIN_EVENT_HEIGHT, (segment.durationMinutes / 60) * HOUR_HEIGHT)}px`,
+  };
+}
+
+function getWeekEventStyle(schedule, dateStr) {
+  const segment = getScheduleSegment(schedule, dateStr);
+  if (!segment) return { display: 'none' };
+  return {
+    top: `${(segment.startMinutes / 60) * WEEK_HOUR_HEIGHT}px`,
+    height: `${Math.max(24, (segment.durationMinutes / 60) * WEEK_HOUR_HEIGHT)}px`,
   };
 }
 
@@ -131,17 +157,17 @@ function formatMonthTitle(date) {
   return date.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' });
 }
 
-function groupSchedulesByDate(schedules) {
-  return schedules.reduce((acc, schedule) => {
-    const key = getDateStr(parseAsLocal(schedule.start_time));
-    acc[key] = acc[key] || [];
-    acc[key].push(schedule);
+function groupSchedulesByDate(schedules, days) {
+  return days.reduce((acc, day) => {
+    const key = getDateStr(day);
+    const items = schedules.filter(schedule => getScheduleSegment(schedule, key));
+    if (items.length) acc[key] = items;
     return acc;
   }, {});
 }
 
 export default function SchedulePage() {
-  const today = startOfDay(new Date());
+  const today = startOfDay(new Date(`${todayStr()}T00:00:00`));
   const [currentDate, setCurrentDate] = useState(today);
   const [jumpDate, setJumpDate] = useState(getDateStr(today));
   const [plannedSchedules, setPlannedSchedules] = useState([]);
@@ -177,13 +203,15 @@ export default function SchedulePage() {
       const weekEndDate = new Date(days[6]);
       weekEndDate.setDate(weekEndDate.getDate() + 1);
       const weekEnd = getDateStr(weekEndDate);
-      const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-      const monthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+      const monthDays = getMonthGridDays(currentDate);
+      const monthStart = getDateStr(monthDays[0]);
+      const monthEnd = addDaysToDateStr(getDateStr(monthDays[monthDays.length - 1]), 1);
+      const dayEnd = addDaysToDateStr(currentDateStr, 1);
       const [planned, actual, week, month] = await Promise.all([
-        scheduleApi.list({ is_planned: true, date_from: `${currentDateStr}T00:00:00`, date_to: `${currentDateStr}T23:59:59` }),
-        scheduleApi.list({ is_planned: false, date_from: `${currentDateStr}T00:00:00`, date_to: `${currentDateStr}T23:59:59` }),
+        scheduleApi.list({ is_planned: true, date_from: `${currentDateStr}T00:00:00`, date_to: `${dayEnd}T00:00:00` }),
+        scheduleApi.list({ is_planned: false, date_from: `${currentDateStr}T00:00:00`, date_to: `${dayEnd}T00:00:00` }),
         scheduleApi.list({ date_from: `${weekStart}T00:00:00`, date_to: `${weekEnd}T00:00:00` }),
-        scheduleApi.list({ date_from: `${getDateStr(monthStart)}T00:00:00`, date_to: `${getDateStr(monthEnd)}T00:00:00` }),
+        scheduleApi.list({ date_from: `${monthStart}T00:00:00`, date_to: `${monthEnd}T00:00:00` }),
       ]);
       setPlannedSchedules(planned);
       setActualSchedules(actual);
@@ -271,7 +299,7 @@ export default function SchedulePage() {
       const [todos, projectData, daySchedules] = await Promise.all([
         todoApi.list({ is_completed: false }).catch(() => []),
         projectApi.list().catch(() => []),
-        scheduleApi.list({ date_from: dateStr + 'T00:00:00', date_to: dateStr + 'T23:59:59' }).catch(() => []),
+        scheduleApi.list({ date_from: dateStr + 'T00:00:00', date_to: addDaysToDateStr(dateStr, 1) + 'T00:00:00' }).catch(() => []),
       ]);
       setProjects(projectData);
       const raw = await callChatCompletion({
@@ -307,9 +335,7 @@ export default function SchedulePage() {
   };
 
   const canEditPlanned = (schedule) => {
-    const sDate = parseAsLocal(schedule.start_time);
-    sDate.setHours(0, 0, 0, 0);
-    return sDate >= today;
+    return dateStrInBeijing(schedule.start_time) >= todayStr();
   };
 
   const handleDeleteSchedule = async () => {
@@ -396,22 +422,25 @@ export default function SchedulePage() {
       {schedules.length === 0 && <div className="timeline-empty">{T.noSchedules}</div>}
       {schedules.map(s => {
         const canEdit = canEditFn?.(s) ?? true;
+        const segment = getScheduleSegment(s, dateStr);
+        const density = eventDensity(segment?.durationMinutes || 0);
+        const details = [s.location, s.notes].filter(Boolean).join(' · ');
         return (
           <button
             key={s.id}
             type="button"
-            className={`event ${s.is_planned ? '' : 'actual'} ${canEdit ? '' : 'readonly'}`}
+            className={`event density-${density} ${s.is_planned ? '' : 'actual'} ${canEdit ? '' : 'readonly'}`}
             onClick={() => openSchedule(s, canEditFn)}
             onContextMenu={(e) => {
               e.preventDefault();
               setContextMenu({ x: e.clientX, y: e.clientY, schedule: s });
             }}
-            style={{ ...getEventStyle(s), borderLeftColor: projectColor(s), borderLeftWidth: 4 }}
-            title={s.notes || undefined}
+            style={{ ...getEventStyle(s, dateStr), borderLeftColor: projectColor(s), borderLeftWidth: 4 }}
+            title={[s.name, segment ? segmentTimeLabel(s, segment) : '', details].filter(Boolean).join('\n')}
           >
             <span className="event-title">{s.name}</span>
-            <span className="event-time">{formatTime(s.start_time)}-{formatTime(s.end_time)}</span>
-            {s.notes && <span className="event-note">{s.notes}</span>}
+            {density !== 'compact' && segment && <span className="event-time">{segmentTimeLabel(s, segment)}</span>}
+            {density === 'detailed' && details && <span className="event-note">{details}</span>}
           </button>
         );
       })}
@@ -436,7 +465,7 @@ export default function SchedulePage() {
 
   const renderWeekView = () => {
     const filtered = weekSchedules.filter(schedule => schedule.is_planned === (weekLane === 'planned'));
-    const grouped = groupSchedulesByDate(filtered);
+    const grouped = groupSchedulesByDate(filtered, weekDays);
     return (
       <section className="week-view-card timeline-week-view" style={{ '--week-hour-height': `${WEEK_HOUR_HEIGHT}px` }}>
         <div className="week-view-head">
@@ -471,18 +500,25 @@ export default function SchedulePage() {
             return (
               <div key={dayKey} className="week-timeline-day">
                 {dayItems.length === 0 && <div className="week-timeline-empty">{T.empty}</div>}
-                {dayItems.map(schedule => (
-                  <button
-                    key={schedule.id}
-                    type="button"
-                    className={`week-time-event ${schedule.is_planned ? 'planned' : 'actual'}`}
-                    style={{ ...getWeekEventStyle(schedule), borderLeftColor: projectColor(schedule) }}
-                    onClick={() => openSchedule(schedule, schedule.is_planned ? canEditPlanned : undefined)}
-                  >
-                    <span>{formatTime(schedule.start_time)}-{formatTime(schedule.end_time)}</span>
-                    <strong>{schedule.name}</strong>
-                  </button>
-                ))}
+                {dayItems.map(schedule => {
+                  const segment = getScheduleSegment(schedule, dayKey);
+                  const density = eventDensity(segment?.durationMinutes || 0);
+                  const details = [schedule.location, schedule.notes].filter(Boolean).join(' · ');
+                  return (
+                    <button
+                      key={schedule.id}
+                      type="button"
+                      className={`week-time-event density-${density} ${schedule.is_planned ? 'planned' : 'actual'}`}
+                      style={{ ...getWeekEventStyle(schedule, dayKey), borderLeftColor: projectColor(schedule) }}
+                      title={[schedule.name, segment ? segmentTimeLabel(schedule, segment) : '', details].filter(Boolean).join('\n')}
+                      onClick={() => openSchedule(schedule, schedule.is_planned ? canEditPlanned : undefined)}
+                    >
+                      <strong>{schedule.name}</strong>
+                      {density !== 'compact' && segment && <span>{segmentTimeLabel(schedule, segment)}</span>}
+                      {density === 'detailed' && details && <small>{details}</small>}
+                    </button>
+                  );
+                })}
               </div>
             );
           })}
@@ -493,7 +529,7 @@ export default function SchedulePage() {
 
   const renderMonthView = () => {
     const filtered = monthSchedules.filter(schedule => schedule.is_planned === (monthLane === 'planned'));
-    const grouped = groupSchedulesByDate(filtered);
+    const grouped = groupSchedulesByDate(filtered, monthGridDays);
     return (
       <section className="month-view-card">
         <div className="week-view-head">
@@ -530,7 +566,7 @@ export default function SchedulePage() {
                       style={{ borderLeftColor: projectColor(schedule) }}
                       onClick={() => openSchedule(schedule, schedule.is_planned ? canEditPlanned : undefined)}
                     >
-                      <span>{formatTime(schedule.start_time)}</span>
+                      <span>{getScheduleSegment(schedule, dayKey)?.startsBefore ? '跨天续' : formatTime(schedule.start_time)}</span>
                       <strong>{schedule.name}</strong>
                     </button>
                   ))}
@@ -544,7 +580,7 @@ export default function SchedulePage() {
     );
   };
 
-  const markedDates = new Set(weekSchedules.map(s => getDateStr(parseAsLocal(s.start_time))));
+  const markedDates = new Set(Object.keys(groupSchedulesByDate(weekSchedules, weekDays)));
   const isToday = dateStr === todayStr();
 
   return (

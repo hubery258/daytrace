@@ -46,3 +46,4 @@ Thumbs.db
 /.jdk-21/
 /.gradle-cache/
 /.android-avd/
+/.codex-patch-tool/

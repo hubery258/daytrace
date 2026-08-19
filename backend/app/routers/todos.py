@@ -39,6 +39,14 @@ async def list_ddl_near(db: AsyncSession = Depends(get_db)):
     return await crud.get_ddl_near_todos(db)
 
 
+@router.post("/{todo_id}/complete", response_model=schemas.TodoOut)
+async def complete_todo(todo_id: int, data: schemas.TodoCompleteRequest, db: AsyncSession = Depends(get_db)):
+    todo = await crud.complete_todo_and_log(db, todo_id, data.log_date)
+    if not todo:
+        raise HTTPException(status_code=404, detail="待办不存在")
+    return todo
+
+
 @router.get("/{todo_id}", response_model=schemas.TodoOut)
 async def get_todo(todo_id: int, db: AsyncSession = Depends(get_db)):
     todo = await crud.get_todo(db, todo_id)

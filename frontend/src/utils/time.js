@@ -1,7 +1,11 @@
+import { readDisplayPreferences } from './displayPreferences';
+
 /**
  * 将 datetime-local 输入值转为后端可接收的 ISO 字符串。
  * 不携带时区信息，后端当作本地时间（北京时间）直接存储和返回。
  */
+export const BEIJING_TIME_ZONE = 'Asia/Shanghai';
+
 export function toLocalISO(datetimeLocalValue) {
   if (!datetimeLocalValue) return null;
   return datetimeLocalValue + ':00';
@@ -24,11 +28,32 @@ export function parseAsLocal(datetimeStr) {
  * 获取今天的日期字符串 YYYY-MM-DD（北京时间）。
  */
 export function todayStr() {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: BEIJING_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+export function addDays(dateStr, days) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+
+export function dateStrInBeijing(datetimeStr) {
+  if (!datetimeStr) return todayStr();
+  if (!/(?:Z|[+-]\d{2}:\d{2})$/i.test(datetimeStr)) return datetimeStr.slice(0, 10);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: BEIJING_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(parseAsLocal(datetimeStr));
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 /**
@@ -36,7 +61,12 @@ export function todayStr() {
  */
 export function formatTime(datetimeStr) {
   const d = parseAsLocal(datetimeStr);
-  return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString('zh-CN', {
+    timeZone: BEIJING_TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: readDisplayPreferences().timeFormat === '12h',
+  });
 }
 
 /**
@@ -44,7 +74,7 @@ export function formatTime(datetimeStr) {
  */
 export function formatDate(datetimeStr) {
   const d = parseAsLocal(datetimeStr);
-  return d.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
+  return d.toLocaleDateString('zh-CN', { timeZone: BEIJING_TIME_ZONE, month: 'long', day: 'numeric', weekday: 'short' });
 }
 
 /**

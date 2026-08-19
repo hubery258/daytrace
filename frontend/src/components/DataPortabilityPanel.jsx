@@ -9,14 +9,42 @@ const entityLabels = {
   log_templates: '日志模板', timer_sessions: '计时会话', recurrence_rules: '重复规则',
 };
 
-function fileName() {
-  return `riji-backup-${new Date().toISOString().slice(0, 10)}.json`;
+function fileName(prefix = 'backup') {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  return `riji-${prefix}-${stamp}.json`;
+}
+
+async function savePackage(pack, prefix = 'backup', shareAfterSave = true) {
+  const json = JSON.stringify(pack, null, 2);
+  const name = fileName(prefix);
+  if (Capacitor.isNativePlatform()) {
+    const path = shareAfterSave ? name : `日迹/${name}`;
+    const saved = await Filesystem.writeFile({
+      path,
+      data: json,
+      directory: shareAfterSave ? Directory.Cache : Directory.Documents,
+      encoding: Encoding.UTF8,
+      recursive: true,
+    });
+    if (shareAfterSave) {
+      await Share.share({ title: '导出日迹数据', text: '日迹 JSON 数据包', files: [saved.uri], dialogTitle: '保存或分享数据包' });
+    }
+    return saved.uri;
+  }
+  const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = name;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  return name;
 }
 
 export default function DataPortabilityPanel() {
   const inputRef = useRef(null);
   const [pendingPackage, setPendingPackage] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [mode, setMode] = useState('merge');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -27,17 +55,7 @@ export default function DataPortabilityPanel() {
     clearFeedback(); setBusy(true);
     try {
       const pack = await dataApi.export();
-      const json = JSON.stringify(pack, null, 2);
-      const name = fileName();
-      if (Capacitor.isNativePlatform()) {
-        const saved = await Filesystem.writeFile({ path: name, data: json, directory: Directory.Cache, encoding: Encoding.UTF8 });
-        await Share.share({ title: '导出日迹数据', text: '日迹 JSON 数据包', files: [saved.uri], dialogTitle: '保存或分享数据包' });
-      } else {
-        const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
-        const anchor = document.createElement('a');
-        anchor.href = url; anchor.download = name; anchor.click();
-        URL.revokeObjectURL(url);
-      }
+      await savePackage(pack);
       setMessage('数据包已生成。导出不包含 AI API Key、ZJU 密码、Cookie、Session 或 token。');
     } catch (err) { setError(err.message || '导出失败'); }
     finally { setBusy(false); }
@@ -51,7 +69,7 @@ export default function DataPortabilityPanel() {
     setBusy(true);
     try {
       const pack = JSON.parse(await file.text());
-      const nextPreview = await dataApi.previewImport(pack);
+      const nextPreview = await dataApi.previewImport(pack, mode);
       setPendingPackage(pack); setPreview(nextPreview);
     } catch (err) { setError(err instanceof SyntaxError ? '文件不是有效 JSON。' : (err.message || '无法预览数据包')); }
     finally { setBusy(false); }
@@ -59,13 +77,23 @@ export default function DataPortabilityPanel() {
 
   const handleImport = async () => {
     if (!pendingPackage || !preview) return;
-    if (!window.confirm('确认合并导入？相同 UUID 的本地实体会被数据包内容覆盖；未出现在包中的本地数据会保留。')) return;
+    const updated = Object.values(preview.entities).reduce((sum, item) => sum + item.update, 0);
+    const confirmation = mode === 'replace'
+      ? `确认完整恢复？将新增 ${preview.total - updated} 条、覆盖 ${updated} 条，并删除 ${preview.delete_total || 0} 条本地数据。恢复前会先自动保存当前数据。`
+      : '确认合并导入？相同 UUID 的本地实体会被数据包内容覆盖；未出现在包中的本地数据会保留。';
+    if (!window.confirm(confirmation)) return;
     clearFeedback(); setBusy(true);
     try {
-      const result = await dataApi.import(pendingPackage);
-      setMessage(`导入完成：新增 ${result.created} 条，更新 ${result.updated} 条。刷新页面后可查看全部数据。`);
+      let safetyLocation = '';
+      if (mode === 'replace') {
+        safetyLocation = await savePackage(await dataApi.export(), 'before-restore', false);
+      }
+      const result = await dataApi.import(pendingPackage, mode);
+      setMessage(mode === 'replace'
+        ? `完整恢复完成：新增 ${result.created} 条，更新 ${result.updated} 条，删除 ${result.deleted} 条。恢复前备份：${safetyLocation}`
+        : `导入完成：新增 ${result.created} 条，更新 ${result.updated} 条。刷新页面后可查看全部数据。`);
       setPendingPackage(null); setPreview(null);
-    } catch (err) { setError(err.message || '导入失败，数据库未更改'); }
+    } catch (err) { setError(`导入失败，数据库已回滚且未删除本地数据：${err.message || '未知错误'}`); }
     finally { setBusy(false); }
   };
 
@@ -73,8 +101,20 @@ export default function DataPortabilityPanel() {
     <div className="card">
       <div className="card-header">数据导入导出</div>
       <p style={{ color: 'var(--text-secondary)', fontSize: '0.86rem', lineHeight: 1.6 }}>
-        JSON 数据包覆盖项目、待办、日程、每日总结、日志模板、计时会话和重复规则。合并以 UUID 为准，导入包内容优先。
+        JSON 数据包覆盖项目、待办、日程、每日总结、日志模板、计时会话和重复规则。合并导入保留包外数据；完整恢复会先在本机保存当前数据，再将核心数据替换为数据包内容。
       </p>
+      <div className="form-group" style={{ maxWidth: 420 }}>
+        <label htmlFor="import-mode">导入模式</label>
+        <select
+          id="import-mode"
+          value={mode}
+          disabled={busy}
+          onChange={event => { setMode(event.target.value); setPendingPackage(null); setPreview(null); clearFeedback(); }}
+        >
+          <option value="merge">合并导入（不删除本地数据）</option>
+          <option value="replace">完整恢复（删除数据包中不存在的数据）</option>
+        </select>
+      </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         <button className="btn btn-secondary" disabled={busy} onClick={handleExport}>导出 JSON</button>
         <button className="btn btn-secondary" disabled={busy} onClick={() => inputRef.current?.click()}>选择 JSON 导入</button>
@@ -87,11 +127,14 @@ export default function DataPortabilityPanel() {
             {Object.entries(preview.entities).map(([name, counts]) => (
               <div key={name} className="data-preview-item">
                 <strong>{entityLabels[name] || name}</strong>
-                <span>新增 {counts.create} · 更新 {counts.update}</span>
+                <span>新增 {counts.create} · 更新 {counts.update}{mode === 'replace' ? ` · 删除 ${counts.delete}` : ''}</span>
               </div>
             ))}
           </div>
-          <button className="btn btn-primary" disabled={busy} onClick={handleImport} style={{ marginTop: 12 }}>确认合并导入</button>
+          {mode === 'replace' && <div className="notice notice-error" style={{ marginTop: 12 }}>完整恢复将删除共 {preview.delete_total || 0} 条包外数据。恢复前备份只会保存到本机。</div>}
+          <button className={mode === 'replace' ? 'btn btn-danger' : 'btn btn-primary'} disabled={busy} onClick={handleImport} style={{ marginTop: 12 }}>
+            {mode === 'replace' ? '确认完整恢复' : '确认合并导入'}
+          </button>
         </div>
       )}
       {busy && <div style={{ marginTop: 10, color: 'var(--text-secondary)' }}>正在处理…</div>}

@@ -281,6 +281,16 @@ body {
   margin-bottom: 16px;
 }
 
+.confirm-dialog {
+  max-width: 440px;
+}
+
+.confirm-dialog p {
+  color: var(--text-secondary);
+  line-height: 1.65;
+  margin-bottom: 20px;
+}
+
 /* ===== Forms ===== */
 .form-group {
   margin-bottom: 16px;
@@ -490,6 +500,35 @@ body {
   text-align: left;
   cursor: pointer;
   transition: transform 0.12s, box-shadow 0.12s;
+}
+
+.preference-datetime-input,
+.preference-time-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preference-datetime-input > input {
+  flex: 1 1 180px;
+}
+
+.preference-time-input > select {
+  width: auto;
+  min-width: 68px;
+}
+
+.preference-datetime-input .preference-time-input {
+  flex: 0 0 auto;
+}
+
+.timeline-lane .event.density-compact {
+  justify-content: center;
+  padding: 2px 8px;
+}
+
+.timeline-lane .event.density-medium {
+  padding: 3px 8px;
 }
 
 .timeline-lane.planned .event {
@@ -1455,6 +1494,15 @@ body {
   line-height: 1.2;
 }
 
+.week-time-event.density-compact {
+  justify-content: center;
+  padding: 2px 5px;
+}
+
+.week-time-event.density-medium {
+  padding: 3px 5px;
+}
+
 .week-time-event.actual {
   border-color: #bbf7d0;
   background: #dcfce7;
@@ -1462,7 +1510,8 @@ body {
 }
 
 .week-time-event span,
-.week-time-event strong {
+.week-time-event strong,
+.week-time-event small {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1476,6 +1525,11 @@ body {
 
 .week-time-event strong {
   font-size: 0.76rem;
+}
+
+.week-time-event small {
+  font-size: 0.64rem;
+  opacity: 0.7;
 }
 
 .month-view-card {

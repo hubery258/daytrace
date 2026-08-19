@@ -73,6 +73,7 @@ class ProjectOverview(BaseModel):
 
 class TodoCreate(BaseModel):
     project_id: Optional[int] = None
+    position: Optional[int] = Field(None, ge=0)
     name: str = Field(..., min_length=1, max_length=200)
     ddl_type: DDLType = DDLType.none
     ddl_date: Optional[datetime] = None
@@ -114,6 +115,7 @@ class TodoCreate(BaseModel):
 
 class TodoUpdate(BaseModel):
     project_id: Optional[int] = None
+    position: Optional[int] = Field(None, ge=0)
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     ddl_type: Optional[DDLType] = None
     ddl_date: Optional[datetime] = None
@@ -140,10 +142,15 @@ class TodoUpdate(BaseModel):
         return self
 
 
+class TodoCompleteRequest(BaseModel):
+    log_date: date
+
+
 class TodoOut(BaseModel):
     id: int
     uuid: str
     project_id: Optional[int] = None
+    position: Optional[int] = None
     name: str
     ddl_type: DDLType
     ddl_date: Optional[datetime] = None

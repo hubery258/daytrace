@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { projectApi, timerApi, todoApi } from '../api/client';
 import ScheduleModal from '../components/ScheduleModal';
-import { parseAsLocal } from '../utils/time';
+import { BEIJING_TIME_ZONE, parseAsLocal } from '../utils/time';
 
 function pad(n) {
   return String(n).padStart(2, '0');
@@ -32,7 +32,7 @@ function toDateTimeLocal(value) {
 
 function formatDateTime(value) {
   if (!value) return '';
-  return parseAsLocal(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return parseAsLocal(value).toLocaleString('zh-CN', { timeZone: BEIJING_TIME_ZONE, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
 export default function TimerPage() {
@@ -42,7 +42,12 @@ export default function TimerPage() {
   const [todos, setTodos] = useState([]);
   const [nowTick, setNowTick] = useState(Date.now());
   const [finishTimer, setFinishTimer] = useState(null);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [form, setForm] = useState({ name: '', project_id: '', linked_todo_id: '', notes: '' });
+  const timerNameInputRef = useRef(null);
+  const cancelButtonRef = useRef(null);
+  const restoreInputAfterCancelRef = useRef(false);
 
   const loadTimer = useCallback(async () => {
     const current = await timerApi.current();
@@ -66,6 +71,16 @@ export default function TimerPage() {
     return () => window.clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    if (timer || actionBusy || !restoreInputAfterCancelRef.current) return undefined;
+    restoreInputAfterCancelRef.current = false;
+    const frame = window.requestAnimationFrame(() => {
+      window.focus();
+      timerNameInputRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [timer, actionBusy]);
+
   const elapsed = useMemo(() => {
     nowTick;
     return computeElapsed(timer);
@@ -73,6 +88,8 @@ export default function TimerPage() {
 
   const handleStart = async (e) => {
     e.preventDefault();
+    if (actionBusy) return;
+    setActionBusy(true);
     try {
       const started = await timerApi.start({
         name: form.name,
@@ -84,23 +101,49 @@ export default function TimerPage() {
       setForm({ name: '', project_id: '', linked_todo_id: '', notes: '' });
     } catch (err) {
       alert('开始计时失败：' + err.message);
+    } finally {
+      await loadTimer().catch(err => console.error('刷新当前计时失败', err));
+      setActionBusy(false);
     }
   };
 
   const refreshAfterAction = async (action) => {
+    if (actionBusy) return;
+    setActionBusy(true);
+    let updated = null;
     try {
-      const updated = await action();
-      setTimer(updated.status === 'running' || updated.status === 'paused' ? updated : null);
+      updated = await action();
       if (updated.status === 'completed') setFinishTimer(updated);
-      await loadRecent();
     } catch (err) {
       alert('操作失败：' + err.message);
+    } finally {
+      const results = await Promise.allSettled([loadTimer(), loadRecent()]);
+      results.forEach(result => {
+        if (result.status === 'rejected') console.error('刷新计时状态失败', result.reason);
+      });
+      setActionBusy(false);
     }
+    return updated;
   };
 
-  const handleCancel = async () => {
-    if (!window.confirm('取消后不会生成实际记录，确定取消这次计时吗？')) return;
-    await refreshAfterAction(timerApi.cancel);
+  const handleCancel = () => {
+    if (actionBusy) return;
+    setShowCancelConfirm(true);
+  };
+
+  const closeCancelConfirm = () => {
+    setShowCancelConfirm(false);
+    window.requestAnimationFrame(() => cancelButtonRef.current?.focus({ preventScroll: true }));
+  };
+
+  const confirmCancel = async () => {
+    setShowCancelConfirm(false);
+    restoreInputAfterCancelRef.current = true;
+    const canceled = await refreshAfterAction(timerApi.cancel);
+    if (!canceled) {
+      restoreInputAfterCancelRef.current = false;
+      window.requestAnimationFrame(() => cancelButtonRef.current?.focus({ preventScroll: true }));
+    }
   };
 
   const finishPrefill = finishTimer ? {
@@ -134,19 +177,19 @@ export default function TimerPage() {
             </div>
             <div className="timer-actions">
               {timer.status === 'running' ? (
-                <button className="btn btn-secondary" onClick={() => refreshAfterAction(timerApi.pause)}>暂停</button>
+                <button className="btn btn-secondary" disabled={actionBusy} onClick={() => refreshAfterAction(timerApi.pause)}>暂停</button>
               ) : (
-                <button className="btn btn-primary" onClick={() => refreshAfterAction(timerApi.resume)}>继续</button>
+                <button className="btn btn-primary" disabled={actionBusy} onClick={() => refreshAfterAction(timerApi.resume)}>继续</button>
               )}
-              <button className="btn btn-primary" onClick={() => refreshAfterAction(timerApi.finish)}>结束</button>
-              <button className="btn btn-danger" onClick={handleCancel}>取消</button>
+              <button className="btn btn-primary" disabled={actionBusy} onClick={() => refreshAfterAction(timerApi.finish)}>结束</button>
+              <button ref={cancelButtonRef} type="button" className="btn btn-danger" disabled={actionBusy} onClick={handleCancel}>取消</button>
             </div>
           </div>
         ) : (
           <form className="timer-start-form" onSubmit={handleStart}>
             <div className="form-group">
               <label>事项名称 *</label>
-              <input value={form.name} onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))} required placeholder="正在做什么？" />
+              <input ref={timerNameInputRef} value={form.name} onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))} required placeholder="正在做什么？" />
             </div>
             <div className="form-group">
               <label>所属项目</label>
@@ -166,7 +209,7 @@ export default function TimerPage() {
               <label>备注</label>
               <textarea value={form.notes} onChange={e => setForm(prev => ({ ...prev, notes: e.target.value }))} placeholder="可选备注" />
             </div>
-            <button className="btn btn-primary" type="submit">开始计时</button>
+            <button className="btn btn-primary" type="submit" disabled={actionBusy}>开始计时</button>
           </form>
         )}
       </section>
@@ -180,6 +223,28 @@ export default function TimerPage() {
           </div>
         ))}
       </section>
+
+      {showCancelConfirm && (
+        <div className="modal-overlay" onClick={closeCancelConfirm}>
+          <div
+            className="modal-content confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cancel-timer-title"
+            onClick={event => event.stopPropagation()}
+            onKeyDown={event => {
+              if (event.key === 'Escape') closeCancelConfirm();
+            }}
+          >
+            <h2 id="cancel-timer-title">取消本次计时？</h2>
+            <p>取消后不会生成实际记录，已经记录的计时时长也不会保留。</p>
+            <div className="form-actions">
+              <button type="button" className="btn btn-secondary" autoFocus onClick={closeCancelConfirm}>继续计时</button>
+              <button type="button" className="btn btn-danger" onClick={confirmCancel}>确认取消</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {finishPrefill && (
         <ScheduleModal

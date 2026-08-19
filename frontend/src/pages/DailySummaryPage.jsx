@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { logApi, templateApi, todoApi, scheduleApi, projectApi } from '../api/client';
-import { todayStr, formatTime } from '../utils/time';
+import { addDays, dateStrInBeijing, todayStr, formatTime } from '../utils/time';
 import { callChatCompletion } from '../ai/aiClient';
 import { parseAiDraftResponse, parseAiQuestionsResponse } from '../ai/aiDraftParser';
 import {
@@ -19,12 +19,6 @@ const STORAGE_KEY_API_KEY = 'simpletasker_api_key';
 const STORAGE_KEY_PROMPT = 'simpletasker_ai_prompt';
 
 const DEFAULT_PROMPT = `你是一位个人效率助手。请根据用户提供的今日待办、日程和日志，生成温和、具体、可执行的效率分析和明日建议，控制在 300-500 字左右。`;
-
-function addDays(dateString, days) {
-  const date = new Date(dateString + 'T00:00:00');
-  date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
-}
 
 export default function DailySummaryPage() {
   const [log, setLog] = useState(null);
@@ -113,19 +107,26 @@ export default function DailySummaryPage() {
 
   const getDailyContext = async () => {
     const tomorrow = addDays(selectedDate, 1);
+    const nextDay = addDays(tomorrow, 1);
     const [{ todos, projectData }, todaySchedules, tomorrowSchedules] = await Promise.all([
       loadContext(),
-      scheduleApi.list({ date_from: `${selectedDate}T00:00:00`, date_to: `${selectedDate}T23:59:59` }).catch(() => []),
-      scheduleApi.list({ date_from: `${tomorrow}T00:00:00`, date_to: `${tomorrow}T23:59:59` }).catch(() => []),
+      scheduleApi.list({ date_from: `${selectedDate}T00:00:00`, date_to: `${tomorrow}T00:00:00` }).catch(() => []),
+      scheduleApi.list({ date_from: `${tomorrow}T00:00:00`, date_to: `${nextDay}T00:00:00` }).catch(() => []),
     ]);
-    const completedTodoObjects = completedTodos.map(id => todos.find(todo => Number(todo.id) === Number(id))).filter(Boolean);
+    const completedIds = new Set(completedTodos.map(Number));
+    todos.forEach(todo => {
+      if (todo.is_completed && todo.completed_at && dateStrInBeijing(todo.completed_at) === selectedDate) {
+        completedIds.add(Number(todo.id));
+      }
+    });
+    const completedTodoObjects = Array.from(completedIds).map(id => todos.find(todo => Number(todo.id) === id)).filter(Boolean);
     const pendingTodos = todos.filter(todo => !todo.is_completed);
     return { todos, projectData, todaySchedules, tomorrowSchedules, completedTodoObjects, pendingTodos };
   };
 
   const handleSave = async () => {
     try {
-      await logApi.upsert({ log_date: selectedDate, completed_todo_ids: completedTodos, log_text: logText });
+      await logApi.upsert({ log_date: selectedDate, completed_todo_ids: visibleCompletedIds, log_text: logText });
       alert('已保存');
     } catch (err) {
       alert('保存失败：' + err.message);
@@ -241,6 +242,12 @@ export default function DailySummaryPage() {
 
   const isToday = selectedDate === TODAY;
   const hasApiKey = !!localStorage.getItem(STORAGE_KEY_API_KEY);
+  const visibleCompletedIds = Array.from(new Set([
+    ...completedTodos.map(Number),
+    ...allTodos
+      .filter(todo => todo.is_completed && todo.completed_at && dateStrInBeijing(todo.completed_at) === selectedDate)
+      .map(todo => Number(todo.id)),
+  ]));
 
   return (
     <div className="summary-layout">
@@ -289,7 +296,7 @@ export default function DailySummaryPage() {
 
       <div className="completed-list">
         <h3>今日完成待办</h3>
-        {loading ? <div className="hint-line">加载中...</div> : completedTodos.length === 0 ? <div className="hint-line">暂无完成的待办。</div> : completedTodos.map((id, index) => {
+        {loading ? <div className="hint-line">加载中...</div> : visibleCompletedIds.length === 0 ? <div className="hint-line">暂无完成的待办。</div> : visibleCompletedIds.map((id, index) => {
           const todo = allTodos.find(t => Number(t.id) === Number(id));
           return <div key={index} style={{ padding: '4px 0', fontSize: '0.9rem' }}>{todo ? todo.name : `待办 #${id}`}</div>;
         })}

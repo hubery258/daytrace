@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, date, timedelta, timezone
 from typing import Optional, List
 from sqlalchemy import select, and_, or_, update
@@ -7,6 +8,25 @@ from . import models, schemas
 
 def beijing_now() -> datetime:
     return datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None)
+
+
+_daily_log_lock = asyncio.Lock()
+
+
+def _next_todo(todos: List[models.Todo]) -> Optional[models.Todo]:
+    incomplete = [todo for todo in todos if not todo.is_completed]
+    return min(
+        incomplete,
+        key=lambda todo: (
+            todo.position is None,
+            todo.position if todo.position is not None else 0,
+            todo.ddl_date is None,
+            todo.ddl_date or datetime.max,
+            todo.created_at or datetime.max,
+            todo.id or 0,
+        ),
+        default=None,
+    )
 
 
 # ============ Project CRUD ============
@@ -19,7 +39,7 @@ async def _attach_project_overview_fields(db: AsyncSession, project: models.Proj
     project.todo_count = todo_count
     project.completed_todo_count = completed_todo_count
     project.progress = (completed_todo_count / todo_count) if todo_count else None
-    project.next_todo = next((t for t in todos if not t.is_completed), None)
+    project.next_todo = _next_todo(todos)
     project.recent_schedules = schedules[:3]
     return project
 
@@ -106,7 +126,7 @@ async def get_project_overview(db: AsyncSession, project_id: int) -> Optional[di
     todo_count = len(todos)
     completed_todo_count = len([t for t in todos if t.is_completed])
     progress = (completed_todo_count / todo_count) if todo_count else None
-    next_todo = next((t for t in todos if not t.is_completed), None)
+    next_todo = _next_todo(todos)
     recent_schedules = schedules[:3]
     project.todo_count = todo_count
     project.completed_todo_count = completed_todo_count
@@ -155,7 +175,17 @@ async def get_todos(
         stmt = stmt.where(models.Todo.is_completed == is_completed)
     if project_id is not None:
         stmt = stmt.where(models.Todo.project_id == project_id)
-    stmt = stmt.order_by(models.Todo.created_at.desc())
+    if project_id is not None:
+        stmt = stmt.order_by(
+            models.Todo.position.is_(None).asc(),
+            models.Todo.position.asc(),
+            models.Todo.ddl_date.is_(None).asc(),
+            models.Todo.ddl_date.asc(),
+            models.Todo.created_at.asc(),
+            models.Todo.id.asc(),
+        )
+    else:
+        stmt = stmt.order_by(models.Todo.created_at.desc())
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
@@ -194,8 +224,8 @@ async def update_todo(db: AsyncSession, todo_id: int, data: schemas.TodoUpdate) 
     if not todo:
         return None
     update_data = data.model_dump(exclude_unset=True)
-    if "is_completed" in update_data and update_data["is_completed"]:
-        update_data["completed_at"] = datetime.now()
+    if "is_completed" in update_data:
+        update_data["completed_at"] = beijing_now() if update_data["is_completed"] else None
     edited_fields = set(update_data) - {"is_completed", "completed_at"}
     if todo.recurrence_rule_id and edited_fields:
         update_data["is_recurrence_exception"] = True
@@ -204,6 +234,44 @@ async def update_todo(db: AsyncSession, todo_id: int, data: schemas.TodoUpdate) 
     await db.commit()
     await db.refresh(todo)
     return todo
+
+
+async def complete_todo_and_log(
+    db: AsyncSession,
+    todo_id: int,
+    log_date: date,
+) -> Optional[models.Todo]:
+    """Complete a todo and add it to the selected daily log in one transaction."""
+    async with _daily_log_lock:
+        todo = await get_todo(db, todo_id)
+        if not todo:
+            return None
+
+        if not todo.is_completed:
+            todo.is_completed = True
+            todo.completed_at = beijing_now()
+
+        log = await get_daily_log_by_date(db, log_date)
+        if log:
+            completed_ids = list(log.completed_todo_ids or [])
+            if todo.id not in completed_ids:
+                completed_ids.append(todo.id)
+                log.completed_todo_ids = completed_ids
+            log.updated_at = beijing_now()
+        else:
+            db.add(models.DailyLog(
+                log_date=log_date,
+                completed_todo_ids=[todo.id],
+                log_text="",
+            ))
+
+        try:
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+        await db.refresh(todo)
+        return todo
 
 async def delete_todo(db: AsyncSession, todo_id: int) -> bool:
     todo = await get_todo(db, todo_id)
@@ -245,9 +313,9 @@ async def get_schedules(
     if is_planned is not None:
         stmt = stmt.where(models.Schedule.is_planned == is_planned)
     if date_from:
-        stmt = stmt.where(models.Schedule.start_time >= date_from)
+        stmt = stmt.where(models.Schedule.end_time > date_from)
     if date_to:
-        stmt = stmt.where(models.Schedule.end_time <= date_to)
+        stmt = stmt.where(models.Schedule.start_time < date_to)
     if project_id is not None:
         stmt = stmt.where(models.Schedule.project_id == project_id)
     stmt = stmt.order_by(models.Schedule.start_time.asc())
@@ -277,11 +345,11 @@ async def get_overlapping_schedules(
 
 async def get_current_schedule(db: AsyncSession) -> Optional[models.Schedule]:
     """Get the schedule that is currently active (start <= now <= end)."""
-    now = datetime.now()
+    now = beijing_now()
     result = await db.execute(
         select(models.Schedule).where(
             models.Schedule.start_time <= now,
-            models.Schedule.end_time >= now,
+            models.Schedule.end_time > now,
         ).order_by(models.Schedule.start_time.asc()).limit(1)
     )
     return result.scalar_one_or_none()
@@ -428,19 +496,23 @@ async def get_recent_timers(db: AsyncSession, limit: int = 10) -> List[models.Ti
 # ============ DailyLog CRUD ============
 
 async def upsert_daily_log(db: AsyncSession, data: schemas.DailyLogCreate) -> models.DailyLog:
-    existing = await get_daily_log_by_date(db, data.log_date)
-    if existing:
-        existing.completed_todo_ids = data.completed_todo_ids
-        existing.log_text = data.log_text
-        existing.updated_at = datetime.now()
+    async with _daily_log_lock:
+        existing = await get_daily_log_by_date(db, data.log_date)
+        if existing:
+            existing.completed_todo_ids = list(dict.fromkeys([
+                *(existing.completed_todo_ids or []),
+                *data.completed_todo_ids,
+            ]))
+            existing.log_text = data.log_text
+            existing.updated_at = beijing_now()
+            await db.commit()
+            await db.refresh(existing)
+            return existing
+        log = models.DailyLog(**data.model_dump())
+        db.add(log)
         await db.commit()
-        await db.refresh(existing)
-        return existing
-    log = models.DailyLog(**data.model_dump())
-    db.add(log)
-    await db.commit()
-    await db.refresh(log)
-    return log
+        await db.refresh(log)
+        return log
 
 
 async def get_daily_log_by_date(db: AsyncSession, log_date: date) -> Optional[models.DailyLog]:
@@ -732,6 +804,7 @@ async def generate_recurrence_instances(db: AsyncSession, data: schemas.Recurren
     return {"created_todo_ids": created_todo_ids, "created_schedule_ids": created_schedule_ids}
 TODO_TEMPLATE_FIELDS = {
     "name",
+    "position",
     "ddl_type",
     "ddl_date",
     "reminder_days",
@@ -758,6 +831,7 @@ SCHEDULE_TEMPLATE_FIELDS = {
 def _apply_todo_generated_values(target: models.Todo, generated: models.Todo):
     fields = [
         "project_id",
+        "position",
         "name",
         "ddl_type",
         "ddl_date",

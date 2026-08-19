@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS recurrence_rules (
 );
 CREATE TABLE IF NOT EXISTS todos (
   id INTEGER PRIMARY KEY AUTOINCREMENT, uuid TEXT NOT NULL UNIQUE, project_id INTEGER,
+  position INTEGER,
   recurrence_rule_id INTEGER, recurrence_date TEXT, is_recurrence_exception INTEGER NOT NULL DEFAULT 0,
   name TEXT NOT NULL, ddl_type TEXT NOT NULL DEFAULT 'none', ddl_date TEXT, reminder_days INTEGER,
   category TEXT NOT NULL DEFAULT '任务', status TEXT NOT NULL DEFAULT 'not_focusing',
@@ -59,7 +60,7 @@ const booleanColumns = new Set(['is_recurrence_exception', 'is_completed', 'is_p
 const entitySpecs = {
   projects: ['name', 'description', 'status', 'ddl_date', 'color', 'completed_at', 'archived_at', 'created_at', 'updated_at'],
   recurrence_rules: ['entity_type', 'template_json', 'frequency', 'start_date', 'end_date', 'weekdays', 'month_day', 'status', 'created_at', 'updated_at'],
-  todos: ['name', 'ddl_type', 'ddl_date', 'reminder_days', 'category', 'status', 'waiting_reply_person', 'notes', 'is_completed', 'completed_at', 'recurrence_date', 'is_recurrence_exception', 'created_at', 'updated_at'],
+  todos: ['name', 'position', 'ddl_type', 'ddl_date', 'reminder_days', 'category', 'status', 'waiting_reply_person', 'notes', 'is_completed', 'completed_at', 'recurrence_date', 'is_recurrence_exception', 'created_at', 'updated_at'],
   schedules: ['name', 'start_time', 'end_time', 'category', 'nature', 'relax_suggestion', 'location', 'notes', 'is_planned', 'recurrence_date', 'is_recurrence_exception', 'created_at', 'updated_at'],
   daily_logs: ['log_date', 'log_text', 'created_at', 'updated_at'],
   log_templates: ['name', 'content', 'created_at'],
@@ -79,6 +80,32 @@ function isUuid(value) {
 
 function now() {
   return new Date().toISOString();
+}
+
+function beijingNow() {
+  return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().replace(/Z$/, '');
+}
+
+function parseDateTime(value) {
+  if (!value) return new Date(Number.NaN);
+  const text = String(value);
+  if (/(?:Z|[+-]\d{2}:\d{2})$/i.test(text)) return new Date(text);
+  return new Date(`${text.length === 10 ? `${text}T00:00:00` : text}+08:00`);
+}
+
+function compareTodoPriority(left, right) {
+  if (left.position != null || right.position != null) {
+    if (left.position == null) return 1;
+    if (right.position == null) return -1;
+    const positionDifference = Number(left.position) - Number(right.position);
+    if (positionDifference) return positionDifference;
+  }
+  if (left.ddl_date && right.ddl_date) {
+    const ddlDifference = parseDateTime(left.ddl_date) - parseDateTime(right.ddl_date);
+    if (ddlDifference) return ddlDifference;
+  } else if (left.ddl_date) return -1;
+  else if (right.ddl_date) return 1;
+  return String(left.created_at).localeCompare(String(right.created_at)) || Number(left.id) - Number(right.id);
 }
 
 function uuid() {
@@ -102,6 +129,10 @@ async function getDatabase() {
       }
       await db.open();
       await db.execute(schema);
+      const todoColumns = await db.query('PRAGMA table_info(todos)');
+      if (!(todoColumns.values || []).some(column => column.name === 'position')) {
+        await db.execute('ALTER TABLE todos ADD COLUMN position INTEGER');
+      }
       return db;
     })();
   }
@@ -139,14 +170,14 @@ function normalizeRow(table, row) {
 
 function ddlNear(todo, type) {
   if (todo.ddl_type !== type || !todo.ddl_date || todo.reminder_days == null || todo.is_completed) return false;
-  return new Date(todo.ddl_date).getTime() - Date.now() <= Number(todo.reminder_days) * 86400000;
+  return parseDateTime(todo.ddl_date).getTime() - Date.now() <= Number(todo.reminder_days) * 86400000;
 }
 
 function elapsedSeconds(timer) {
-  const end = timer.ended_at ? new Date(timer.ended_at) : new Date();
+  const end = timer.ended_at ? parseDateTime(timer.ended_at) : new Date();
   let paused = Number(timer.paused_seconds || 0);
-  if (timer.status === 'paused' && timer.paused_at) paused += Math.max(0, (end - new Date(timer.paused_at)) / 1000);
-  return Math.max(0, Math.floor((end - new Date(timer.started_at)) / 1000 - paused));
+  if (timer.status === 'paused' && timer.paused_at) paused += Math.max(0, (end - parseDateTime(timer.paused_at)) / 1000);
+  return Math.max(0, Math.floor((end - parseDateTime(timer.started_at)) / 1000 - paused));
 }
 
 async function rows(table, where = '', values = [], order = 'id ASC') {
@@ -186,19 +217,22 @@ async function update(table, id, data, transaction = true) {
 
 function projectOutput(project, todos = [], schedules = []) {
   const completed = todos.filter((item) => item.is_completed).length;
+  const nextTodo = todos
+    .filter((item) => !item.is_completed)
+    .sort(compareTodoPriority)[0] || null;
   return {
     ...project,
     todo_count: todos.length,
     completed_todo_count: completed,
     progress: todos.length ? completed / todos.length : null,
-    next_todo: todos.find((item) => !item.is_completed) || null,
+    next_todo: nextTodo,
     recent_schedules: schedules.slice(0, 3),
   };
 }
 
 async function projectWithOverview(project) {
   if (!project) return null;
-  const todos = await rows('todos', 'project_id = ?', [project.id], 'created_at DESC');
+  const todos = (await rows('todos', 'project_id = ?', [project.id], 'created_at DESC')).sort(compareTodoPriority);
   const schedules = await rows('schedules', 'project_id = ?', [project.id], 'start_time DESC');
   return projectOutput(project, todos, schedules);
 }
@@ -227,7 +261,7 @@ async function projectsRequest(method, pathname, params, body) {
   if (!current) throw new Error('项目不存在');
   if (method === 'GET' && pathname.endsWith('/overview')) {
     const project = await projectWithOverview(current);
-    const todos = await rows('todos', 'project_id = ?', [id], 'created_at DESC');
+    const todos = (await rows('todos', 'project_id = ?', [id], 'created_at DESC')).sort(compareTodoPriority);
     const schedules = await rows('schedules', 'project_id = ?', [id], 'start_time ASC');
     return { project, todos, schedules, progress: project.progress, todo_count: project.todo_count, completed_todo_count: project.completed_todo_count, next_todo: project.next_todo, recent_schedules: project.recent_schedules };
   }
@@ -285,11 +319,40 @@ async function todosRequest(method, pathname, params, body) {
     const stamp = now();
     return insert('todos', {
       uuid: uuid(), project_id: data.project_id ?? null, recurrence_rule_id: null, recurrence_date: null,
+      position: data.position ?? null,
       is_recurrence_exception: false, name: data.name, ddl_type: data.ddl_type || 'none', ddl_date: data.ddl_date || null,
       reminder_days: data.reminder_days ?? null, category: data.category || '任务', status: data.status || 'not_focusing',
       waiting_reply_person: data.waiting_reply_person || null, notes: data.notes || '', is_completed: false,
       completed_at: null, created_at: stamp, updated_at: stamp,
     });
+  }
+  const completeMatch = pathname.match(/^\/todos\/(\d+)\/complete$/);
+  if (method === 'POST' && completeMatch) {
+    const id = Number(completeMatch[1]);
+    const db = await getDatabase();
+    await db.beginTransaction();
+    try {
+      const current = await one('todos', 'id = ?', [id]);
+      if (!current) throw new Error('待办不存在');
+      const stamp = beijingNow();
+      await update('todos', id, { is_completed: true, completed_at: current.completed_at || stamp, updated_at: stamp }, false);
+
+      const logDate = body.log_date;
+      const log = await one('daily_logs', 'log_date = ?', [logDate]);
+      if (log) {
+        const completedIds = Array.from(new Set([...(log.completed_todo_ids || []), id]));
+        await update('daily_logs', log.id, { completed_todo_ids: completedIds, updated_at: stamp }, false);
+      } else {
+        await insert('daily_logs', {
+          uuid: uuid(), log_date: logDate, completed_todo_ids: [id], log_text: '', created_at: stamp, updated_at: stamp,
+        }, false);
+      }
+      await db.commitTransaction();
+      return one('todos', 'id = ?', [id]);
+    } catch (error) {
+      await db.rollbackTransaction();
+      throw error;
+    }
   }
   const match = pathname.match(/^\/todos\/(\d+)$/);
   if (!match) return undefined;
@@ -310,17 +373,22 @@ async function todosRequest(method, pathname, params, body) {
 
 async function schedulesRequest(method, pathname, params, body) {
   if (method === 'GET' && pathname === '/schedules/current') {
-    const stamp = now();
-    const found = await rows('schedules', 'start_time <= ? AND end_time >= ?', [stamp, stamp], 'start_time ASC');
-    return found[0] || null;
+    const stamp = Date.now();
+    const found = await rows('schedules', '', [], 'start_time ASC');
+    return found.find((item) => parseDateTime(item.start_time).getTime() <= stamp && parseDateTime(item.end_time).getTime() > stamp) || null;
   }
   if (method === 'GET' && (pathname === '/schedules/' || pathname === '/schedules/week/')) {
     const clauses = []; const values = [];
     if (params.has('is_planned')) { clauses.push('is_planned = ?'); values.push(params.get('is_planned') === 'true' ? 1 : 0); }
-    if (params.has('date_from')) { clauses.push('start_time >= ?'); values.push(params.get('date_from')); }
-    if (params.has('date_to')) { clauses.push('end_time <= ?'); values.push(params.get('date_to')); }
     if (params.has('project_id')) { clauses.push('project_id = ?'); values.push(params.get('project_id')); }
-    return rows('schedules', clauses.join(' AND '), values, 'start_time ASC');
+    const found = await rows('schedules', clauses.join(' AND '), values, 'start_time ASC');
+    const dateFrom = params.has('date_from') ? parseDateTime(params.get('date_from')).getTime() : null;
+    const dateTo = params.has('date_to') ? parseDateTime(params.get('date_to')).getTime() : null;
+    return found.filter((item) => {
+      const start = parseDateTime(item.start_time).getTime();
+      const end = parseDateTime(item.end_time).getTime();
+      return (dateFrom == null || end > dateFrom) && (dateTo == null || start < dateTo);
+    });
   }
   if (method === 'POST' && pathname === '/schedules/') {
     if (new Date(body.end_time) <= new Date(body.start_time)) throw new Error('结束时间必须晚于开始时间');
@@ -363,10 +431,76 @@ async function logsRequest(method, pathname, params, body) {
   }
   if (method === 'POST' && pathname === '/logs/') {
     const current = await one('daily_logs', 'log_date = ?', [body.log_date]);
-    if (current) return update('daily_logs', current.id, { completed_todo_ids: body.completed_todo_ids || [], log_text: body.log_text || '', updated_at: now() });
+    if (current) return update('daily_logs', current.id, {
+      completed_todo_ids: Array.from(new Set([...(current.completed_todo_ids || []), ...(body.completed_todo_ids || [])])),
+      log_text: body.log_text || '',
+      updated_at: beijingNow(),
+    });
     const stamp = now();
     return insert('daily_logs', { uuid: uuid(), log_date: body.log_date, completed_todo_ids: body.completed_todo_ids || [], log_text: body.log_text || '', created_at: stamp, updated_at: stamp });
   }
+}
+
+async function getActiveTimer() {
+  const found = await rows('timer_sessions', "status IN ('running', 'paused')", [], 'created_at DESC');
+  return found[0] || null;
+}
+
+async function timerRequest(method, pathname, params, body) {
+  if (method === 'GET' && pathname === '/timer/current') return getActiveTimer();
+  if (method === 'GET' && pathname === '/timer/recent') {
+    const limit = Math.max(1, Math.min(50, Number(params.get('limit') || 10)));
+    const found = await rows('timer_sessions', "status IN ('completed', 'canceled')", [], 'updated_at DESC');
+    return found.slice(0, limit);
+  }
+  if (method === 'POST' && pathname === '/timer/start') {
+    if (await getActiveTimer()) throw new Error('已有进行中的计时');
+    const stamp = beijingNow();
+    return insert('timer_sessions', {
+      uuid: uuid(), name: body.name, status: 'running', project_id: body.project_id ?? null,
+      linked_todo_id: body.linked_todo_id ?? null, started_at: stamp, last_resumed_at: stamp,
+      paused_at: null, paused_seconds: 0, ended_at: null, created_schedule_id: null,
+      notes: body.notes || '', created_at: stamp, updated_at: stamp,
+    });
+  }
+  if (method === 'PUT' && pathname === '/timer/current') {
+    const timer = await getActiveTimer();
+    if (!timer) throw new Error('没有进行中的计时');
+    return update('timer_sessions', timer.id, { ...body, updated_at: beijingNow() });
+  }
+  if (method === 'POST' && ['/timer/pause', '/timer/resume', '/timer/finish', '/timer/cancel'].includes(pathname)) {
+    const timer = await getActiveTimer();
+    if (!timer) throw new Error('没有进行中的计时');
+    const stamp = beijingNow();
+    if (pathname === '/timer/pause') {
+      if (timer.status !== 'running') throw new Error('计时当前不是运行状态');
+      return update('timer_sessions', timer.id, { status: 'paused', paused_at: stamp, updated_at: stamp });
+    }
+    if (pathname === '/timer/resume') {
+      if (timer.status !== 'paused') throw new Error('计时当前不是暂停状态');
+      const pausedSeconds = Number(timer.paused_seconds || 0)
+        + Math.max(0, Math.floor((parseDateTime(stamp) - parseDateTime(timer.paused_at)) / 1000));
+      return update('timer_sessions', timer.id, {
+        status: 'running', last_resumed_at: stamp, paused_at: null, paused_seconds: pausedSeconds, updated_at: stamp,
+      });
+    }
+    let pausedSeconds = Number(timer.paused_seconds || 0);
+    if (timer.status === 'paused' && timer.paused_at) {
+      pausedSeconds += Math.max(0, Math.floor((parseDateTime(stamp) - parseDateTime(timer.paused_at)) / 1000));
+    }
+    return update('timer_sessions', timer.id, {
+      status: pathname === '/timer/finish' ? 'completed' : 'canceled', ended_at: stamp,
+      paused_at: null, paused_seconds: pausedSeconds, updated_at: stamp,
+    });
+  }
+  const attachMatch = pathname.match(/^\/timer\/(\d+)\/schedule$/);
+  if (method === 'POST' && attachMatch) {
+    const timer = await one('timer_sessions', 'id = ?', [Number(attachMatch[1])]);
+    if (!timer) throw new Error('计时记录不存在');
+    if (timer.status !== 'completed') throw new Error('只有已结束计时可以关联日程');
+    return update('timer_sessions', timer.id, { created_schedule_id: body.schedule_id, updated_at: beijingNow() });
+  }
+  return undefined;
 }
 
 async function templatesRequest(method, pathname, body) {
@@ -414,7 +548,7 @@ async function exportData() {
   return { app: 'riji', schema_version: SCHEMA_VERSION, exported_at: now(), entities };
 }
 
-async function previewImport(raw) {
+async function previewImport(raw, mode = 'merge') {
   const pack = assertPackage(raw);
   const entities = {};
   for (const table of entityOrder) {
@@ -422,16 +556,34 @@ async function previewImport(raw) {
     const uuids = new Set(existing.map((item) => item.uuid));
     const dates = table === 'daily_logs' ? new Set(existing.map((item) => item.log_date)) : new Set();
     const total = (pack.entities[table] || []).length;
-    const updateCount = (pack.entities[table] || []).filter((item) => uuids.has(item.uuid) || (table === 'daily_logs' && dates.has(item.log_date))).length;
-    entities[table] = { total, create: total - updateCount, update: updateCount };
+    const incoming = pack.entities[table] || [];
+    const updateCount = incoming.filter((item) => uuids.has(item.uuid) || (table === 'daily_logs' && dates.has(item.log_date))).length;
+    const matchedLocalIds = new Set(existing
+      .filter(local => incoming.some(item => item.uuid === local.uuid || (table === 'daily_logs' && item.log_date === local.log_date)))
+      .map(local => local.id));
+    entities[table] = {
+      total,
+      create: total - updateCount,
+      update: updateCount,
+      delete: mode === 'replace' ? existing.length - matchedLocalIds.size : 0,
+    };
   }
-  return { app: pack.app, schema_version: pack.schema_version, exported_at: pack.exported_at, conflict_policy: 'incoming_package_wins_by_uuid', entities, total: Object.values(entities).reduce((sum, item) => sum + item.total, 0) };
+  return {
+    app: pack.app,
+    schema_version: pack.schema_version,
+    exported_at: pack.exported_at,
+    mode,
+    conflict_policy: mode === 'replace' ? 'replace_local_data' : 'incoming_package_wins_by_uuid',
+    entities,
+    total: Object.values(entities).reduce((sum, item) => sum + item.total, 0),
+    delete_total: Object.values(entities).reduce((sum, item) => sum + item.delete, 0),
+  };
 }
 
-async function importData(raw) {
+async function importData(raw, mode = 'merge') {
   const pack = assertPackage(raw);
   const db = await getDatabase();
-  const result = {}; let created = 0; let updated = 0;
+  const result = {}; let created = 0; let updated = 0; let deleted = 0;
   await db.beginTransaction();
   try {
     for (const table of entityOrder) {
@@ -461,18 +613,28 @@ async function importData(raw) {
     for (const item of pack.entities.schedules || []) await update('schedules', maps.schedules.get(item.uuid), { project_id: resolve('projects', item.project_uuid), recurrence_rule_id: resolve('recurrence_rules', item.recurrence_rule_uuid), linked_todo_ids: (item.linked_todo_uuids || []).map((value) => resolve('todos', value)) }, false);
     for (const item of pack.entities.daily_logs || []) await update('daily_logs', maps.daily_logs.get(item.uuid), { completed_todo_ids: (item.completed_todo_uuids || []).map((value) => resolve('todos', value)) }, false);
     for (const item of pack.entities.timer_sessions || []) await update('timer_sessions', maps.timer_sessions.get(item.uuid), { project_id: resolve('projects', item.project_uuid), linked_todo_id: resolve('todos', item.linked_todo_uuid), created_schedule_id: resolve('schedules', item.created_schedule_uuid) }, false);
+    if (mode === 'replace') {
+      for (const table of [...entityOrder].reverse()) {
+        const keepIds = new Set((pack.entities[table] || []).map(item => maps[table].get(item.uuid)).filter(Boolean));
+        const removeIds = (await rows(table)).map(item => item.id).filter(id => !keepIds.has(id));
+        if (removeIds.length) {
+          await run(`DELETE FROM ${table} WHERE id IN (${removeIds.map(() => '?').join(', ')})`, removeIds, false);
+          deleted += removeIds.length;
+        }
+      }
+    }
     await db.commitTransaction();
   } catch (error) {
     await db.rollbackTransaction();
     throw error;
   }
-  return { schema_version: SCHEMA_VERSION, conflict_policy: 'incoming_package_wins_by_uuid', entities: result, created, updated };
+  return { schema_version: SCHEMA_VERSION, mode, conflict_policy: mode === 'replace' ? 'replace_local_data' : 'incoming_package_wins_by_uuid', entities: result, created, updated, deleted };
 }
 
 async function portabilityRequest(method, pathname, body) {
   if (method === 'GET' && pathname === '/data/export') return exportData();
-  if (method === 'POST' && pathname === '/data/import/preview') return previewImport(body.package);
-  if (method === 'POST' && pathname === '/data/import') return importData(body.package);
+  if (method === 'POST' && pathname === '/data/import/preview') return previewImport(body.package, body.mode || 'merge');
+  if (method === 'POST' && pathname === '/data/import') return importData(body.package, body.mode || 'merge');
 }
 
 export async function mobileRequest(path, options = {}) {
@@ -480,7 +642,7 @@ export async function mobileRequest(path, options = {}) {
   const body = options.body ? JSON.parse(options.body) : {};
   const url = new URL(path, 'https://riji.local');
   const pathname = url.pathname;
-  const handlers = [projectsRequest, todosRequest, schedulesRequest, logsRequest];
+  const handlers = [projectsRequest, todosRequest, schedulesRequest, logsRequest, timerRequest];
   for (const handler of handlers) {
     const value = await handler(method, pathname, url.searchParams, body);
     if (value !== undefined) return value;
@@ -491,11 +653,8 @@ export async function mobileRequest(path, options = {}) {
   if (dataValue !== undefined) return dataValue;
   if (method === 'POST' && pathname === '/recurrence-rules/generate') return { created_todo_ids: [], created_schedule_ids: [] };
   if (method === 'GET' && pathname === '/recurrence-rules/') return rows('recurrence_rules');
-  if (method === 'GET' && pathname === '/timer/current') return null;
-  if (method === 'GET' && pathname === '/timer/recent') return [];
   if (method === 'GET' && pathname === '/health/') return { status: 'ok', storage: 'capacitor-sqlite' };
   if (pathname.startsWith('/zju/')) throw new Error('安卓体验版暂不支持 ZJU 集成');
-  if (pathname.startsWith('/timer/')) throw new Error('安卓体验版暂不支持计时后台流程');
   if (pathname.startsWith('/recurrence-rules/')) throw new Error('安卓体验版暂不支持重复规则编辑');
   throw new Error(`安卓本地数据层尚未实现：${method} ${pathname}`);
 }

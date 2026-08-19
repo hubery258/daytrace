@@ -98,6 +98,7 @@ class Todo(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     uuid = Column(String(36), default=new_uuid, unique=True, nullable=False, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    position = Column(Integer, nullable=True)
     recurrence_rule_id = Column(Integer, ForeignKey("recurrence_rules.id"), nullable=True)
     recurrence_date = Column(Date, nullable=True)
     is_recurrence_exception = Column(Boolean, default=False, nullable=False)
@@ -116,16 +117,16 @@ class Todo(Base):
 
     @property
     def is_hard_ddl_near(self) -> bool:
-        if self.ddl_type != DDLType.hard or not self.ddl_date or not self.reminder_days:
+        if self.ddl_type != DDLType.hard or not self.ddl_date or self.reminder_days is None:
             return False
-        now = datetime.now()
+        now = beijing_now()
         return (self.ddl_date - now).days <= self.reminder_days
 
     @property
     def is_soft_ddl_near(self) -> bool:
-        if self.ddl_type != DDLType.soft or not self.ddl_date or not self.reminder_days:
+        if self.ddl_type != DDLType.soft or not self.ddl_date or self.reminder_days is None:
             return False
-        now = datetime.now()
+        now = beijing_now()
         return (self.ddl_date - now).days <= self.reminder_days
 
 

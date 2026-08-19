@@ -49,6 +49,7 @@ export const todoApi = {
   get: (id) => request(`/todos/${id}`),
   create: (data) => request('/todos/', { method: 'POST', body: JSON.stringify(data) }),
   update: (id, data) => request(`/todos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  complete: (id, logDate) => request(`/todos/${id}/complete`, { method: 'POST', body: JSON.stringify({ log_date: logDate }) }),
   delete: (id) => request(`/todos/${id}`, { method: 'DELETE' }),
   focusing: () => request('/todos/focusing'),
   waitingReply: () => request('/todos/waiting-reply'),
@@ -154,8 +155,8 @@ export const zjuApi = {
 // ============ Data portability ============
 export const dataApi = {
   export: () => request('/data/export'),
-  previewImport: (dataPackage) => request('/data/import/preview', { method: 'POST', body: JSON.stringify({ package: dataPackage, mode: 'merge' }) }),
-  import: (dataPackage) => request('/data/import', { method: 'POST', body: JSON.stringify({ package: dataPackage, mode: 'merge' }) }),
+  previewImport: (dataPackage, mode = 'merge') => request('/data/import/preview', { method: 'POST', body: JSON.stringify({ package: dataPackage, mode }) }),
+  import: (dataPackage, mode = 'merge') => request('/data/import', { method: 'POST', body: JSON.stringify({ package: dataPackage, mode }) }),
 };
 
 export const healthApi = {

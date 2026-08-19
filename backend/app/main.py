@@ -42,6 +42,7 @@ async def ensure_sqlite_schema_compat(conn):
         {
             "uuid": "uuid VARCHAR(36)",
             "project_id": "project_id INTEGER",
+            "position": "position INTEGER",
             "recurrence_rule_id": "recurrence_rule_id INTEGER",
             "recurrence_date": "recurrence_date DATE",
             "is_recurrence_exception": "is_recurrence_exception BOOLEAN DEFAULT 0",
@@ -153,7 +154,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="日迹 API",
     description="个人效率助手 - 待办 & 日程 & 项目 & AI 分析",
-    version="0.6.0",
+    version="0.7.5",
     lifespan=lifespan,
 )
 
