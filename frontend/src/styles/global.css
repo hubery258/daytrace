@@ -281,6 +281,16 @@ body {
   margin-bottom: 16px;
 }
 
+.confirm-dialog {
+  max-width: 440px;
+}
+
+.confirm-dialog p {
+  color: var(--text-secondary);
+  line-height: 1.65;
+  margin-bottom: 20px;
+}
+
 /* ===== Forms ===== */
 .form-group {
   margin-bottom: 16px;
