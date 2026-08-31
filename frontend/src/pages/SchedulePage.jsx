@@ -287,10 +287,6 @@ export default function SchedulePage() {
 
 
   const handleAiArrangeGaps = async () => {
-    if (!localStorage.getItem('simpletasker_api_key')) {
-      setAiError('Please configure API Key in Settings first.');
-      return;
-    }
     setAiLoading(true);
     setAiError('');
     setAiWarnings([]);

@@ -2,7 +2,7 @@
 import { Link } from 'react-router-dom';
 import { logApi, templateApi, todoApi, scheduleApi, projectApi } from '../api/client';
 import { addDays, dateStrInBeijing, todayStr, formatTime } from '../utils/time';
-import { callChatCompletion } from '../ai/aiClient';
+import { callChatCompletion, loadAiConfig } from '../ai/aiClient';
 import { parseAiDraftResponse, parseAiQuestionsResponse } from '../ai/aiDraftParser';
 import {
   AI_DRAFT_SYSTEM_PROMPT,
@@ -15,7 +15,6 @@ import {
 import AiDraftReviewModal from '../components/AiDraftReviewModal';
 
 const TODAY = todayStr();
-const STORAGE_KEY_API_KEY = 'simpletasker_api_key';
 const STORAGE_KEY_PROMPT = 'simpletasker_ai_prompt';
 
 const DEFAULT_PROMPT = `你是一位个人效率助手。请根据用户提供的今日待办、日程和日志，生成温和、具体、可执行的效率分析和明日建议，控制在 300-500 字左右。`;
@@ -33,6 +32,7 @@ export default function DailySummaryPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiMessage, setAiMessage] = useState('');
   const [aiError, setAiError] = useState('');
+  const [hasApiKey, setHasApiKey] = useState(null);
 
   const [reflectionLoading, setReflectionLoading] = useState(false);
   const [reflectionQuestions, setReflectionQuestions] = useState([]);
@@ -82,6 +82,21 @@ export default function DailySummaryPage() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+    loadAiConfig()
+      .then(config => {
+        if (active) setHasApiKey(Boolean(config.apiKey));
+      })
+      .catch(error => {
+        if (active) {
+          setHasApiKey(false);
+          setAiError(error.message || '无法读取设备上的 AI Key。');
+        }
+      });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
     loadLog(selectedDate);
     loadTemplates();
     loadContext();
@@ -97,12 +112,19 @@ export default function DailySummaryPage() {
     setShowDraftReview(false);
   }, [selectedDate, loadLog, loadTemplates, loadContext]);
 
-  const requireApiKey = (setter) => {
-    if (!localStorage.getItem(STORAGE_KEY_API_KEY)) {
-      setter('请先在设置页配置 API Key。');
+  const requireApiKey = async (setter) => {
+    try {
+      const configured = Boolean((await loadAiConfig()).apiKey);
+      setHasApiKey(configured);
+      if (!configured) {
+        setter('请先在设置页配置 API Key。');
+        return false;
+      }
+      return true;
+    } catch (error) {
+      setter(error.message || '无法读取设备上的 AI Key。');
       return false;
     }
-    return true;
   };
 
   const getDailyContext = async () => {
@@ -136,7 +158,7 @@ export default function DailySummaryPage() {
   const applyTemplate = (content) => setLogText(prev => prev + (prev ? '\n' : '') + content);
 
   const handleAiAnalyze = async () => {
-    if (!requireApiKey(setAiError)) return;
+    if (!(await requireApiKey(setAiError))) return;
     setAiLoading(true);
     setAiError('');
     setAiMessage('');
@@ -160,7 +182,7 @@ export default function DailySummaryPage() {
   };
 
   const handleStartReflection = async () => {
-    if (!requireApiKey(setReflectionError)) return;
+    if (!(await requireApiKey(setReflectionError))) return;
     setReflectionLoading(true);
     setReflectionError('');
     setReflectionQuestions([]);
@@ -186,7 +208,7 @@ export default function DailySummaryPage() {
   };
 
   const handleFinishReflection = async () => {
-    if (!requireApiKey(setReflectionError)) return;
+    if (!(await requireApiKey(setReflectionError))) return;
     setReflectionLoading(true);
     setReflectionError('');
     setReflectionSummary('');
@@ -208,7 +230,7 @@ export default function DailySummaryPage() {
   };
 
   const handleAiGenerateDrafts = async () => {
-    if (!requireApiKey(setDraftError)) return;
+    if (!(await requireApiKey(setDraftError))) return;
     setDraftLoading(true);
     setDraftError('');
     setDraftWarnings([]);
@@ -241,7 +263,6 @@ export default function DailySummaryPage() {
   };
 
   const isToday = selectedDate === TODAY;
-  const hasApiKey = !!localStorage.getItem(STORAGE_KEY_API_KEY);
   const visibleCompletedIds = Array.from(new Set([
     ...completedTodos.map(Number),
     ...allTodos

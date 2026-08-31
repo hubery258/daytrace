@@ -5,14 +5,15 @@ import {
   readDisplayPreferences,
   writeDisplayPreferences,
 } from '../utils/displayPreferences';
+import {
+  AI_STORAGE_KEYS,
+  DEFAULT_AI_API_BASE,
+  DEFAULT_AI_MODEL,
+  loadAiConfig,
+  saveAiConfig,
+} from '../ai/aiClient';
 
-const STORAGE_KEY_API_KEY = 'simpletasker_api_key';
-const STORAGE_KEY_API_BASE = 'simpletasker_api_base';
-const STORAGE_KEY_MODEL = 'simpletasker_ai_model';
-const STORAGE_KEY_PROMPT = 'simpletasker_ai_prompt';
-
-const DEFAULT_API_BASE = 'https://api.deepseek.com';
-const DEFAULT_MODEL = 'deepseek-chat';
+const STORAGE_KEY_PROMPT = AI_STORAGE_KEYS.prompt;
 
 const PAGE_SWITCHES = [
   ['home', '首页', '每天打开时的总览入口'],
@@ -63,26 +64,49 @@ export default function SettingsPage() {
   const [model, setModel] = useState('');
   const [prompt, setPrompt] = useState('');
   const [saved, setSaved] = useState(false);
+  const [aiSaving, setAiSaving] = useState(false);
+  const [aiStorageError, setAiStorageError] = useState('');
   const [displayPreferences, setDisplayPreferences] = useState(readDisplayPreferences);
   const [displaySaved, setDisplaySaved] = useState(false);
 
   useEffect(() => {
-    setApiKey(localStorage.getItem(STORAGE_KEY_API_KEY) || '');
-    setApiBase(localStorage.getItem(STORAGE_KEY_API_BASE) || DEFAULT_API_BASE);
-    setModel(localStorage.getItem(STORAGE_KEY_MODEL) || DEFAULT_MODEL);
-    setPrompt(localStorage.getItem(STORAGE_KEY_PROMPT) || DEFAULT_PROMPT);
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const config = await loadAiConfig();
+        if (cancelled) return;
+        setApiKey(config.apiKey);
+        setApiBase(config.apiBase || DEFAULT_AI_API_BASE);
+        setModel(config.model || DEFAULT_AI_MODEL);
+        setPrompt(localStorage.getItem(STORAGE_KEY_PROMPT) || DEFAULT_PROMPT);
+      } catch (error) {
+        if (!cancelled) setAiStorageError(error.message || '无法读取设备上的 AI Key');
+      }
+    };
+    void load();
+    return () => { cancelled = true; };
   }, []);
 
-  const normalizedApiBase = () => (apiBase.trim() || DEFAULT_API_BASE).replace(/\/+$/, '');
-  const normalizedModel = () => model.trim() || DEFAULT_MODEL;
+  const normalizedApiBase = () => (apiBase.trim() || DEFAULT_AI_API_BASE).replace(/\/+$/, '');
+  const normalizedModel = () => model.trim() || DEFAULT_AI_MODEL;
 
-  const handleSave = () => {
-    localStorage.setItem(STORAGE_KEY_API_KEY, apiKey.trim());
-    localStorage.setItem(STORAGE_KEY_API_BASE, normalizedApiBase());
-    localStorage.setItem(STORAGE_KEY_MODEL, normalizedModel());
-    localStorage.setItem(STORAGE_KEY_PROMPT, prompt);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const handleSave = async () => {
+    setAiSaving(true);
+    setAiStorageError('');
+    try {
+      await saveAiConfig({
+        apiKey,
+        apiBase: normalizedApiBase(),
+        model: normalizedModel(),
+        prompt,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (error) {
+      setAiStorageError(error.message || '保存 AI 设置失败');
+    } finally {
+      setAiSaving(false);
+    }
   };
 
   const updateDisplayPreference = (group, key, checked) => {
@@ -177,11 +201,11 @@ export default function SettingsPage() {
           <div className="form-group">
             <label htmlFor="ai-api-key">AI API Key</label>
             <input id="ai-api-key" type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-...（兼容 OpenAI 格式）" />
-            <div className="field-hint">仅保存在当前设备的浏览器存储中。</div>
+            <div className="field-hint">Android 使用系统密钥库加密保存；Key 不进入业务数据库、日志或 JSON 备份。</div>
           </div>
           <div className="settings-form-grid">
-            <div className="form-group"><label htmlFor="ai-api-base">API 地址</label><input id="ai-api-base" value={apiBase} onChange={e => setApiBase(e.target.value)} placeholder={DEFAULT_API_BASE} /></div>
-            <div className="form-group"><label htmlFor="ai-model">模型名</label><input id="ai-model" value={model} onChange={e => setModel(e.target.value)} placeholder={DEFAULT_MODEL} /></div>
+            <div className="form-group"><label htmlFor="ai-api-base">API 地址</label><input id="ai-api-base" value={apiBase} onChange={e => setApiBase(e.target.value)} placeholder={DEFAULT_AI_API_BASE} /></div>
+            <div className="form-group"><label htmlFor="ai-model">模型名</label><input id="ai-model" value={model} onChange={e => setModel(e.target.value)} placeholder={DEFAULT_AI_MODEL} /></div>
           </div>
           <div className="form-group">
             <label htmlFor="ai-prompt">预设提示词</label>
@@ -189,9 +213,10 @@ export default function SettingsPage() {
           </div>
           <div className="settings-form-actions">
             <button className="btn btn-quiet" onClick={() => setPrompt(DEFAULT_PROMPT)}>恢复默认 Prompt</button>
-            <button className="btn btn-primary" onClick={handleSave}>保存 AI 设置</button>
+            <button className="btn btn-primary" disabled={aiSaving} onClick={handleSave}>{aiSaving ? '保存中...' : '保存 AI 设置'}</button>
             {saved && <span className="saved-indicator" role="status">已保存</span>}
           </div>
+          {aiStorageError && <div className="notice notice-error">{aiStorageError}</div>}
         </div>
       </section>
 

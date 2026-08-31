@@ -2,9 +2,13 @@
 
 ## 当前状态
 
-当前项目已经完成 v0.7.x：在 v0.6 单机与多端体验版基础上，统一了全站视觉语言、首页信息层级、计划/实际状态表达、产品 Logo 与应用图标，并加入本地页面/模块开关。Windows Electron 与 Android debug 包已构建，用户跨端体验未发现需要阻断 v0.7 收尾的 UI 问题。
+v0.8 Android 功能对齐已完成代码与自动化验证阶段。Android 继续使用设备内 SQLite，不连接桌面 FastAPI，也不内嵌 Python；65 条业务能力均有显式契约，正常功能不再返回空成功。
 
-v0.8.x 是下一阶段开发重点，目标是让 Android 与 Windows/Web 单机版功能完整对齐。正式级合并导入、完整恢复和恢复前安全备份已在 v0.7.5 提前落地，v0.8 将继续完成移动端数据库迁移与实机可靠性验证。
+已验证：前端 35 项测试、后端 22 项测试、Vite 构建、Capacitor 同步、Android 原生单测、lint（0 error）与 Debug APK 构建。Debug 产物见 `release/android/riji-android-0.8.0-debug.apk`。
+
+尚未完成 M4 发布门槛：当前没有连接实体设备，未执行低版本/当前版本双机矩阵；仓库也没有用户的 release 签名凭据，因此不会生成或冒充签名 release APK。
+
+外部限制：`calendar.celechron.top` 当前 HTTPS 不可用。Android 不降级到明文 HTTP，校历实时刷新明确失败，精确缓存读取仍可用。详见 `docs/v0.8-android-acceptance.md`。
 
 ## 已完成
 
