@@ -1781,6 +1781,80 @@ body {
   color: #166534;
 }
 
+.ai-response-diagnostics {
+  margin-bottom: 12px;
+}
+
+.ai-response-diagnostics .ai-draft-error,
+.ai-response-diagnostics .ai-draft-warning {
+  margin-bottom: 8px;
+}
+
+.ai-response-diagnostic-title {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.ai-response-error-list {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.ai-response-error-list li + li {
+  margin-top: 4px;
+}
+
+.ai-response-parser-error {
+  margin-top: 6px;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.ai-response-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ai-response-copy-status {
+  margin-top: 8px;
+  font-size: 0.82rem;
+}
+
+.ai-response-details {
+  margin-top: 8px;
+  overflow: hidden;
+  border: 1px solid var(--color-border, var(--border));
+  border-radius: 8px;
+  background: var(--color-paper, #fffdf8);
+}
+
+.ai-response-details summary {
+  padding: 10px 12px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.ai-response-details pre {
+  max-height: 320px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border-top: 1px solid var(--color-border, var(--border));
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--text-primary);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+
 @media (max-width: 600px) {
   .ai-draft-grid {
     grid-template-columns: 1fr;
@@ -1789,6 +1863,10 @@ body {
   .ai-draft-head,
   .ai-draft-card-head {
     flex-direction: column;
+  }
+
+  .ai-response-actions .btn {
+    width: 100%;
   }
 }
 

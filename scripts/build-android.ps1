@@ -82,6 +82,8 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Frontend ZJU tests failed.' }
         npm run test:platform --if-present
         if ($LASTEXITCODE -ne 0) { throw 'Frontend platform tests failed.' }
+        npm run test:ai --if-present
+        if ($LASTEXITCODE -ne 0) { throw 'Frontend AI tests failed.' }
     }
     npm run android:sync
     if ($LASTEXITCODE -ne 0) { throw 'Failed to sync the Capacitor Android project.' }

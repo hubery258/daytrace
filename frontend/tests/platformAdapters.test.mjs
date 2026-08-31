@@ -53,6 +53,7 @@ test('chat completion sends an OpenAI-compatible request and parses content', as
 });
 
 test('chat completion distinguishes cancellation and invalid responses', async () => {
+
   await ai.saveAiConfig({ apiKey: 'test-key-never-log', apiBase: 'https://ai.example.test', model: 'test-model' });
   const controller = new AbortController();
   controller.abort();
@@ -71,6 +72,37 @@ test('chat completion distinguishes cancellation and invalid responses', async (
     ai.callChatCompletion({ systemPrompt: 'system', userMessage: 'user' }),
     error => error.code === 'AI_INVALID_RESPONSE' && error.category === ai.AI_REQUEST_CATEGORY.INVALID_RESPONSE,
   );
+});
+
+test('chat completion returns diagnostics metadata through the unified transport', async () => {
+  await ai.saveAiConfig({ apiKey: 'test-key-never-log', apiBase: 'https://ai.example.test', model: 'test-model' });
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    async text() {
+      return JSON.stringify({
+        model: 'provider-model',
+        choices: [{
+          finish_reason: 'stop',
+          message: {
+            content: [{ type: 'text', text: '{"type":"drafts",' }, { type: 'text', text: '"items":[]}' }],
+          },
+        }],
+        usage: { completion_tokens: 42 },
+      });
+    },
+  });
+
+  const result = await ai.callChatCompletion({
+    systemPrompt: 'system',
+    userMessage: 'user',
+    includeResponseMetadata: true,
+  });
+
+  assert.equal(result.text, '{"type":"drafts","items":[]}');
+  assert.equal(result.responseMeta.model, 'provider-model');
+  assert.equal(result.responseMeta.contentFormat, 'parts');
+  assert.equal(result.responseMeta.completionTokens, 42);
 });
 
 test('native transport exposes stable network error categories', () => {

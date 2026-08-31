@@ -93,6 +93,52 @@ export function getAiConfig() {
   };
 }
 
+function contentToText(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map(part => {
+        if (typeof part === 'string') return part;
+        return typeof part?.text === 'string' ? part.text : '';
+      })
+      .join('');
+  }
+  if (content && typeof content.text === 'string') return content.text;
+  return '';
+}
+
+export function extractChatCompletionResult(data) {
+  const choice = Array.isArray(data?.choices) ? data.choices[0] : null;
+  const message = choice?.message;
+  const content = message?.content;
+  const text = contentToText(content);
+  const contentFormat = !text.trim()
+    ? 'empty'
+    : Array.isArray(content)
+      ? 'parts'
+      : typeof content === 'string'
+        ? 'text'
+        : content == null
+          ? 'empty'
+          : typeof content;
+  const reasoningContent = message?.reasoning_content;
+
+  return {
+    text,
+    responseMeta: {
+      finishReason: choice?.finish_reason ?? null,
+      model: typeof data?.model === 'string' ? data.model : null,
+      contentFormat,
+      hasReasoningContent: typeof reasoningContent === 'string'
+        ? !!reasoningContent.trim()
+        : Array.isArray(reasoningContent) && reasoningContent.length > 0,
+      completionTokens: Number.isFinite(data?.usage?.completion_tokens)
+        ? data.usage.completion_tokens
+        : null,
+    },
+  };
+}
+
 export async function loadAiConfig() {
   const config = getAiConfig();
   if (!isAndroidRuntime()) return config;
@@ -348,6 +394,7 @@ export async function callChatCompletion({
   temperature = 0.4,
   signal,
   timeoutMs = DEFAULT_AI_TIMEOUT_MS,
+  includeResponseMetadata = false,
 }) {
   const { apiKey, apiBase, model } = await loadAiConfig();
   if (!apiKey) {
@@ -387,13 +434,17 @@ export async function callChatCompletion({
       });
     }
     const content = data?.choices?.[0]?.message?.content;
-    if (typeof content !== 'string') {
+    const hasSupportedContent = typeof content === 'string'
+      || Array.isArray(content)
+      || (content && typeof content.text === 'string');
+    if (!hasSupportedContent) {
       throw new AiRequestError('AI 服务响应缺少消息内容', {
         code: 'AI_INVALID_RESPONSE',
         category: AI_REQUEST_CATEGORY.INVALID_RESPONSE,
       });
     }
-    return content;
+    const result = extractChatCompletionResult(data);
+    return includeResponseMetadata ? result : result.text;
   } finally {
     deadline.cleanup();
   }

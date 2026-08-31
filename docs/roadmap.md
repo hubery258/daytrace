@@ -4,7 +4,7 @@
 
 v0.8 Android 功能对齐已完成代码与自动化验证阶段。Android 继续使用设备内 SQLite，不连接桌面 FastAPI，也不内嵌 Python；65 条业务能力均有显式契约，正常功能不再返回空成功。
 
-已验证：前端 35 项测试、后端 22 项测试、Vite 构建、Capacitor 同步、Android 原生单测、lint（0 error）与 Debug APK 构建。Debug 产物见 `release/android/riji-android-0.8.0-debug.apk`。
+已验证：前端 49 项测试、后端 22 项测试、Vite 构建、Capacitor 同步、Android 原生单测、lint（0 error）与 Debug APK 构建。Debug 产物见 `release/android/riji-android-0.8.0-debug.apk`。
 
 尚未完成 M4 发布门槛：当前没有连接实体设备，未执行低版本/当前版本双机矩阵；仓库也没有用户的 release 签名凭据，因此不会生成或冒充签名 release APK。
 

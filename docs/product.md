@@ -22,7 +22,7 @@
 
 截至 2026-08-31，v0.8 Android 功能对齐的代码阶段已经完成：65 条客户端能力均进入可机读契约，Android 使用设备内 SQLite 独立实现项目、待办、日程、重复规则、计时、总结、模板、AI、ZJU 与备份恢复，不连接桌面 FastAPI。
 
-自动化验证已覆盖前端 35 项、后端 22 项、Android 原生单测、lint 和 Debug APK 构建。最终实机验收与签名 release APK 仍是发布门槛，不能用模拟器或 debug 包代替。
+自动化验证已覆盖前端 49 项、后端 22 项、Android 原生单测、lint 和 Debug APK 构建。最终实机验收与签名 release APK 仍是发布门槛，不能用模拟器或 debug 包代替。
 
 ZJU 校历上游当前只提供 HTTP，而 Android 保持 HTTPS-only；实时刷新会明确报安全传输错误，已有缓存仍可读取。该限制不会通过全局或单域明文放行绕过。
 

@@ -4,6 +4,7 @@ import { callChatCompletion } from '../ai/aiClient';
 import { parseAiDraftResponse } from '../ai/aiDraftParser';
 import { AI_DRAFT_SYSTEM_PROMPT, buildScheduleGapDraftUserMessage } from '../ai/aiPrompts';
 import AiDraftReviewModal from '../components/AiDraftReviewModal';
+import AiResponseDiagnostics from '../components/AiResponseDiagnostics';
 import ScheduleModal from '../components/ScheduleModal';
 import ContextMenu from '../components/ContextMenu';
 import { addDays, dateStrInBeijing, parseAsLocal, formatTime, formatDate, startOfDay, todayStr } from '../utils/time';
@@ -190,6 +191,7 @@ export default function SchedulePage() {
   const [aiWarnings, setAiWarnings] = useState([]);
   const [aiDrafts, setAiDrafts] = useState([]);
   const [showAiReview, setShowAiReview] = useState(false);
+  const [aiDiagnostics, setAiDiagnostics] = useState(null);
 
   const dateStr = getDateStr(currentDate);
   const weekDays = getWeekDays(currentDate);
@@ -219,6 +221,7 @@ export default function SchedulePage() {
       setMonthSchedules(month);
     } catch (err) {
       setAiError(err.message || 'AI schedule arrangement failed.');
+      setAiDiagnostics(null);
     }
   }, [currentDate]);
 
@@ -291,6 +294,7 @@ export default function SchedulePage() {
     setAiError('');
     setAiWarnings([]);
     setAiDrafts([]);
+    setAiDiagnostics(null);
     try {
       const [todos, projectData, daySchedules] = await Promise.all([
         todoApi.list({ is_completed: false }).catch(() => []),
@@ -298,18 +302,30 @@ export default function SchedulePage() {
         scheduleApi.list({ date_from: dateStr + 'T00:00:00', date_to: addDaysToDateStr(dateStr, 1) + 'T00:00:00' }).catch(() => []),
       ]);
       setProjects(projectData);
-      const raw = await callChatCompletion({
+      const { text: raw, responseMeta } = await callChatCompletion({
         systemPrompt: AI_DRAFT_SYSTEM_PROMPT,
         userMessage: buildScheduleGapDraftUserMessage({ date: dateStr, todos, projects: projectData, schedules: daySchedules }),
         maxTokens: 1400,
         temperature: 0.25,
+        includeResponseMetadata: true,
       });
-      const result = parseAiDraftResponse(raw, { projects: projectData, todos, schedules: daySchedules });
+      const result = {
+        ...parseAiDraftResponse(raw, { projects: projectData, todos, schedules: daySchedules }),
+        responseMeta,
+      };
       const scheduleDrafts = result.drafts.filter(draft => draft.draft_type === 'schedule');
+      const unsupportedDraftCount = result.drafts.length - scheduleDrafts.length;
+      const diagnostics = unsupportedDraftCount > 0
+        ? {
+          ...result,
+          errors: [...result.errors, `AI 返回了 ${unsupportedDraftCount} 条待办草稿；日程空档安排只接受日程草稿。`],
+        }
+        : result;
+      setAiDiagnostics(diagnostics);
       setAiWarnings(result.warnings);
       setAiDrafts(scheduleDrafts);
       setShowAiReview(scheduleDrafts.length > 0);
-      setAiError(result.errors.join('\n'));
+      setAiError(diagnostics.errors.join('\n'));
     } catch (err) {
       setAiError(err.message || 'AI schedule arrangement failed.');
     } finally {
@@ -320,6 +336,7 @@ export default function SchedulePage() {
   const handleAiCreated = async () => {
     setShowAiReview(false);
     setAiDrafts([]);
+    setAiDiagnostics(null);
     await loadSchedules();
   };
 
@@ -651,7 +668,8 @@ export default function SchedulePage() {
         </>
       )}
 
-      {aiError && <div className="ai-draft-error" style={{ whiteSpace: 'pre-wrap' }}>{aiError}</div>}
+      {aiError && !aiDiagnostics && <div className="ai-draft-error" style={{ whiteSpace: 'pre-wrap' }}>{aiError}</div>}
+      <AiResponseDiagnostics diagnostics={aiDiagnostics} />
       {aiWarnings.length > 0 && <div className="ai-draft-warning">{aiWarnings.map((warning, index) => <div key={index}>{warning}</div>)}</div>}
       {aiDrafts.length > 0 && !showAiReview && <div className="card"><button className="btn btn-primary" onClick={() => setShowAiReview(true)}>Open {aiDrafts.length} schedule drafts</button></div>}
 
@@ -659,6 +677,7 @@ export default function SchedulePage() {
         <AiDraftReviewModal
           drafts={aiDrafts}
           warnings={aiWarnings}
+          diagnostics={aiDiagnostics}
           projects={projects}
           todos={[]}
           onClose={() => setShowAiReview(false)}
