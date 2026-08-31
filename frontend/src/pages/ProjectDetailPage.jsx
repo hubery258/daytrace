@@ -5,6 +5,7 @@ import { callChatCompletion } from '../ai/aiClient';
 import { parseAiDraftResponse } from '../ai/aiDraftParser';
 import { AI_DRAFT_SYSTEM_PROMPT, buildProjectNextDraftUserMessage } from '../ai/aiPrompts';
 import AiDraftReviewModal from '../components/AiDraftReviewModal';
+import AiResponseDiagnostics from '../components/AiResponseDiagnostics';
 import ProjectModal from '../components/ProjectModal';
 import TodoModal from '../components/TodoModal';
 import ScheduleModal from '../components/ScheduleModal';
@@ -48,6 +49,7 @@ export default function ProjectDetailPage() {
   const [aiWarnings, setAiWarnings] = useState([]);
   const [aiDrafts, setAiDrafts] = useState([]);
   const [showAiReview, setShowAiReview] = useState(false);
+  const [aiDiagnostics, setAiDiagnostics] = useState(null);
 
   const loadOverview = useCallback(async () => {
     const data = await projectApi.overview(id);
@@ -79,6 +81,7 @@ export default function ProjectDetailPage() {
 
   const handleAiNextSteps = async () => {
     if (!localStorage.getItem('simpletasker_api_key')) {
+      setAiDiagnostics(null);
       setAiError('请先在设置页配置 API Key。');
       return;
     }
@@ -86,14 +89,17 @@ export default function ProjectDetailPage() {
     setAiError('');
     setAiWarnings([]);
     setAiDrafts([]);
+    setAiDiagnostics(null);
     try {
-      const raw = await callChatCompletion({
+      const { text: raw, responseMeta } = await callChatCompletion({
         systemPrompt: AI_DRAFT_SYSTEM_PROMPT,
         userMessage: buildProjectNextDraftUserMessage({ project, todos, schedules }),
         maxTokens: 1400,
         temperature: 0.3,
+        includeResponseMetadata: true,
       });
       const result = parseAiDraftResponse(raw, { projects: [project], todos, schedules });
+      setAiDiagnostics({ ...result, responseMeta });
       setAiWarnings(result.warnings);
       setAiDrafts(result.drafts);
       setShowAiReview(result.drafts.length > 0);
@@ -108,6 +114,7 @@ export default function ProjectDetailPage() {
   const handleAiCreated = async () => {
     setShowAiReview(false);
     setAiDrafts([]);
+    setAiDiagnostics(null);
     await loadOverview();
   };
 
@@ -153,6 +160,7 @@ export default function ProjectDetailPage() {
       <div className="action-row">
         <button className="btn btn-primary" onClick={() => { setEditTodo(null); setShowTodoModal(true); }}>新建待办</button>
         <button className="btn btn-secondary" onClick={() => { setEditSchedule(null); setShowScheduleModal(true); }}>新建日程</button>
+        <button className="btn btn-secondary" disabled={aiLoading} onClick={handleAiNextSteps}>{aiLoading ? 'AI 生成中...' : 'AI 生成下一步'}</button>
         {project.status !== 'active' && <button className="btn btn-secondary" onClick={() => updateStatus('active')}>设为进行中</button>}
         {project.status !== 'paused' && <button className="btn btn-secondary" onClick={() => updateStatus('paused')}>暂停</button>}
         {project.status !== 'completed' && <button className="btn btn-secondary" onClick={() => updateStatus('completed')}>完成</button>}
@@ -161,7 +169,8 @@ export default function ProjectDetailPage() {
         <button className="btn btn-danger" onClick={handleDeleteProject}>硬删除</button>
       </div>
 
-      {aiError && <div className="ai-draft-error" style={{ whiteSpace: 'pre-wrap' }}>{aiError}</div>}
+      {aiError && !aiDiagnostics && <div className="ai-draft-error" style={{ whiteSpace: 'pre-wrap' }}>{aiError}</div>}
+      <AiResponseDiagnostics diagnostics={aiDiagnostics} />
       {aiWarnings.length > 0 && <div className="ai-draft-warning">{aiWarnings.map((warning, index) => <div key={index}>{warning}</div>)}</div>}
       {aiDrafts.length > 0 && !showAiReview && <div className="card"><button className="btn btn-primary" onClick={() => setShowAiReview(true)}>打开 {aiDrafts.length} 条AI草稿</button></div>}
 
@@ -207,6 +216,7 @@ export default function ProjectDetailPage() {
         <AiDraftReviewModal
           drafts={aiDrafts}
           warnings={aiWarnings}
+          diagnostics={aiDiagnostics}
           projects={[project]}
           todos={todos}
           onClose={() => setShowAiReview(false)}

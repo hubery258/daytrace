@@ -11,6 +11,20 @@ function extractJson(text) {
   return trimmed;
 }
 
+function describeParsedType(parsed) {
+  if (
+    parsed !== null
+    && !Array.isArray(parsed)
+    && typeof parsed === 'object'
+    && Object.prototype.hasOwnProperty.call(parsed, 'type')
+  ) {
+    return parsed.type;
+  }
+  if (Array.isArray(parsed)) return 'array';
+  if (parsed === null) return 'null';
+  return typeof parsed;
+}
+
 function toDate(value) {
   if (!value || typeof value !== 'string') return null;
   const normalized = value.length === 16 ? `${value}:00` : value;
@@ -111,22 +125,60 @@ function normalizeSchedule(item, index, projectIds, todoIds, schedules) {
 }
 
 export function parseAiDraftResponse(rawText, { projects = [], todos = [], schedules = [] } = {}) {
+  const preservedRawText = typeof rawText === 'string' ? rawText : String(rawText ?? '');
+  const extractedText = extractJson(preservedRawText);
+  if (!extractedText) {
+    return {
+      drafts: [],
+      errors: [
+        'AI 接口返回了空内容，没有可解析的草稿。请重试；若反复出现，请检查模型输出长度或接口兼容性。',
+      ],
+      warnings: [],
+      rawText: preservedRawText,
+      extractedText,
+      parseError: null,
+      parsedType: null,
+    };
+  }
+
   let parsed;
   try {
-    parsed = JSON.parse(extractJson(rawText));
-  } catch {
+    parsed = JSON.parse(extractedText);
+  } catch (error) {
     return {
       drafts: [],
       errors: ['AI 返回的内容不是可解析的 JSON，请重试'],
       warnings: [],
+      rawText: preservedRawText,
+      extractedText,
+      parseError: String(error),
+      parsedType: null,
     };
   }
+
+  const parsedType = describeParsedType(parsed);
 
   if (parsed?.type !== 'drafts' || !Array.isArray(parsed.items)) {
     return {
       drafts: [],
       errors: ['AI 返回 JSON 缺少 type="drafts" 或 items 数组'],
       warnings: [],
+      rawText: preservedRawText,
+      extractedText,
+      parseError: null,
+      parsedType,
+    };
+  }
+
+  if (!parsed.items.length) {
+    return {
+      drafts: [],
+      errors: ['AI 返回了有效 JSON，但 items 数组为空，没有生成任何草稿。'],
+      warnings: [],
+      rawText: preservedRawText,
+      extractedText,
+      parseError: null,
+      parsedType,
     };
   }
 
@@ -155,7 +207,19 @@ export function parseAiDraftResponse(rawText, { projects = [], todos = [], sched
     errors.push(`第 ${index + 1} 条草稿类型无效：只允许 todo 或 schedule`);
   });
 
-  return { drafts, errors, warnings };
+  if (!drafts.length && !errors.length) {
+    errors.push('AI 返回的草稿全部被校验规则跳过，没有可确认的草稿。');
+  }
+
+  return {
+    drafts,
+    errors,
+    warnings,
+    rawText: preservedRawText,
+    extractedText,
+    parseError: null,
+    parsedType,
+  };
 }
 
 export function todoDraftToPayload(draft) {

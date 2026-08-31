@@ -9,6 +9,7 @@ import {
   buildClarificationUserMessage,
 } from '../ai/aiPrompts';
 import AiDraftReviewModal from '../components/AiDraftReviewModal';
+import AiResponseDiagnostics from '../components/AiResponseDiagnostics';
 import { projectApi, scheduleApi, todoApi } from '../api/client';
 import { addDays, todayStr } from '../utils/time';
 
@@ -22,6 +23,7 @@ export default function AiCreatePage() {
   const [drafts, setDrafts] = useState([]);
   const [warnings, setWarnings] = useState([]);
   const [errors, setErrors] = useState([]);
+  const [draftDiagnostics, setDraftDiagnostics] = useState(null);
   const [loading, setLoading] = useState(false);
   const [clarifyLoading, setClarifyLoading] = useState(false);
   const [clarifyQuestions, setClarifyQuestions] = useState([]);
@@ -50,6 +52,7 @@ export default function AiCreatePage() {
     setWarnings([]);
     setDrafts([]);
     setCreatedMessage('');
+    setDraftDiagnostics(null);
   };
 
   const buildRequestText = () => {
@@ -59,6 +62,7 @@ export default function AiCreatePage() {
 
   const handleClarify = async () => {
     if (!text.trim()) {
+      setDraftDiagnostics(null);
       setErrors(['请先描述你的大致需求。']);
       return;
     }
@@ -92,6 +96,7 @@ export default function AiCreatePage() {
 
   const handleGenerate = async () => {
     if (!text.trim()) {
+      setDraftDiagnostics(null);
       setErrors(['请先描述你想创建什么。']);
       return;
     }
@@ -101,7 +106,7 @@ export default function AiCreatePage() {
 
     try {
       const { projectData, todoData, scheduleData } = await loadContext();
-      const raw = await callChatCompletion({
+      const { text: raw, responseMeta } = await callChatCompletion({
         systemPrompt: AI_DRAFT_SYSTEM_PROMPT,
         userMessage: buildAiCreateDraftUserMessage({
           text: buildRequestText(),
@@ -110,10 +115,12 @@ export default function AiCreatePage() {
           todos: todoData,
           schedules: scheduleData,
         }),
-        maxTokens: 1800,
+        maxTokens: clarifyQuestions.length ? 3200 : 1800,
         temperature: 0.25,
+        includeResponseMetadata: true,
       });
       const result = parseAiDraftResponse(raw, { projects: projectData, todos: todoData, schedules: scheduleData });
+      setDraftDiagnostics({ ...result, responseMeta });
       setWarnings(result.warnings);
       setErrors(result.errors);
       setDrafts(result.drafts);
@@ -129,6 +136,7 @@ export default function AiCreatePage() {
     setShowReview(false);
     setDrafts([]);
     setCreatedMessage(`已创建 ${created.length} 条待办/日程。`);
+    setDraftDiagnostics(null);
     await loadContext();
   };
 
@@ -189,7 +197,8 @@ export default function AiCreatePage() {
 
       {createdMessage && <div className="ai-draft-success">{createdMessage}</div>}
       {warnings.length > 0 && <div className="ai-draft-warning">{warnings.map((warning, index) => <div key={index}>{warning}</div>)}</div>}
-      {errors.length > 0 && <div className="ai-draft-error">{errors.map((error, index) => <div key={index}>{error}</div>)}</div>}
+      {errors.length > 0 && !draftDiagnostics && <div className="ai-draft-error">{errors.map((error, index) => <div key={index}>{error}</div>)}</div>}
+      <AiResponseDiagnostics diagnostics={draftDiagnostics} />
 
       {drafts.length > 0 && !showReview && (
         <div className="card">
@@ -202,6 +211,7 @@ export default function AiCreatePage() {
         <AiDraftReviewModal
           drafts={drafts}
           warnings={warnings}
+          diagnostics={draftDiagnostics}
           projects={projects}
           todos={todos}
           onClose={() => setShowReview(false)}
