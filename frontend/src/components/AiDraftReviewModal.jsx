@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { scheduleApi, todoApi } from '../api/client';
 import { scheduleDraftToPayload, todoDraftToPayload } from '../ai/aiDraftParser';
+import AiResponseDiagnostics from './AiResponseDiagnostics';
 
 function asInputDateTime(value) {
   return value ? value.slice(0, 16) : '';
@@ -28,6 +29,7 @@ function DraftMeta({ draft, projects, todos }) {
 export default function AiDraftReviewModal({
   drafts,
   warnings = [],
+  diagnostics = null,
   projects = [],
   todos = [],
   onClose,
@@ -86,6 +88,8 @@ export default function AiDraftReviewModal({
             {warnings.map((warning, index) => <div key={index}>{warning}</div>)}
           </div>
         )}
+
+        <AiResponseDiagnostics diagnostics={diagnostics} />
 
         {error && <div className="ai-draft-error">{error}</div>}
 

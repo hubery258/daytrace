@@ -1,10 +1,11 @@
 export const AI_DRAFT_SYSTEM_PROMPT = `You are the AI draft assistant for Riji. You can only generate todo and schedule drafts. You must never directly create, edit, or delete data.
 
 Rules:
-- Output JSON only. No Markdown, no explanation, no code fence.
+- Output exactly one JSON object and nothing else. Do not output Markdown, prose, or code fences.
 - Top-level shape must be {"type":"drafts","items":[...]}.
 - Items may only use draft_type "todo" or "schedule". Never generate project drafts.
-- Never output recurrence, repeat, frequency, weekdays, month_day, or recurrence_rule fields. AI must not create recurring todos, recurring schedules, or recurrence rules in v0.5.x.
+- Use only the fields listed below. Omit unknown optional values instead of inventing fields or values.
+- Never output recurrence, repeat, frequency, weekdays, month_day, or recurrence_rule fields. The current version does not allow AI to create recurring todos, recurring schedules, or recurrence rules.
 - If the user asks for a recurring item, generate at most ordinary one-off todo/schedule drafts and mention the recurring intent only in reason.
 - Todo fields: draft_type, name, ddl_type, ddl_date, reminder_days, category, status, project_id, notes, reason.
 - Schedule fields: draft_type, name, start_time, end_time, is_planned, project_id, linked_todo_ids, location, notes, reason.
@@ -13,7 +14,10 @@ Rules:
 - project_id may only use an existing project id from context, otherwise null.
 - linked_todo_ids may only use existing incomplete todo ids from context, max 2.
 - If the user asks for a batch, match the requested count as closely as possible.
-- The user will review drafts before anything is written.`;
+- Never write data to the database or claim that data was saved or created. The user must review every draft before anything is written.
+- Minimal valid example: {"type":"drafts","items":[{"draft_type":"todo","name":"Review tomorrow's plan"}]}`;
+
+const DRAFT_RESPONSE_REMINDER = 'Return exactly one JSON object with type="drafts" and an items array. Output no Markdown, prose, or code fence.';
 
 export const AI_CLARIFICATION_SYSTEM_PROMPT = `You are an efficiency planning assistant. The user has a vague planning need. Ask only the most important clarification questions before drafts are generated.
 
@@ -42,11 +46,11 @@ Rules:
 - Do not claim anything was saved or created.`;
 
 export function buildAiCreateDraftUserMessage({ text, dateContext, projects, todos, schedules }) {
-  return `User request:\n${text}\n\nDate context:\n- Today: ${dateContext.today}\n- Tomorrow: ${dateContext.tomorrow}\n\nAvailable projects:\n${projects.length ? projects.map(p => `- id=${p.id}, name=${p.name}, ddl=${p.ddl_date || 'none'}, status=${p.status}`).join('\n') : 'none'}\n\nIncomplete todos for reference or linking:\n${todos.length ? todos.slice(0, 30).map(t => `- id=${t.id}, name=${t.name}, ddl_type=${t.ddl_type}, ddl_date=${t.ddl_date || 'none'}, project_id=${t.project_id || 'none'}`).join('\n') : 'none'}\n\nExisting schedules today and tomorrow for conflict avoidance:\n${schedules.length ? schedules.map(s => `- id=${s.id}, ${s.name}, ${s.start_time} to ${s.end_time}, planned=${s.is_planned}, project_id=${s.project_id || 'none'}`).join('\n') : 'none'}\n\nReturn todo/schedule draft JSON.`;
+  return `User request:\n${text}\n\nDate context:\n- Today: ${dateContext.today}\n- Tomorrow: ${dateContext.tomorrow}\n\nAvailable projects:\n${projects.length ? projects.map(p => `- id=${p.id}, name=${p.name}, ddl=${p.ddl_date || 'none'}, status=${p.status}`).join('\n') : 'none'}\n\nIncomplete todos for reference or linking:\n${todos.length ? todos.slice(0, 30).map(t => `- id=${t.id}, name=${t.name}, ddl_type=${t.ddl_type}, ddl_date=${t.ddl_date || 'none'}, project_id=${t.project_id || 'none'}`).join('\n') : 'none'}\n\nExisting schedules today and tomorrow for conflict avoidance:\n${schedules.length ? schedules.map(s => `- id=${s.id}, ${s.name}, ${s.start_time} to ${s.end_time}, planned=${s.is_planned}, project_id=${s.project_id || 'none'}`).join('\n') : 'none'}\n\n${DRAFT_RESPONSE_REMINDER}`;
 }
 
 export function buildDailyDraftUserMessage({ selectedDate, logText, completedTodos, pendingTodos, todaySchedules, tomorrowSchedules, projects }) {
-  return `Generate confirmable tomorrow todo/schedule drafts from daily summary data. Do not generate project drafts.\n\nSummary date: ${selectedDate}\n\nUser log:\n${logText || '(empty)'}\n\nCompleted todos:\n${completedTodos.length ? completedTodos.map(t => `- id=${t.id}, name=${t.name}, project_id=${t.project_id || 'none'}`).join('\n') : 'none'}\n\nPending todos:\n${pendingTodos.length ? pendingTodos.slice(0, 30).map(t => `- id=${t.id}, name=${t.name}, ddl_type=${t.ddl_type}, ddl_date=${t.ddl_date || 'none'}, project_id=${t.project_id || 'none'}`).join('\n') : 'none'}\n\nToday schedules:\n${todaySchedules.length ? todaySchedules.map(s => `- ${s.name}, ${s.start_time} to ${s.end_time}`).join('\n') : 'none'}\n\nTomorrow schedules for conflict avoidance:\n${tomorrowSchedules.length ? tomorrowSchedules.map(s => `- ${s.name}, ${s.start_time} to ${s.end_time}`).join('\n') : 'none'}\n\nProjects:\n${projects.length ? projects.map(p => `- id=${p.id}, name=${p.name}, ddl=${p.ddl_date || 'none'}, status=${p.status}`).join('\n') : 'none'}\n\nReturn JSON drafts.`;
+  return `Generate confirmable tomorrow todo/schedule drafts from daily summary data. Do not generate project drafts.\n\nSummary date: ${selectedDate}\n\nUser log:\n${logText || '(empty)'}\n\nCompleted todos:\n${completedTodos.length ? completedTodos.map(t => `- id=${t.id}, name=${t.name}, project_id=${t.project_id || 'none'}`).join('\n') : 'none'}\n\nPending todos:\n${pendingTodos.length ? pendingTodos.slice(0, 30).map(t => `- id=${t.id}, name=${t.name}, ddl_type=${t.ddl_type}, ddl_date=${t.ddl_date || 'none'}, project_id=${t.project_id || 'none'}`).join('\n') : 'none'}\n\nToday schedules:\n${todaySchedules.length ? todaySchedules.map(s => `- ${s.name}, ${s.start_time} to ${s.end_time}`).join('\n') : 'none'}\n\nTomorrow schedules for conflict avoidance:\n${tomorrowSchedules.length ? tomorrowSchedules.map(s => `- ${s.name}, ${s.start_time} to ${s.end_time}`).join('\n') : 'none'}\n\nProjects:\n${projects.length ? projects.map(p => `- id=${p.id}, name=${p.name}, ddl=${p.ddl_date || 'none'}, status=${p.status}`).join('\n') : 'none'}\n\n${DRAFT_RESPONSE_REMINDER}`;
 }
 
 export function buildClarificationUserMessage({ text, dateContext, projects, todos, schedules }) {
@@ -54,11 +58,11 @@ export function buildClarificationUserMessage({ text, dateContext, projects, tod
 }
 
 export function buildProjectNextDraftUserMessage({ project, todos, schedules }) {
-  return `Generate next-step todo/schedule drafts for this existing project. Do not generate a project draft.\n\nProject:\n- id=${project.id}\n- name=${project.name}\n- description=${project.description || 'none'}\n- status=${project.status}\n- ddl=${project.ddl_date || 'none'}\n\nProject todos:\n${todos.length ? todos.map(t => `- id=${t.id}, name=${t.name}, completed=${t.is_completed}, ddl=${t.ddl_date || 'none'}, status=${t.status}`).join('\n') : 'none'}\n\nProject schedules:\n${schedules.length ? schedules.map(s => `- id=${s.id}, name=${s.name}, ${s.start_time} to ${s.end_time}, planned=${s.is_planned}`).join('\n') : 'none'}\n\nReturn JSON drafts. Use project_id=${project.id}.`;
+  return `Generate next-step todo/schedule drafts for this existing project. Do not generate a project draft.\n\nProject:\n- id=${project.id}\n- name=${project.name}\n- description=${project.description || 'none'}\n- status=${project.status}\n- ddl=${project.ddl_date || 'none'}\n\nProject todos:\n${todos.length ? todos.map(t => `- id=${t.id}, name=${t.name}, completed=${t.is_completed}, ddl=${t.ddl_date || 'none'}, status=${t.status}`).join('\n') : 'none'}\n\nProject schedules:\n${schedules.length ? schedules.map(s => `- id=${s.id}, name=${s.name}, ${s.start_time} to ${s.end_time}, planned=${s.is_planned}`).join('\n') : 'none'}\n\nUse project_id=${project.id}. ${DRAFT_RESPONSE_REMINDER}`;
 }
 
 export function buildScheduleGapDraftUserMessage({ date, todos, projects, schedules }) {
-  return `Generate planned schedule drafts for open time on this date. Do not create project drafts. Avoid conflicts with existing schedules.\n\nTarget date: ${date}\n\nIncomplete todos to consider:\n${todos.length ? todos.slice(0, 30).map(t => `- id=${t.id}, name=${t.name}, ddl=${t.ddl_date || 'none'}, project_id=${t.project_id || 'none'}, status=${t.status}`).join('\n') : 'none'}\n\nProjects:\n${projects.length ? projects.map(p => `- id=${p.id}, name=${p.name}, ddl=${p.ddl_date || 'none'}, status=${p.status}`).join('\n') : 'none'}\n\nExisting schedules on target date:\n${schedules.length ? schedules.map(s => `- id=${s.id}, name=${s.name}, ${s.start_time} to ${s.end_time}, planned=${s.is_planned}`).join('\n') : 'none'}\n\nReturn JSON schedule drafts only when they fit open time.`;
+  return `Generate planned schedule drafts for open time on this date. Do not create project drafts. Avoid conflicts with existing schedules.\n\nTarget date: ${date}\n\nIncomplete todos to consider:\n${todos.length ? todos.slice(0, 30).map(t => `- id=${t.id}, name=${t.name}, ddl=${t.ddl_date || 'none'}, project_id=${t.project_id || 'none'}, status=${t.status}`).join('\n') : 'none'}\n\nProjects:\n${projects.length ? projects.map(p => `- id=${p.id}, name=${p.name}, ddl=${p.ddl_date || 'none'}, status=${p.status}`).join('\n') : 'none'}\n\nExisting schedules on target date:\n${schedules.length ? schedules.map(s => `- id=${s.id}, name=${s.name}, ${s.start_time} to ${s.end_time}, planned=${s.is_planned}`).join('\n') : 'none'}\n\nReturn schedule drafts only when they fit open time. ${DRAFT_RESPONSE_REMINDER}`;
 }
 
 export function buildReflectionQuestionUserMessage({ selectedDate, logText, completedTodos, pendingTodos, todaySchedules, projects }) {

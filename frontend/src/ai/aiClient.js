@@ -16,7 +16,59 @@ export function getAiConfig() {
   };
 }
 
-export async function callChatCompletion({ systemPrompt, userMessage, maxTokens = 1200, temperature = 0.4 }) {
+function contentToText(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map(part => {
+        if (typeof part === 'string') return part;
+        return typeof part?.text === 'string' ? part.text : '';
+      })
+      .join('');
+  }
+  if (content && typeof content.text === 'string') return content.text;
+  return '';
+}
+
+export function extractChatCompletionResult(data) {
+  const choice = Array.isArray(data?.choices) ? data.choices[0] : null;
+  const message = choice?.message;
+  const content = message?.content;
+  const text = contentToText(content);
+  const contentFormat = !text.trim()
+    ? 'empty'
+    : Array.isArray(content)
+      ? 'parts'
+    : typeof content === 'string'
+      ? 'text'
+      : content == null
+        ? 'empty'
+        : typeof content;
+  const reasoningContent = message?.reasoning_content;
+
+  return {
+    text,
+    responseMeta: {
+      finishReason: choice?.finish_reason ?? null,
+      model: typeof data?.model === 'string' ? data.model : null,
+      contentFormat,
+      hasReasoningContent: typeof reasoningContent === 'string'
+        ? !!reasoningContent.trim()
+        : Array.isArray(reasoningContent) && reasoningContent.length > 0,
+      completionTokens: Number.isFinite(data?.usage?.completion_tokens)
+        ? data.usage.completion_tokens
+        : null,
+    },
+  };
+}
+
+export async function callChatCompletion({
+  systemPrompt,
+  userMessage,
+  maxTokens = 1200,
+  temperature = 0.4,
+  includeResponseMetadata = false,
+}) {
   const { apiKey, apiBase, model } = getAiConfig();
   if (!apiKey) {
     throw new Error('请先在设置页配置 API Key');
@@ -45,5 +97,6 @@ export async function callChatCompletion({ systemPrompt, userMessage, maxTokens 
   }
 
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || '';
+  const result = extractChatCompletionResult(data);
+  return includeResponseMetadata ? result : result.text;
 }

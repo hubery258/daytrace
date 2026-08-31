@@ -13,6 +13,7 @@ import {
   buildReflectionSummaryUserMessage,
 } from '../ai/aiPrompts';
 import AiDraftReviewModal from '../components/AiDraftReviewModal';
+import AiResponseDiagnostics from '../components/AiResponseDiagnostics';
 
 const TODAY = todayStr();
 const STORAGE_KEY_API_KEY = 'simpletasker_api_key';
@@ -45,6 +46,7 @@ export default function DailySummaryPage() {
   const [draftWarnings, setDraftWarnings] = useState([]);
   const [draftItems, setDraftItems] = useState([]);
   const [showDraftReview, setShowDraftReview] = useState(false);
+  const [draftDiagnostics, setDraftDiagnostics] = useState(null);
 
   const loadLog = useCallback(async (date) => {
     setLoading(true);
@@ -95,6 +97,7 @@ export default function DailySummaryPage() {
     setDraftWarnings([]);
     setDraftItems([]);
     setShowDraftReview(false);
+    setDraftDiagnostics(null);
   }, [selectedDate, loadLog, loadTemplates, loadContext]);
 
   const requireApiKey = (setter) => {
@@ -208,6 +211,7 @@ export default function DailySummaryPage() {
   };
 
   const handleAiGenerateDrafts = async () => {
+    setDraftDiagnostics(null);
     if (!requireApiKey(setDraftError)) return;
     setDraftLoading(true);
     setDraftError('');
@@ -215,14 +219,16 @@ export default function DailySummaryPage() {
     setDraftItems([]);
 
     try {
-      const { projectData, todaySchedules, tomorrowSchedules, completedTodoObjects, pendingTodos } = await getDailyContext();
-      const raw = await callChatCompletion({
+      const { todos, projectData, todaySchedules, tomorrowSchedules, completedTodoObjects, pendingTodos } = await getDailyContext();
+      const { text: raw, responseMeta } = await callChatCompletion({
         systemPrompt: AI_DRAFT_SYSTEM_PROMPT,
         userMessage: buildDailyDraftUserMessage({ selectedDate, logText: [logText, reflectionSummary].filter(Boolean).join('\n\n复盘结果：\n'), completedTodos: completedTodoObjects, pendingTodos, todaySchedules, tomorrowSchedules, projects: projectData }),
         maxTokens: 1600,
         temperature: 0.3,
+        includeResponseMetadata: true,
       });
-      const result = parseAiDraftResponse(raw, { projects: projectData, todos: allTodos, schedules: tomorrowSchedules });
+      const result = parseAiDraftResponse(raw, { projects: projectData, todos, schedules: tomorrowSchedules });
+      setDraftDiagnostics({ ...result, responseMeta });
       setDraftWarnings(result.warnings);
       setDraftItems(result.drafts);
       setShowDraftReview(result.drafts.length > 0);
@@ -237,6 +243,7 @@ export default function DailySummaryPage() {
   const handleDraftCreated = async () => {
     setShowDraftReview(false);
     setDraftItems([]);
+    setDraftDiagnostics(null);
     await loadContext();
   };
 
@@ -287,12 +294,13 @@ export default function DailySummaryPage() {
         {reflectionError && <div className="ai-draft-error" style={{ whiteSpace: 'pre-wrap' }}>{reflectionError}</div>}
         {reflectionSummary && <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.8, background: '#f9fafb', padding: 16, borderRadius: 8, marginTop: 12 }}>{reflectionSummary}</div>}
         {hasApiKey && <div style={{ textAlign: 'center', paddingTop: 16 }}><button className="btn btn-secondary" disabled={draftLoading} onClick={handleAiGenerateDrafts}>{draftLoading ? '生成草稿中...' : '生成明日草稿'}</button></div>}
-        {draftError && <div className="ai-draft-error" style={{ whiteSpace: 'pre-wrap' }}>{draftError}</div>}
+        {draftError && !draftDiagnostics && <div className="ai-draft-error" style={{ whiteSpace: 'pre-wrap' }}>{draftError}</div>}
+        <AiResponseDiagnostics diagnostics={draftDiagnostics} />
         {draftWarnings.length > 0 && <div className="ai-draft-warning">{draftWarnings.map((warning, index) => <div key={index}>{warning}</div>)}</div>}
         {draftItems.length > 0 && !showDraftReview && <div style={{ textAlign: 'center', paddingTop: 12 }}><button className="btn btn-sm btn-primary" onClick={() => setShowDraftReview(true)}>打开 {draftItems.length} 条草稿</button></div>}
       </div>
 
-      {showDraftReview && <AiDraftReviewModal drafts={draftItems} warnings={draftWarnings} projects={projects} todos={allTodos} onClose={() => setShowDraftReview(false)} onCreated={handleDraftCreated} />}
+      {showDraftReview && <AiDraftReviewModal drafts={draftItems} warnings={draftWarnings} diagnostics={draftDiagnostics} projects={projects} todos={allTodos} onClose={() => setShowDraftReview(false)} onCreated={handleDraftCreated} />}
 
       <div className="completed-list">
         <h3>今日完成待办</h3>
