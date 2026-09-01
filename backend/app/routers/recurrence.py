@@ -29,7 +29,10 @@ async def generate_recurrence_instances(data: schemas.RecurrenceGenerateRequest,
 
 @router.post("/from-todo/{todo_id}/sync", response_model=schemas.TodoOut)
 async def sync_recurrence_from_todo(todo_id: int, data: schemas.TodoUpdate, db: AsyncSession = Depends(get_db)):
-    todo = await crud.sync_recurrence_from_todo(db, todo_id, data)
+    try:
+        todo = await crud.sync_recurrence_from_todo(db, todo_id, data)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if not todo:
         raise HTTPException(status_code=404, detail="Recurring todo instance not found")
     return todo
@@ -37,7 +40,10 @@ async def sync_recurrence_from_todo(todo_id: int, data: schemas.TodoUpdate, db: 
 
 @router.post("/from-schedule/{schedule_id}/sync", response_model=schemas.ScheduleOut)
 async def sync_recurrence_from_schedule(schedule_id: int, data: schemas.ScheduleUpdate, db: AsyncSession = Depends(get_db)):
-    schedule = await crud.sync_recurrence_from_schedule(db, schedule_id, data)
+    try:
+        schedule = await crud.sync_recurrence_from_schedule(db, schedule_id, data)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if not schedule:
         raise HTTPException(status_code=404, detail="Recurring schedule instance not found")
     return schedule
@@ -53,7 +59,10 @@ async def get_recurrence_rule(rule_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.put("/{rule_id}", response_model=schemas.RecurrenceRuleOut)
 async def update_recurrence_rule(rule_id: int, data: schemas.RecurrenceRuleUpdate, db: AsyncSession = Depends(get_db)):
-    rule = await crud.update_recurrence_rule(db, rule_id, data)
+    try:
+        rule = await crud.update_recurrence_rule(db, rule_id, data)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if not rule:
         raise HTTPException(status_code=404, detail="Recurrence rule not found")
     return rule

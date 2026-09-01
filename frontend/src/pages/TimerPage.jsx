@@ -3,6 +3,21 @@ import { projectApi, timerApi, todoApi } from '../api/client';
 import ScheduleModal from '../components/ScheduleModal';
 import { BEIJING_TIME_ZONE, parseAsLocal } from '../utils/time';
 
+const PENDING_FINISH_TIMER_KEY = 'riji_timer_pending_schedule_id';
+const DISMISSED_FINISH_TIMER_KEY = 'riji_timer_dismissed_schedule_id';
+
+function readLocalValue(key) {
+  try { return localStorage.getItem(key) || ''; } catch { return ''; }
+}
+
+function writeLocalValue(key, value) {
+  try { localStorage.setItem(key, String(value)); } catch { /* SQLite remains authoritative. */ }
+}
+
+function removeLocalValue(key) {
+  try { localStorage.removeItem(key); } catch { /* The recovery hint is best effort. */ }
+}
+
 function pad(n) {
   return String(n).padStart(2, '0');
 }
@@ -48,23 +63,82 @@ export default function TimerPage() {
   const timerNameInputRef = useRef(null);
   const cancelButtonRef = useRef(null);
   const restoreInputAfterCancelRef = useRef(false);
+  const finishTimerRef = useRef(null);
+  const refreshInFlightRef = useRef(null);
 
   const loadTimer = useCallback(async () => {
     const current = await timerApi.current();
     setTimer(current);
   }, []);
 
-  const loadRecent = useCallback(async () => {
+  const loadRecent = useCallback(async ({ recoverFinished = false } = {}) => {
     const data = await timerApi.recent(8);
     setRecent(data);
+    if (!recoverFinished || finishTimerRef.current) return;
+
+    const pendingId = Number(readLocalValue(PENDING_FINISH_TIMER_KEY));
+    let recoverable = Number.isInteger(pendingId) && pendingId > 0
+      ? data.find(item => Number(item.id) === pendingId && item.status === 'completed' && !item.created_schedule_id)
+      : null;
+
+    if (!recoverable) {
+      const latest = data[0];
+      const dismissedId = Number(readLocalValue(DISMISSED_FINISH_TIMER_KEY));
+      const updatedAt = latest?.updated_at ? parseAsLocal(latest.updated_at).getTime() : 0;
+      const recentlyFinished = updatedAt > 0 && Date.now() - updatedAt <= 24 * 60 * 60 * 1000;
+      if (latest?.status === 'completed' && !latest.created_schedule_id && recentlyFinished && Number(latest.id) !== dismissedId) {
+        recoverable = latest;
+      }
+    }
+
+    if (recoverable) {
+      writeLocalValue(PENDING_FINISH_TIMER_KEY, recoverable.id);
+      finishTimerRef.current = recoverable;
+      setFinishTimer(recoverable);
+    } else if (pendingId) {
+      removeLocalValue(PENDING_FINISH_TIMER_KEY);
+    }
   }, []);
 
+  const refreshTimerState = useCallback(({ recoverFinished = false } = {}) => {
+    if (refreshInFlightRef.current) return refreshInFlightRef.current;
+    const pending = Promise.allSettled([
+      loadTimer(),
+      loadRecent({ recoverFinished }),
+    ]).then((results) => {
+      setNowTick(Date.now());
+      const failed = results.find(result => result.status === 'rejected');
+      if (failed) throw failed.reason;
+    }).finally(() => {
+      refreshInFlightRef.current = null;
+    });
+    refreshInFlightRef.current = pending;
+    return pending;
+  }, [loadRecent, loadTimer]);
+
   useEffect(() => {
-    loadTimer().catch(err => console.error('加载计时失败', err));
-    loadRecent().catch(err => console.error('加载最近计时失败', err));
+    finishTimerRef.current = finishTimer;
+  }, [finishTimer]);
+
+  useEffect(() => {
+    refreshTimerState({ recoverFinished: true }).catch(err => console.error('恢复计时状态失败', err));
     projectApi.list().then(setProjects).catch(err => console.error('加载项目失败', err));
     todoApi.list({ is_completed: false }).then(setTodos).catch(err => console.error('加载待办失败', err));
-  }, [loadTimer, loadRecent]);
+
+    const resume = () => {
+      if (document.visibilityState === 'visible') {
+        refreshTimerState({ recoverFinished: true }).catch(err => console.error('恢复计时状态失败', err));
+      }
+    };
+    document.addEventListener('visibilitychange', resume);
+    window.addEventListener('pageshow', resume);
+    window.addEventListener('focus', resume);
+    return () => {
+      document.removeEventListener('visibilitychange', resume);
+      window.removeEventListener('pageshow', resume);
+      window.removeEventListener('focus', resume);
+    };
+  }, [refreshTimerState]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNowTick(Date.now()), 1000);
@@ -113,7 +187,12 @@ export default function TimerPage() {
     let updated = null;
     try {
       updated = await action();
-      if (updated.status === 'completed') setFinishTimer(updated);
+      if (updated.status === 'completed') {
+        writeLocalValue(PENDING_FINISH_TIMER_KEY, updated.id);
+        removeLocalValue(DISMISSED_FINISH_TIMER_KEY);
+        finishTimerRef.current = updated;
+        setFinishTimer(updated);
+      }
     } catch (err) {
       alert('操作失败：' + err.message);
     } finally {
@@ -144,6 +223,13 @@ export default function TimerPage() {
       restoreInputAfterCancelRef.current = false;
       window.requestAnimationFrame(() => cancelButtonRef.current?.focus({ preventScroll: true }));
     }
+  };
+
+  const dismissFinishTimer = () => {
+    if (finishTimer) writeLocalValue(DISMISSED_FINISH_TIMER_KEY, finishTimer.id);
+    removeLocalValue(PENDING_FINISH_TIMER_KEY);
+    finishTimerRef.current = null;
+    setFinishTimer(null);
   };
 
   const finishPrefill = finishTimer ? {
@@ -250,11 +336,14 @@ export default function TimerPage() {
         <ScheduleModal
           defaultPlanned={false}
           prefill={finishPrefill}
-          onClose={() => setFinishTimer(null)}
+          onClose={dismissFinishTimer}
           onSaved={async (schedule) => {
             await timerApi.attachSchedule(finishTimer.id, schedule.id);
+            removeLocalValue(PENDING_FINISH_TIMER_KEY);
+            removeLocalValue(DISMISSED_FINISH_TIMER_KEY);
+            finishTimerRef.current = null;
             setFinishTimer(null);
-            loadRecent();
+            await loadRecent();
           }}
         />
       )}

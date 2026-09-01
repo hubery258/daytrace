@@ -10,7 +10,12 @@ router = APIRouter(prefix="/api/todos", tags=["todos"])
 
 @router.post("/", response_model=schemas.TodoOut, status_code=201)
 async def create_todo(data: schemas.TodoCreate, db: AsyncSession = Depends(get_db)):
-    return await crud.create_todo(db, data)
+    try:
+        return await crud.create_todo(db, data)
+    except crud.TodoFocusLimitError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/", response_model=List[schemas.TodoOut])
@@ -57,7 +62,12 @@ async def get_todo(todo_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.put("/{todo_id}", response_model=schemas.TodoOut)
 async def update_todo(todo_id: int, data: schemas.TodoUpdate, db: AsyncSession = Depends(get_db)):
-    todo = await crud.update_todo(db, todo_id, data)
+    try:
+        todo = await crud.update_todo(db, todo_id, data)
+    except crud.TodoFocusLimitError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if not todo:
         raise HTTPException(status_code=404, detail="待办不存在")
     return todo

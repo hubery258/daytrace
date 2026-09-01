@@ -80,11 +80,6 @@ export default function ProjectDetailPage() {
 
 
   const handleAiNextSteps = async () => {
-    if (!localStorage.getItem('simpletasker_api_key')) {
-      setAiDiagnostics(null);
-      setAiError('请先在设置页配置 API Key。');
-      return;
-    }
     setAiLoading(true);
     setAiError('');
     setAiWarnings([]);

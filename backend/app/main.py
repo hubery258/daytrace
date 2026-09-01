@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 import uuid
 import os
 from pathlib import Path
@@ -10,6 +11,8 @@ from sqlalchemy import text
 
 from .database import async_engine, Base
 from .routers import data_portability, logs, projects, recurrence, schedules, timer, todos, zju
+
+SQLITE_SCHEMA_VERSION = 9
 
 class SPAStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
@@ -60,6 +63,10 @@ async def ensure_sqlite_schema_compat(conn):
     )
     await add_missing_columns(
         "recurrence_rules",
+        {"uuid": "uuid VARCHAR(36)"},
+    )
+    await add_missing_columns(
+        "recurrence_exceptions",
         {"uuid": "uuid VARCHAR(36)"},
     )
     await add_missing_columns(
@@ -130,6 +137,7 @@ async def ensure_sqlite_schema_compat(conn):
         "log_templates",
         "timer_sessions",
         "recurrence_rules",
+        "recurrence_exceptions",
     )
     for table_name in uuid_tables:
         result = await conn.execute(text(f"SELECT id FROM {table_name} WHERE uuid IS NULL OR uuid = ''"))
@@ -141,6 +149,51 @@ async def ensure_sqlite_schema_compat(conn):
         await conn.execute(
             text(f"CREATE UNIQUE INDEX IF NOT EXISTS ix_{table_name}_uuid ON {table_name}(uuid)")
         )
+    await conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_todos_recurrence_lookup "
+        "ON todos(recurrence_rule_id, recurrence_date)"
+    ))
+    await conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_schedules_recurrence_lookup "
+        "ON schedules(recurrence_rule_id, recurrence_date)"
+    ))
+    await conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_recurrence_exceptions_lookup "
+        "ON recurrence_exceptions(recurrence_rule_id, entity_type, recurrence_date)"
+    ))
+    await conn.execute(text(
+        "CREATE TABLE IF NOT EXISTS recurrence_instance_claims ("
+        "rule_uuid VARCHAR(36) NOT NULL, "
+        "entity_type VARCHAR(20) NOT NULL, "
+        "recurrence_date DATE NOT NULL, "
+        "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+        "PRIMARY KEY (rule_uuid, entity_type, recurrence_date))"
+    ))
+    for entity_type, table_name in (("todo", "todos"), ("schedule", "schedules")):
+        await conn.execute(text(
+            "INSERT OR IGNORE INTO recurrence_instance_claims "
+            "(rule_uuid, entity_type, recurrence_date) "
+            f"SELECT r.uuid, '{entity_type}', i.recurrence_date "
+            f"FROM {table_name} AS i JOIN recurrence_rules AS r "
+            "ON r.id = i.recurrence_rule_id "
+            "WHERE i.recurrence_date IS NOT NULL"
+        ))
+    await conn.execute(text(
+        "INSERT OR IGNORE INTO recurrence_instance_claims "
+        "(rule_uuid, entity_type, recurrence_date) "
+        "SELECT r.uuid, e.entity_type, e.recurrence_date "
+        "FROM recurrence_exceptions AS e JOIN recurrence_rules AS r "
+        "ON r.id = e.recurrence_rule_id"
+    ))
+    await conn.execute(text(
+        "CREATE TABLE IF NOT EXISTS app_schema_migrations ("
+        "version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
+    ))
+    await conn.execute(
+        text("INSERT OR IGNORE INTO app_schema_migrations(version, applied_at) VALUES (:version, :applied_at)"),
+        {"version": SQLITE_SCHEMA_VERSION, "applied_at": datetime.now(timezone.utc).isoformat()},
+    )
+    await conn.execute(text(f"PRAGMA user_version = {SQLITE_SCHEMA_VERSION}"))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -154,7 +207,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="日迹 API",
     description="个人效率助手 - 待办 & 日程 & 项目 & AI 分析",
-    version="0.7.5",
+    version="0.8.0",
     lifespan=lifespan,
 )
 

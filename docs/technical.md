@@ -9,9 +9,19 @@
 - 数据库：SQLite。
 - Web / Docker 部署：Docker Compose，可运行前端 Nginx 静态服务和后端 FastAPI 服务。
 - 桌面端体验版：Electron + FastAPI sidecar + SQLite。
-- Android 体验版：Capacitor + WebView + 本地 SQLite 数据层。
+- Android v0.8：Capacitor + WebView + 设备内 SQLite + 最小原生安全存储/HTTP 插件。
 
 MVP 以本地单机可持续使用为目标。v1.0.0 前不引入账号体系和多端同步；后续如果进入多设备同步，再评估账号系统、远端数据库、同步协议和冲突处理策略。
+
+### v0.8 Android 数据与安全边界
+
+- `frontend/src/api/capabilities.js` 定义 65 条能力契约；`clientCore.js` 绑定 Web/FastAPI 与 Android/SQLite 双适配器。
+- Android 数据层按 projects/todos/schedules/recurrence/support/portability/zju 拆分，未知路径返回显式 501，正常功能不得空成功。
+- 移动数据库采用有版本迁移；重复实例使用 `rule_uuid + entity_type + recurrence_date` claim 保证幂等，同时保留历史重复行不做破坏性迁移。
+- ZJU password、Pintia Cookie 与 AI Key 使用 AndroidKeyStore 支持的加密存储；Capacitor 日志关闭，Cookie 只在原生内存会话中存在。
+- JSON 备份不包含凭据、AI Key、ZJU 缓存、导入映射或计时 claim；replace/merge 在事务中执行，replace 前先生成并读回校验本机安全备份。
+- Android Manifest 同时禁用旧版备份并为 Android 12+ 配置 data extraction 排除规则；FileProvider 仅共享应用缓存。
+- 原生网络只允许 HTTPS，不覆盖系统证书与 hostname 校验，不允许 HTTPS 降级到 HTTP。
 
 ## 前端
 
@@ -128,7 +138,7 @@ v0.7.x 已在不改变多端基础架构的前提下，完成 React 全站视觉
 v0.6.x 已支持基础 JSON 导入导出，用于手动迁移和未来同步模型验证：
 
 - 导出核心个人数据：项目、待办、日程、每日总结、日志模板、计时会话和重复规则。
-- 导入前展示预览，校验 `app: riji` 与 `schema_version: 0.6.0`。
+- 导入前展示预览，校验 `app: riji`；当前导出 `schema_version: 0.8.0`，兼容导入 `0.6.0`。
 - 导入采用按 UUID 合并的原子流程；相同 UUID 以导入包为准，未出现在包中的本地数据保留。
 - 日程关联待办、项目归属、完成待办等关系在 JSON 中使用 UUID，写入本机数据库时再映射为本地整数 ID。
 - AI API Key、ZJU 密码、Pintia Cookie、session、token 和 ZJU 缓存默认不导出。

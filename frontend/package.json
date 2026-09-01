@@ -1,19 +1,26 @@
 {
   "name": "riji-frontend",
   "private": true,
-  "version": "0.7.5",
+  "version": "0.8.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node --test src/ai/aiClient.test.js src/ai/aiDraftParser.test.js src/ai/aiPrompts.test.js",
+    "test:ai": "node --test src/ai/aiClient.test.js src/ai/aiDraftParser.test.js src/ai/aiPrompts.test.js",
     "preview": "vite preview",
+    "test:contract": "node --test tests/contractManifest.test.mjs",
     "desktop:dev": "npm run build && electron electron/main.cjs",
     "desktop:dir": "npm run build && electron-builder --dir",
     "desktop:build": "npm run build && electron-builder",
     "android:sync": "npm run build && cap sync android",
     "android:open": "cap open android",
-    "android:apk": "npm run android:sync && cd android && gradlew.bat assembleDebug"
+    "android:apk": "npm run android:sync && cd android && gradlew.bat assembleDebug",
+    "test:mobile": "node --test tests/mobileDomain.test.mjs tests/mobileAdapter.test.mjs tests/mobileMigration.test.mjs",
+    "test:zju": "node --test tests/zjuNormalize.test.mjs tests/zjuNetwork.test.mjs",
+    "test:platform": "node --test tests/platformAdapters.test.mjs",
+    "test": "npm run test:ai && npm run test:contract && npm run test:mobile && npm run test:zju && npm run test:platform",
+    "android:test": "cd android && gradlew.bat testDebugUnitTest",
+    "android:release": "npm run android:sync && cd android && gradlew.bat assembleRelease"
   },
   "dependencies": {
     "@capacitor-community/sqlite": "^8.1.0",
@@ -32,6 +39,7 @@
     "@vitejs/plugin-react": "^4.3.1",
     "electron": "^43.2.0",
     "electron-builder": "^26.15.3",
+    "sql.js": "^1.14.1",
     "vite": "^5.4.2"
   },
   "main": "electron/main.cjs",

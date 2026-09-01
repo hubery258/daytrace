@@ -11,13 +11,16 @@ from sqlalchemy import Date as SADate, DateTime as SADateTime, Enum as SAEnum, d
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import models
+from .recurrence_claims import rebuild_recurrence_claims
 
 
 APP_ID = "riji"
-SCHEMA_VERSION = "0.6.0"
+SCHEMA_VERSION = "0.8.0"
+SUPPORTED_SCHEMA_VERSIONS = {"0.6.0", SCHEMA_VERSION}
 ENTITY_ORDER = (
     "projects",
     "recurrence_rules",
+    "recurrence_exceptions",
     "todos",
     "schedules",
     "daily_logs",
@@ -33,6 +36,9 @@ SPECS: dict[str, tuple[type, tuple[str, ...]]] = {
     "recurrence_rules": (models.RecurrenceRule, (
         "entity_type", "template_json", "frequency", "start_date", "end_date",
         "weekdays", "month_day", "status", "created_at", "updated_at",
+    )),
+    "recurrence_exceptions": (models.RecurrenceException, (
+        "entity_type", "recurrence_date", "action", "created_at",
     )),
     "todos": (models.Todo, (
         "name", "position", "ddl_type", "ddl_date", "reminder_days", "category", "status",
@@ -59,6 +65,7 @@ SPECS: dict[str, tuple[type, tuple[str, ...]]] = {
 REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "projects": ("name",),
     "recurrence_rules": ("entity_type", "frequency", "start_date"),
+    "recurrence_exceptions": ("entity_type", "recurrence_date"),
     "todos": ("name", "ddl_type", "category", "status"),
     "schedules": ("name", "start_time", "end_time", "category", "nature"),
     "daily_logs": ("log_date",),
@@ -107,6 +114,25 @@ async def export_package(db: AsyncSession) -> dict[str, Any]:
         exported["project_uuid"] = project_uuids.get(source.project_id)
         exported["template_json"] = dict(exported.get("template_json") or {})
         exported["template_json"].pop("project_id", None)
+    normalized_exceptions: list[dict[str, Any]] = []
+    seen_exception_keys: set[tuple[str, str, str]] = set()
+    for source, exported in zip(rows["recurrence_exceptions"], entities["recurrence_exceptions"]):
+        rule_uuid = rule_uuids.get(source.recurrence_rule_id)
+        if not rule_uuid:
+            raise DataPackageError(
+                f"无法导出孤立的重复例外：id={source.id}, rule_id={source.recurrence_rule_id}"
+            )
+        exported["recurrence_rule_uuid"] = rule_uuid
+        natural_key = (
+            rule_uuid,
+            str(exported.get("entity_type") or ""),
+            str(exported.get("recurrence_date") or "")[:10],
+        )
+        if natural_key in seen_exception_keys:
+            continue
+        seen_exception_keys.add(natural_key)
+        normalized_exceptions.append(exported)
+    entities["recurrence_exceptions"] = normalized_exceptions
     for source, exported in zip(rows["todos"], entities["todos"]):
         exported["project_uuid"] = project_uuids.get(source.project_id)
         exported["recurrence_rule_uuid"] = rule_uuids.get(source.recurrence_rule_id)
@@ -134,8 +160,9 @@ def validate_package(package: Any) -> dict[str, Any]:
         raise DataPackageError("数据包必须是 JSON 对象")
     if package.get("app") != APP_ID:
         raise DataPackageError("不是日迹数据包")
-    if package.get("schema_version") != SCHEMA_VERSION:
-        raise DataPackageError(f"不支持的 schema_version：{package.get('schema_version')!r}，当前仅支持 {SCHEMA_VERSION}")
+    if package.get("schema_version") not in SUPPORTED_SCHEMA_VERSIONS:
+        supported = "、".join(sorted(SUPPORTED_SCHEMA_VERSIONS))
+        raise DataPackageError(f"不支持的 schema_version：{package.get('schema_version')!r}，当前支持 {supported}")
     entities = package.get("entities")
     if not isinstance(entities, dict):
         raise DataPackageError("数据包缺少 entities")
@@ -146,6 +173,7 @@ def validate_package(package: Any) -> dict[str, Any]:
         if not isinstance(items, list):
             raise DataPackageError(f"entities.{name} 必须是数组")
         seen: set[str] = set()
+        seen_recurrence_keys: set[tuple[str, str, str]] = set()
         normalized_items: list[dict[str, Any]] = []
         for index, item in enumerate(items):
             if not isinstance(item, dict):
@@ -160,6 +188,19 @@ def validate_package(package: Any) -> dict[str, Any]:
             missing = [field for field in REQUIRED_FIELDS[name] if field not in item]
             if missing:
                 raise DataPackageError(f"entities.{name}[{index}] 缺少字段：{', '.join(missing)}")
+            if name == "recurrence_exceptions":
+                recurrence_key = (
+                    str(item.get("recurrence_rule_uuid") or ""),
+                    str(item.get("entity_type") or ""),
+                    str(item.get("recurrence_date") or "")[:10],
+                )
+                if not all(recurrence_key):
+                    raise DataPackageError(
+                        f"entities.{name}[{index}] 缺少有效的 recurrence_rule_uuid、entity_type 或 recurrence_date"
+                    )
+                if recurrence_key in seen_recurrence_keys:
+                    raise DataPackageError(f"entities.{name} 存在重复的规则日期例外：{recurrence_key}")
+                seen_recurrence_keys.add(recurrence_key)
             seen.add(item_uuid)
             normalized_items.append({**item, "uuid": item_uuid})
         normalized_entities[name] = normalized_items
@@ -167,9 +208,18 @@ def validate_package(package: Any) -> dict[str, Any]:
     return normalized
 
 
+def _validate_mode(mode: str) -> str:
+    if mode not in {"merge", "replace"}:
+        raise DataPackageError("mode 必须是 merge 或 replace")
+    return mode
+
+
 async def preview_package(db: AsyncSession, package: Any, mode: str = "merge") -> dict[str, Any]:
+    mode = _validate_mode(mode)
     package = validate_package(package)
     summary: dict[str, dict[str, int]] = {}
+    rule_result = await db.execute(select(models.RecurrenceRule.id, models.RecurrenceRule.uuid))
+    rule_uuid_by_id = {row[0]: row[1] for row in rule_result.fetchall()}
     for name in ENTITY_ORDER:
         model, _ = SPECS[name]
         existing_result = await db.execute(select(model))
@@ -181,6 +231,14 @@ async def preview_package(db: AsyncSession, package: Any, mode: str = "merge") -
             is_update = matched is not None
             if name == "daily_logs" and not is_update:
                 matched = next((existing_item for existing_item in existing if existing_item.log_date == _parse_date(item.get("log_date"))), None)
+                is_update = matched is not None
+            if name == "recurrence_exceptions" and not is_update:
+                matched = next((
+                    existing_item for existing_item in existing
+                    if rule_uuid_by_id.get(existing_item.recurrence_rule_id) == item.get("recurrence_rule_uuid")
+                    and _json_value(existing_item.entity_type) == item.get("entity_type")
+                    and existing_item.recurrence_date == _parse_date(item.get("recurrence_date"))
+                ), None)
                 is_update = matched is not None
             if matched is not None:
                 matched_existing_ids.add(matched.id)
@@ -242,27 +300,58 @@ def _apply_fields(instance: Any, model: type, fields: tuple[str, ...], item: dic
             setattr(instance, field, _coerce(model, field, item[field]))
 
 
-async def _upsert_group(db: AsyncSession, name: str, items: list[dict[str, Any]]) -> tuple[dict[str, Any], int, int]:
+async def _upsert_group(
+    db: AsyncSession,
+    name: str,
+    items: list[dict[str, Any]],
+    maps: dict[str, dict[str, Any]] | None = None,
+) -> tuple[dict[str, Any], int, int]:
     model, fields = SPECS[name]
-    result = await db.execute(select(model))
+    result = await db.execute(select(model).order_by(model.id.asc()))
     existing = list(result.scalars().all())
     by_uuid = {item.uuid: item for item in existing}
     by_date = {item.log_date: item for item in existing} if name == "daily_logs" else {}
+    by_recurrence_key: dict[tuple[int, str, date], Any] = {}
+    if name == "recurrence_exceptions":
+        for existing_item in existing:
+            key = (
+                existing_item.recurrence_rule_id,
+                _json_value(existing_item.entity_type),
+                existing_item.recurrence_date,
+            )
+            by_recurrence_key.setdefault(key, existing_item)
     created = updated = 0
     mapped: dict[str, Any] = {}
     for item in items:
+        recurrence_rule_id = None
+        recurrence_key = None
+        if name == "recurrence_exceptions":
+            if maps is None or "recurrence_rules" not in maps:
+                raise DataPackageError("导入重复例外前必须先导入重复规则")
+            recurrence_rule_id = _resolve(
+                maps["recurrence_rules"], item.get("recurrence_rule_uuid"), "重复规则"
+            )
+            recurrence_key = (
+                recurrence_rule_id,
+                item.get("entity_type"),
+                _parse_date(item.get("recurrence_date")),
+            )
         instance = by_uuid.get(item["uuid"])
         if instance is None and name == "daily_logs":
             instance = by_date.get(_parse_date(item.get("log_date")))
+        if instance is None and name == "recurrence_exceptions":
+            instance = by_recurrence_key.get(recurrence_key)
         if instance is None:
             instance = model(uuid=item["uuid"])
             db.add(instance)
             created += 1
         else:
             updated += 1
-            if name == "daily_logs" and instance.uuid != item["uuid"]:
+            if name in ("daily_logs", "recurrence_exceptions") and instance.uuid != item["uuid"]:
                 instance.uuid = item["uuid"]
         _apply_fields(instance, model, fields, item)
+        if name == "recurrence_exceptions":
+            instance.recurrence_rule_id = recurrence_rule_id
         mapped[item["uuid"]] = instance
     await db.flush()
     return mapped, created, updated
@@ -278,13 +367,14 @@ def _resolve(mapping: dict[str, Any], item_uuid: Any, label: str) -> int | None:
 
 
 async def import_package(db: AsyncSession, raw_package: Any, mode: str = "merge") -> dict[str, Any]:
+    mode = _validate_mode(mode)
     package = validate_package(raw_package)
     entities = package["entities"]
     maps: dict[str, dict[str, Any]] = {}
     results: dict[str, dict[str, int]] = {}
     try:
         for name in ENTITY_ORDER:
-            mapped, created, updated = await _upsert_group(db, name, entities[name])
+            mapped, created, updated = await _upsert_group(db, name, entities[name], maps)
             maps[name] = mapped
             results[name] = {"created": created, "updated": updated}
 
@@ -337,6 +427,7 @@ async def import_package(db: AsyncSession, raw_package: Any, mode: str = "merge"
                     ))
                 await db.execute(delete(model).where(model.id.in_(remove_ids)))
                 deleted[name] = len(remove_ids)
+        await rebuild_recurrence_claims(db)
         await db.commit()
     except Exception:
         await db.rollback()

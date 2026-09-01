@@ -73,7 +73,10 @@ async def update_schedule(schedule_id: int, data: schemas.ScheduleUpdate, db: As
     )
     if overlaps:
         raise HTTPException(status_code=409, detail="Schedule overlaps with an existing item in the same lane")
-    return await crud.update_schedule(db, schedule_id, data)
+    try:
+        return await crud.update_schedule(db, schedule_id, data)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 @router.delete("/{schedule_id}", status_code=204)
 async def delete_schedule(schedule_id: int, db: AsyncSession = Depends(get_db)):
