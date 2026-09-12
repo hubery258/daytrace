@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import enum
+import re
 import uuid as uuid_lib
 from datetime import date, datetime, timezone
 from typing import Any
@@ -14,15 +15,17 @@ from . import models
 
 
 APP_ID = "riji"
-SCHEMA_VERSION = "0.6.0"
+SCHEMA_VERSION = "0.10.0"
 ENTITY_ORDER = (
     "projects",
     "recurrence_rules",
     "todos",
+    "time_block_categories",
     "schedules",
     "daily_logs",
     "log_templates",
     "timer_sessions",
+    "time_blocks",
 )
 
 SPECS: dict[str, tuple[type, tuple[str, ...]]] = {
@@ -44,6 +47,13 @@ SPECS: dict[str, tuple[type, tuple[str, ...]]] = {
         "location", "notes", "is_planned", "recurrence_date",
         "is_recurrence_exception", "created_at", "updated_at",
     )),
+    "time_block_categories": (models.TimeBlockCategory, (
+        "name", "color", "created_at", "updated_at",
+    )),
+    "time_blocks": (models.TimeBlock, (
+        "block_date", "start_minute", "end_minute", "granularity", "category_id",
+        "notes", "source", "coverage_seconds", "created_at", "updated_at",
+    )),
     "daily_logs": (models.DailyLog, (
         "log_date", "log_text", "created_at", "updated_at",
     )),
@@ -52,7 +62,7 @@ SPECS: dict[str, tuple[type, tuple[str, ...]]] = {
     )),
     "timer_sessions": (models.TimerSession, (
         "name", "status", "started_at", "last_resumed_at", "paused_at",
-        "paused_seconds", "ended_at", "notes", "created_at", "updated_at",
+        "paused_seconds", "active_intervals", "ended_at", "notes", "created_at", "updated_at",
     )),
 }
 
@@ -61,6 +71,8 @@ REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "recurrence_rules": ("entity_type", "frequency", "start_date"),
     "todos": ("name", "ddl_type", "category", "status"),
     "schedules": ("name", "start_time", "end_time", "category", "nature"),
+    "time_block_categories": ("name", "color"),
+    "time_blocks": ("block_date", "start_minute", "end_minute", "granularity", "category_uuid"),
     "daily_logs": ("log_date",),
     "log_templates": ("name",),
     "timer_sessions": ("name", "status", "started_at"),
@@ -92,6 +104,10 @@ async def _all(db: AsyncSession, model: type) -> list[Any]:
 
 async def export_package(db: AsyncSession) -> dict[str, Any]:
     rows = {name: await _all(db, spec[0]) for name, spec in SPECS.items()}
+    rows["schedules"] = [item for item in rows["schedules"] if item.is_planned]
+    rows["recurrence_rules"] = [item for item in rows["recurrence_rules"] if
+        item.entity_type != models.RecurrenceEntityType.schedule or
+        (item.template_json or {}).get("is_planned", True) is not False]
     id_maps = {name: {item.id: item.uuid for item in items} for name, items in rows.items()}
     entities: dict[str, list[dict[str, Any]]] = {}
     for name in ENTITY_ORDER:
@@ -102,6 +118,8 @@ async def export_package(db: AsyncSession) -> dict[str, Any]:
     rule_uuids = id_maps["recurrence_rules"]
     todo_uuids = id_maps["todos"]
     schedule_uuids = id_maps["schedules"]
+    category_uuids = id_maps["time_block_categories"]
+    timer_uuids = id_maps["timer_sessions"]
 
     for source, exported in zip(rows["recurrence_rules"], entities["recurrence_rules"]):
         exported["project_uuid"] = project_uuids.get(source.project_id)
@@ -114,6 +132,12 @@ async def export_package(db: AsyncSession) -> dict[str, Any]:
         exported["project_uuid"] = project_uuids.get(source.project_id)
         exported["recurrence_rule_uuid"] = rule_uuids.get(source.recurrence_rule_id)
         exported["linked_todo_uuids"] = [todo_uuids[todo_id] for todo_id in (source.linked_todo_ids or []) if todo_id in todo_uuids]
+    for source, exported in zip(rows["time_blocks"], entities["time_blocks"]):
+        exported.pop("category_id", None)
+        exported["category_uuid"] = category_uuids.get(source.category_id)
+        exported["linked_todo_uuid"] = todo_uuids.get(source.linked_todo_id)
+        exported["manual_project_uuid"] = project_uuids.get(source.manual_project_id) if source.linked_todo_id is None else None
+        exported["source_timer_uuid"] = timer_uuids.get(source.source_timer_id)
     for source, exported in zip(rows["daily_logs"], entities["daily_logs"]):
         exported["completed_todo_uuids"] = [todo_uuids[todo_id] for todo_id in (source.completed_todo_ids or []) if todo_id in todo_uuids]
     for source, exported in zip(rows["timer_sessions"], entities["timer_sessions"]):
@@ -134,7 +158,7 @@ def validate_package(package: Any) -> dict[str, Any]:
         raise DataPackageError("数据包必须是 JSON 对象")
     if package.get("app") != APP_ID:
         raise DataPackageError("不是日迹数据包")
-    if package.get("schema_version") != SCHEMA_VERSION:
+    if package.get("schema_version") not in (SCHEMA_VERSION, "0.6.0"):
         raise DataPackageError(f"不支持的 schema_version：{package.get('schema_version')!r}，当前仅支持 {SCHEMA_VERSION}")
     entities = package.get("entities")
     if not isinstance(entities, dict):
@@ -162,7 +186,38 @@ def validate_package(package: Any) -> dict[str, Any]:
                 raise DataPackageError(f"entities.{name}[{index}] 缺少字段：{', '.join(missing)}")
             seen.add(item_uuid)
             normalized_items.append({**item, "uuid": item_uuid})
-        normalized_entities[name] = normalized_items
+        normalized_entities[name] = [item for item in normalized_items if item.get("is_planned", True)] if name == "schedules" else normalized_items
+    normalized_entities["recurrence_rules"] = [item for item in normalized_entities["recurrence_rules"] if
+        item.get("entity_type") != "schedule" or
+        (item.get("template_json") or {}).get("is_planned", True) is not False]
+    for category in normalized_entities["time_block_categories"]:
+        if (not isinstance(category["name"], str) or not category["name"].strip() or
+                len(category["name"]) > 100 or not isinstance(category["color"], str) or
+                not re.fullmatch(r"#[0-9a-fA-F]{6}", category["color"])):
+            raise DataPackageError("时间块属性名称或颜色无效")
+    names = [item["name"] for item in normalized_entities["time_block_categories"]]
+    if len(names) != len(set(names)):
+        raise DataPackageError("数据包中的时间块属性名称重复")
+    by_day: dict[str, list[tuple[int, int]]] = {}
+    for block in normalized_entities["time_blocks"]:
+        try:
+            parsed_day = _parse_date(block.get("block_date"))
+            if parsed_day is None:
+                raise ValueError()
+            day = str(parsed_day)
+            start, end, size = block["start_minute"], block["end_minute"], block["granularity"]
+            if not all(type(value) is int for value in (start, end, size)):
+                raise ValueError()
+            if (size not in (15, 30) or start < 0 or end > 1440 or end - start != size or start % size or
+                    block.get("source", "manual") not in ("manual", "timer")):
+                raise ValueError()
+        except (ValueError, TypeError, KeyError):
+            raise DataPackageError("时间块日期、范围或粒度无效") from None
+        by_day.setdefault(day, []).append((start, end))
+    for ranges in by_day.values():
+        ordered = sorted(ranges)
+        if any(left[1] > right[0] for left, right in zip(ordered, ordered[1:])):
+            raise DataPackageError("数据包中的时间块互相重叠")
     normalized["entities"] = normalized_entities
     return normalized
 
@@ -179,6 +234,9 @@ async def preview_package(db: AsyncSession, package: Any, mode: str = "merge") -
         for item in package["entities"][name]:
             matched = next((existing_item for existing_item in existing if existing_item.uuid == item["uuid"]), None)
             is_update = matched is not None
+            if name == "time_block_categories" and not is_update:
+                matched = next((x for x in existing if x.name == item.get("name")), None)
+                is_update = matched is not None
             if name == "daily_logs" and not is_update:
                 matched = next((existing_item for existing_item in existing if existing_item.log_date == _parse_date(item.get("log_date"))), None)
                 is_update = matched is not None
@@ -248,10 +306,13 @@ async def _upsert_group(db: AsyncSession, name: str, items: list[dict[str, Any]]
     existing = list(result.scalars().all())
     by_uuid = {item.uuid: item for item in existing}
     by_date = {item.log_date: item for item in existing} if name == "daily_logs" else {}
+    by_name = {item.name: item for item in existing} if name == "time_block_categories" else {}
     created = updated = 0
     mapped: dict[str, Any] = {}
     for item in items:
         instance = by_uuid.get(item["uuid"])
+        if instance is None and name == "time_block_categories":
+            instance = by_name.get(item.get("name"))
         if instance is None and name == "daily_logs":
             instance = by_date.get(_parse_date(item.get("log_date")))
         if instance is None:
@@ -260,9 +321,13 @@ async def _upsert_group(db: AsyncSession, name: str, items: list[dict[str, Any]]
             created += 1
         else:
             updated += 1
+            if name == "time_block_categories" and instance.uuid != item["uuid"]:
+                instance.uuid = item["uuid"]
             if name == "daily_logs" and instance.uuid != item["uuid"]:
                 instance.uuid = item["uuid"]
         _apply_fields(instance, model, fields, item)
+        if name == "time_blocks":
+            instance.category_id = item["category_id"]
         mapped[item["uuid"]] = instance
     await db.flush()
     return mapped, created, updated
@@ -284,6 +349,31 @@ async def import_package(db: AsyncSession, raw_package: Any, mode: str = "merge"
     results: dict[str, dict[str, int]] = {}
     try:
         for name in ENTITY_ORDER:
+            if name == "time_blocks":
+                if mode == "merge":
+                    incoming_uuids = {item["uuid"] for item in entities[name]}
+                    for item in entities[name]:
+                        result = await db.execute(select(models.TimeBlock).where(
+                            models.TimeBlock.block_date == _parse_date(item["block_date"]),
+                            models.TimeBlock.start_minute < item["end_minute"],
+                            models.TimeBlock.end_minute > item["start_minute"]))
+                        for old in result.scalars().all():
+                            if old.uuid in incoming_uuids:
+                                continue
+                            await db.delete(old)
+                            for start, end in ((old.start_minute, min(old.end_minute, item["start_minute"])),
+                                               (max(old.start_minute, item["end_minute"]), old.end_minute)):
+                                for minute in range(start, end, 15):
+                                    if minute + 15 <= end:
+                                        db.add(models.TimeBlock(
+                                            block_date=old.block_date, start_minute=minute, end_minute=minute + 15,
+                                            granularity=15, category_id=old.category_id, notes=old.notes,
+                                            linked_todo_id=old.linked_todo_id, manual_project_id=old.manual_project_id,
+                                            source=old.source, source_timer_id=old.source_timer_id,
+                                            coverage_seconds=min(old.coverage_seconds or 0, 900) if old.coverage_seconds is not None else None))
+                        await db.flush()
+                for item in entities[name]:
+                    item["category_id"] = _resolve(maps["time_block_categories"], item["category_uuid"], "属性")
             mapped, created, updated = await _upsert_group(db, name, entities[name])
             maps[name] = mapped
             results[name] = {"created": created, "updated": updated}
@@ -292,6 +382,7 @@ async def import_package(db: AsyncSession, raw_package: Any, mode: str = "merge"
         rules = maps["recurrence_rules"]
         todos = maps["todos"]
         schedules = maps["schedules"]
+        blocks = maps["time_blocks"]
         for item in entities["recurrence_rules"]:
             instance = rules[item["uuid"]]
             instance.project_id = _resolve(projects, item.get("project_uuid"), "项目")
@@ -307,6 +398,11 @@ async def import_package(db: AsyncSession, raw_package: Any, mode: str = "merge"
             instance.project_id = _resolve(projects, item.get("project_uuid"), "项目")
             instance.recurrence_rule_id = _resolve(rules, item.get("recurrence_rule_uuid"), "重复规则")
             instance.linked_todo_ids = [_resolve(todos, todo_uuid, "待办") for todo_uuid in item.get("linked_todo_uuids", [])]
+        for item in entities["time_blocks"]:
+            instance = blocks[item["uuid"]]
+            instance.linked_todo_id = _resolve(todos, item.get("linked_todo_uuid"), "待办")
+            instance.manual_project_id = None if instance.linked_todo_id else _resolve(projects, item.get("manual_project_uuid"), "项目")
+            instance.source_timer_id = _resolve(maps["timer_sessions"], item.get("source_timer_uuid"), "计时")
         for item in entities["daily_logs"]:
             instance = maps["daily_logs"][item["uuid"]]
             instance.completed_todo_ids = [_resolve(todos, todo_uuid, "待办") for todo_uuid in item.get("completed_todo_uuids", [])]
@@ -314,7 +410,7 @@ async def import_package(db: AsyncSession, raw_package: Any, mode: str = "merge"
             instance = maps["timer_sessions"][item["uuid"]]
             instance.project_id = _resolve(projects, item.get("project_uuid"), "项目")
             instance.linked_todo_id = _resolve(todos, item.get("linked_todo_uuid"), "待办")
-            instance.created_schedule_id = _resolve(schedules, item.get("created_schedule_uuid"), "日程")
+            instance.created_schedule_id = _resolve(schedules, item.get("created_schedule_uuid"), "日程") if item.get("created_schedule_uuid") in schedules else None
 
         deleted: dict[str, int] = {name: 0 for name in ENTITY_ORDER}
         if mode == "replace":
@@ -337,6 +433,10 @@ async def import_package(db: AsyncSession, raw_package: Any, mode: str = "merge"
                     ))
                 await db.execute(delete(model).where(model.id.in_(remove_ids)))
                 deleted[name] = len(remove_ids)
+        if mode == "replace" and not entities["time_block_categories"]:
+            for name, color in (("学习", "#347f88"), ("娱乐", "#d89b50"), ("运动", "#4c9b67"),
+                                ("开发", "#536fba"), ("休息", "#8a85a9")):
+                db.add(models.TimeBlockCategory(name=name, color=color))
         await db.commit()
     except Exception:
         await db.rollback()

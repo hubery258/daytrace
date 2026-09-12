@@ -74,6 +74,18 @@ export const scheduleApi = {
 };
 
 
+// ============ Actual time blocks ============
+export const timeBlockApi = {
+  list: (dateFrom, dateTo = dateFrom) => request('/time-blocks/?' + new URLSearchParams({ date_from: dateFrom, date_to: dateTo })),
+  replaceRange: (data) => request('/time-blocks/range', { method: 'PUT', body: JSON.stringify(data) }),
+  categories: () => request('/time-blocks/categories'),
+  createCategory: (data) => request('/time-blocks/categories', { method: 'POST', body: JSON.stringify(data) }),
+  updateCategory: (id, data) => request('/time-blocks/categories/' + id, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteCategory: (id) => request('/time-blocks/categories/' + id, { method: 'DELETE' }),
+  fromTimer: (timerId, data) => request('/time-blocks/from-timer/' + timerId, { method: 'POST', body: JSON.stringify(data) }),
+};
+
+
 // ============ Recurrence Rules ============
 export const recurrenceApi = {
   list: (params = {}) => {
@@ -100,10 +112,6 @@ export const timerApi = {
   resume: () => request('/timer/resume', { method: 'POST' }),
   finish: () => request('/timer/finish', { method: 'POST' }),
   cancel: () => request('/timer/cancel', { method: 'POST' }),
-  attachSchedule: (timerId, scheduleId) => request(`/timer/${timerId}/schedule`, {
-    method: 'POST',
-    body: JSON.stringify({ schedule_id: scheduleId }),
-  }),
   recent: (limit = 10) => request(`/timer/recent?${new URLSearchParams({ limit }).toString()}`),
 };
 

@@ -11,6 +11,8 @@ router = APIRouter(prefix="/api/schedules", tags=["schedules"])
 
 @router.post("/", response_model=schemas.ScheduleOut, status_code=201)
 async def create_schedule(data: schemas.ScheduleCreate, db: AsyncSession = Depends(get_db)):
+    if not data.is_planned:
+        raise HTTPException(status_code=422, detail="实际记录请使用时间块")
     overlaps = await crud.get_overlapping_schedules(
         db,
         start_time=data.start_time,
@@ -30,7 +32,9 @@ async def list_schedules(
     project_id: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    return await crud.get_schedules(db, is_planned=is_planned, date_from=date_from, date_to=date_to, project_id=project_id)
+    if is_planned is False:
+        return []
+    return await crud.get_schedules(db, is_planned=True, date_from=date_from, date_to=date_to, project_id=project_id)
 
 
 @router.get("/current", response_model=Optional[schemas.ScheduleOut])
@@ -45,13 +49,13 @@ async def week_schedules(
 ):
     """获取指定周的所有日程（周一到周日）。"""
     end_date = start_date + timedelta(days=7)
-    return await crud.get_schedules(db, date_from=start_date, date_to=end_date)
+    return await crud.get_schedules(db, is_planned=True, date_from=start_date, date_to=end_date)
 
 
 @router.get("/{schedule_id}", response_model=schemas.ScheduleOut)
 async def get_schedule(schedule_id: int, db: AsyncSession = Depends(get_db)):
     schedule = await crud.get_schedule(db, schedule_id)
-    if not schedule:
+    if not schedule or not schedule.is_planned:
         raise HTTPException(status_code=404, detail="日程不存在")
     return schedule
 
@@ -59,8 +63,10 @@ async def get_schedule(schedule_id: int, db: AsyncSession = Depends(get_db)):
 @router.put("/{schedule_id}", response_model=schemas.ScheduleOut)
 async def update_schedule(schedule_id: int, data: schemas.ScheduleUpdate, db: AsyncSession = Depends(get_db)):
     current = await crud.get_schedule(db, schedule_id)
-    if not current:
+    if not current or not current.is_planned:
         raise HTTPException(status_code=404, detail="Schedule not found")
+    if data.is_planned is False:
+        raise HTTPException(status_code=422, detail="实际记录请使用时间块")
     start_time = data.start_time or current.start_time
     end_time = data.end_time or current.end_time
     is_planned = data.is_planned if data.is_planned is not None else current.is_planned

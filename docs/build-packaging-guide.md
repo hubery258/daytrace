@@ -1,6 +1,6 @@
 # 日迹 Android 与 Windows 桌面体验版打包指南
 
-本文用于以后在 Windows 开发机上重新构建日迹 v0.7.x 的 Android debug APK 和 Windows Electron portable 体验版。
+本文用于以后在 Windows 开发机上重新构建日迹 v0.10.x 的 Android debug APK 和 Windows Electron portable 体验版。
 
 当前技术结构：
 
@@ -9,7 +9,7 @@
 - Android：Capacitor + Android WebView + `@capacitor-community/sqlite`。
 - 两端数据库相互独立，通过逻辑 JSON 数据包手动迁移数据。
 
-当前体验版应用版本为 `0.7.5`。JSON 导入导出的 schema_version 仍为 `0.6.0`，因为 v0.7.5 的调试加固没有修改数据表结构。
+JSON 数据包 schema_version 为 0.10.0，包含时间块及属性；仍接受 0.6.0 旧包并跳过旧实际日程。
 
 ## 你需要的知识
 
@@ -116,7 +116,7 @@ Electron 下载不稳定时可指定镜像：
 5. 先在带时间戳的临时目录构建，成功后复制到稳定路径：
 
    ```text
-   release/desktop/riji-desktop-0.7.5.exe
+   release/desktop/riji-desktop-0.10.0.exe
    ```
 
 ### 2.3 运行与验证
@@ -124,7 +124,7 @@ Electron 下载不稳定时可指定镜像：
 直接双击：
 
 ```text
-release/desktop/riji-desktop-0.7.5.exe
+release/desktop/riji-desktop-0.10.0.exe
 ```
 
 至少检查：
@@ -248,7 +248,7 @@ cd D:\cs\task
 
    ```text
    frontend/android/app/build/outputs/apk/debug/app-debug.apk
-   release/android/riji-android-0.7.5-debug.apk
+   release/android/riji-android-0.10.0-debug.apk
    ```
 
 ### 3.4 安装到实体手机
@@ -259,7 +259,7 @@ cd D:\cs\task
 $adb = ".\.android-sdk\platform-tools\adb.exe"
 
 & $adb devices
-& $adb install -r ".\release\android\riji-android-0.7.5-debug.apk"
+& $adb install -r ".\release\android\riji-android-0.10.0-debug.apk"
 ```
 
 `adb devices` 应显示：
@@ -319,7 +319,7 @@ $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
 
 ```powershell
 & $adb uninstall com.riji.app
-& $adb install ".\release\android\riji-android-0.7.5-debug.apk"
+& $adb install ".\release\android\riji-android-0.10.0-debug.apk"
 ```
 
 **Gradle 内存、文件移动或缓存问题**
@@ -378,7 +378,8 @@ Android 本地 SQLite
 
 - 项目。
 - 待办。
-- 日程。
+- 计划日程。
+- 实际时间块及属性分类。
 - 每日总结。
 - 日志模板。
 - 计时会话。
@@ -389,7 +390,7 @@ Android 本地 SQLite
 合并规则：
 
 - 相同 UUID：导入包内容优先。
-- 本地存在、但数据包里没有的实体：保留。
+- 本地存在、但数据包里没有的实体：保留；同日期重叠的时间块由导入包覆盖。
 - 每日总结还会按日期识别旧数据冲突。
 - 导入前显示各实体的新增和更新数量。
 - Android 导入在一个外层事务中执行，失败时回滚。
@@ -443,8 +444,8 @@ Android 本地 SQLite
 git branch --show-current
 git status --short
 
-Get-FileHash ".\release\android\riji-android-0.7.5-debug.apk" -Algorithm SHA256
-Get-FileHash ".\release\desktop\riji-desktop-0.7.5.exe" -Algorithm SHA256
+Get-FileHash ".\release\android\riji-android-0.10.0-debug.apk" -Algorithm SHA256
+Get-FileHash ".\release\desktop\riji-desktop-0.10.0.exe" -Algorithm SHA256
 ```
 
 记录：

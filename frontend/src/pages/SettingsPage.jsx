@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import DataPortabilityPanel from '../components/DataPortabilityPanel';
+import { timeBlockApi } from '../api/client';
 import {
   DEFAULT_DISPLAY_PREFERENCES,
   readDisplayPreferences,
@@ -65,6 +66,10 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [displayPreferences, setDisplayPreferences] = useState(readDisplayPreferences);
   const [displaySaved, setDisplaySaved] = useState(false);
+  const [blockCategories, setBlockCategories] = useState([]);
+  const [categoryEdits, setCategoryEdits] = useState({});
+  const [newCategory, setNewCategory] = useState({ name: '', color: '#347f88' });
+  const [categoryError, setCategoryError] = useState('');
 
   useEffect(() => {
     setApiKey(localStorage.getItem(STORAGE_KEY_API_KEY) || '');
@@ -72,6 +77,46 @@ export default function SettingsPage() {
     setModel(localStorage.getItem(STORAGE_KEY_MODEL) || DEFAULT_MODEL);
     setPrompt(localStorage.getItem(STORAGE_KEY_PROMPT) || DEFAULT_PROMPT);
   }, []);
+
+  const loadCategories = async () => {
+    const items = await timeBlockApi.categories();
+    setBlockCategories(items);
+    setCategoryEdits(Object.fromEntries(items.map(item => [item.id, { name: item.name, color: item.color }])));
+  };
+
+  useEffect(() => { loadCategories().catch(error => setCategoryError(error.message)); }, []);
+
+  const saveCategory = async (id) => {
+    try {
+      await timeBlockApi.updateCategory(id, categoryEdits[id]);
+      setCategoryError('');
+      await loadCategories();
+    } catch (error) { setCategoryError(error.message); }
+  };
+
+  const addCategory = async (event) => {
+    event.preventDefault();
+    try {
+      await timeBlockApi.createCategory(newCategory);
+      setNewCategory({ name: '', color: '#347f88' });
+      setCategoryError('');
+      await loadCategories();
+    } catch (error) { setCategoryError(error.message); }
+  };
+
+  const removeCategory = async (id) => {
+    try {
+      await timeBlockApi.deleteCategory(id);
+      setCategoryError('');
+      await loadCategories();
+    } catch (error) { setCategoryError(error.message); }
+  };
+
+  const updateActualPreference = (key, value) => {
+    setDisplayPreferences(writeDisplayPreferences({ ...displayPreferences, [key]: value }));
+    setDisplaySaved(true);
+    setTimeout(() => setDisplaySaved(false), 1600);
+  };
 
   const normalizedApiBase = () => (apiBase.trim() || DEFAULT_API_BASE).replace(/\/+$/, '');
   const normalizedModel = () => model.trim() || DEFAULT_MODEL;
@@ -106,6 +151,8 @@ export default function SettingsPage() {
   const resetDisplayPreferences = () => {
     const defaults = {
       timeFormat: DEFAULT_DISPLAY_PREFERENCES.timeFormat,
+      actualDisplayMode: DEFAULT_DISPLAY_PREFERENCES.actualDisplayMode,
+      timeBlockGranularity: DEFAULT_DISPLAY_PREFERENCES.timeBlockGranularity,
       pages: { ...DEFAULT_DISPLAY_PREFERENCES.pages },
       homeModules: { ...DEFAULT_DISPLAY_PREFERENCES.homeModules },
     };
@@ -167,6 +214,48 @@ export default function SettingsPage() {
                 <option value="12h">12 小时制（11:30 PM）</option>
               </select>
             </div>
+          </div>
+          <div className="settings-panel">
+            <div className="settings-panel-title"><h3>实际记录</h3><p>同一份时间块数据可按时间块或时间轴查看。</p></div>
+            <div className="form-group">
+              <label htmlFor="actual-display-mode">显示模式</label>
+              <select id="actual-display-mode" value={displayPreferences.actualDisplayMode}
+                onChange={event => updateActualPreference('actualDisplayMode', event.target.value)}>
+                <option value="blocks">时间块</option>
+                <option value="timeline">时间轴</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label htmlFor="time-block-granularity">时间块粒度</label>
+              <select id="time-block-granularity" value={displayPreferences.timeBlockGranularity}
+                onChange={event => updateActualPreference('timeBlockGranularity', Number(event.target.value))}>
+                <option value={15}>15 分钟</option>
+                <option value={30}>30 分钟</option>
+              </select>
+            </div>
+          </div>
+          <div className="settings-panel">
+            <div className="settings-panel-title"><h3>时间块属性</h3><p>属性与颜色用于实际记录和时间轴。</p></div>
+            <div className="setting-toggle-list">
+              {blockCategories.map(item => (
+                <div className="form-group" key={item.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input aria-label="属性名称" value={categoryEdits[item.id]?.name || ''}
+                    onChange={event => setCategoryEdits(prev => ({ ...prev, [item.id]: { ...prev[item.id], name: event.target.value } }))} />
+                  <input aria-label="属性颜色" type="color" value={categoryEdits[item.id]?.color || item.color}
+                    onChange={event => setCategoryEdits(prev => ({ ...prev, [item.id]: { ...prev[item.id], color: event.target.value } }))} />
+                  <button type="button" className="btn btn-sm btn-secondary" onClick={() => saveCategory(item.id)}>保存</button>
+                  <button type="button" className="btn btn-sm btn-quiet" onClick={() => removeCategory(item.id)}>删除</button>
+                </div>
+              ))}
+            </div>
+            <form className="form-group" onSubmit={addCategory} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input aria-label="新属性名称" value={newCategory.name} required maxLength={100} placeholder="添加属性"
+                onChange={event => setNewCategory(prev => ({ ...prev, name: event.target.value }))} />
+              <input aria-label="新属性颜色" type="color" value={newCategory.color}
+                onChange={event => setNewCategory(prev => ({ ...prev, color: event.target.value }))} />
+              <button className="btn btn-sm btn-primary" type="submit">添加</button>
+            </form>
+            {categoryError && <p role="alert" className="notice notice-error">{categoryError}</p>}
           </div>
         </div>
       </section>

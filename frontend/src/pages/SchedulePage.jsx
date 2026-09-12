@@ -1,12 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
-import { projectApi, recurrenceApi, scheduleApi, todoApi } from '../api/client';
+import { projectApi, recurrenceApi, scheduleApi, timeBlockApi, todoApi } from '../api/client';
 import { callChatCompletion } from '../ai/aiClient';
 import { parseAiDraftResponse } from '../ai/aiDraftParser';
 import { AI_DRAFT_SYSTEM_PROMPT, buildScheduleGapDraftUserMessage } from '../ai/aiPrompts';
 import AiDraftReviewModal from '../components/AiDraftReviewModal';
 import AiResponseDiagnostics from '../components/AiResponseDiagnostics';
 import ScheduleModal from '../components/ScheduleModal';
+import ActualTimeBlocks from '../components/ActualTimeBlocks';
 import ContextMenu from '../components/ContextMenu';
+import { DISPLAY_PREFERENCES_EVENT, readDisplayPreferences, writeDisplayPreferences } from '../utils/displayPreferences';
+import { groupTimeBlocks, groupsAsEvents, minuteLabel } from '../utils/timeBlocks';
 import { addDays, dateStrInBeijing, parseAsLocal, formatTime, formatDate, startOfDay, todayStr } from '../utils/time';
 
 const HOUR_HEIGHT = 64;
@@ -87,6 +90,7 @@ function getScheduleSegment(schedule, dateStr) {
 }
 
 function segmentTimeLabel(schedule, segment) {
+  if (schedule.is_time_block) return minuteLabel(schedule.block_group.start_minute) + '-' + minuteLabel(schedule.block_group.end_minute);
   const start = segment.startsBefore ? '00:00' : formatTime(schedule.start_time);
   const end = segment.endsAfter ? '24:00' : formatTime(schedule.end_time);
   return `${start}-${end}${segment.startsBefore || segment.endsAfter ? ' · 跨天' : ''}`;
@@ -173,6 +177,10 @@ export default function SchedulePage() {
   const [jumpDate, setJumpDate] = useState(getDateStr(today));
   const [plannedSchedules, setPlannedSchedules] = useState([]);
   const [actualSchedules, setActualSchedules] = useState([]);
+  const [actualBlocks, setActualBlocks] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [todos, setTodos] = useState([]);
+  const [actualPreferences, setActualPreferences] = useState(readDisplayPreferences);
   const [weekSchedules, setWeekSchedules] = useState([]);
   const [monthSchedules, setMonthSchedules] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -209,16 +217,25 @@ export default function SchedulePage() {
       const monthStart = getDateStr(monthDays[0]);
       const monthEnd = addDaysToDateStr(getDateStr(monthDays[monthDays.length - 1]), 1);
       const dayEnd = addDaysToDateStr(currentDateStr, 1);
-      const [planned, actual, week, month] = await Promise.all([
-        scheduleApi.list({ is_planned: true, date_from: `${currentDateStr}T00:00:00`, date_to: `${dayEnd}T00:00:00` }),
-        scheduleApi.list({ is_planned: false, date_from: `${currentDateStr}T00:00:00`, date_to: `${dayEnd}T00:00:00` }),
-        scheduleApi.list({ date_from: `${weekStart}T00:00:00`, date_to: `${weekEnd}T00:00:00` }),
-        scheduleApi.list({ date_from: `${monthStart}T00:00:00`, date_to: `${monthEnd}T00:00:00` }),
+      const [planned, week, month, dayBlocks, weekBlocks, monthBlocks, categoryData, todoData, projectData] = await Promise.all([
+        scheduleApi.list({ is_planned: true, date_from: currentDateStr + 'T00:00:00', date_to: dayEnd + 'T00:00:00' }),
+        scheduleApi.list({ is_planned: true, date_from: weekStart + 'T00:00:00', date_to: weekEnd + 'T00:00:00' }),
+        scheduleApi.list({ is_planned: true, date_from: monthStart + 'T00:00:00', date_to: monthEnd + 'T00:00:00' }),
+        timeBlockApi.list(currentDateStr),
+        timeBlockApi.list(weekStart, getDateStr(days[6])),
+        timeBlockApi.list(monthStart, getDateStr(monthDays[monthDays.length - 1])),
+        timeBlockApi.categories(),
+        todoApi.list(),
+        projectApi.list(),
       ]);
       setPlannedSchedules(planned);
-      setActualSchedules(actual);
-      setWeekSchedules(week);
-      setMonthSchedules(month);
+      setActualBlocks(dayBlocks);
+      setCategories(categoryData);
+      setTodos(todoData);
+      setProjects(projectData);
+      setActualSchedules(groupsAsEvents(groupTimeBlocks(dayBlocks), categoryData, todoData, projectData));
+      setWeekSchedules([...week, ...groupsAsEvents(groupTimeBlocks(weekBlocks), categoryData, todoData, projectData)]);
+      setMonthSchedules([...month, ...groupsAsEvents(groupTimeBlocks(monthBlocks), categoryData, todoData, projectData)]);
     } catch (err) {
       setAiError(err.message || 'AI schedule arrangement failed.');
       setAiDiagnostics(null);
@@ -228,8 +245,14 @@ export default function SchedulePage() {
   useEffect(() => { loadSchedules(); }, [loadSchedules]);
 
   useEffect(() => {
-    projectApi.list().then(setProjects).catch(err => console.error('Load projects failed', err));
+    const handler = event => setActualPreferences(event.detail || readDisplayPreferences());
+    window.addEventListener(DISPLAY_PREFERENCES_EVENT, handler);
+    return () => window.removeEventListener(DISPLAY_PREFERENCES_EVENT, handler);
   }, []);
+
+  const setActualDisplayMode = mode => {
+    setActualPreferences(writeDisplayPreferences({ ...actualPreferences, actualDisplayMode: mode }));
+  };
 
   useEffect(() => {
     setJumpDate(getDateStr(currentDate));
@@ -252,12 +275,13 @@ export default function SchedulePage() {
           endMinute = clamp(startMinute + SNAP_MINUTES, SNAP_MINUTES, 24 * 60);
           startMinute = endMinute - SNAP_MINUTES;
         }
+        if (prev.lane !== 'planned') return null;
         setEditSchedule(null);
-        setIsPlanned(prev.lane === 'planned');
+        setIsPlanned(true);
         setPrefill({
           start_time: minutesToLocalValue(dateStr, startMinute),
           end_time: minutesToLocalValue(dateStr, endMinute),
-          is_planned: prev.lane === 'planned',
+          is_planned: true,
         });
         setShowModal(true);
         return null;
@@ -304,7 +328,7 @@ export default function SchedulePage() {
       const [todos, projectData, daySchedules] = await Promise.all([
         todoApi.list({ is_completed: false }).catch(() => []),
         projectApi.list().catch(() => []),
-        scheduleApi.list({ date_from: dateStr + 'T00:00:00', date_to: addDaysToDateStr(dateStr, 1) + 'T00:00:00' }).catch(() => []),
+        scheduleApi.list({ is_planned: true, date_from: dateStr + 'T00:00:00', date_to: addDaysToDateStr(dateStr, 1) + 'T00:00:00' }).catch(() => []),
       ]);
       setProjects(projectData);
       const { text: raw, responseMeta } = await callChatCompletion({
@@ -373,6 +397,7 @@ export default function SchedulePage() {
   const handleEditSchedule = () => {
     if (!contextMenu) return;
     const s = contextMenu.schedule;
+    if (s.is_time_block) { selectDay(new Date(s.block_group.block_date + 'T12:00:00')); setActualDisplayMode('blocks'); setContextMenu(null); return; }
     if (s.is_planned && !canEditPlanned(s)) return;
     setEditSchedule(s);
     setIsPlanned(s.is_planned);
@@ -391,6 +416,7 @@ export default function SchedulePage() {
   ] : [];
 
   const openSchedule = (schedule, canEditFn) => {
+    if (schedule.is_time_block) { selectDay(new Date(schedule.block_group.block_date + 'T12:00:00')); setActualDisplayMode('blocks'); return; }
     if (canEditFn?.(schedule) ?? true) {
       setEditSchedule(schedule);
       setIsPlanned(schedule.is_planned);
@@ -400,6 +426,7 @@ export default function SchedulePage() {
   };
 
   const openCreateSchedule = (planned, targetDateStr = dateStr) => {
+    if (!planned) { setActualDisplayMode('blocks'); return; }
     setIsPlanned(planned);
     setEditSchedule(null);
     setPrefill({ is_planned: planned, start_time: `${targetDateStr}T09:00`, end_time: `${targetDateStr}T10:00` });
@@ -412,7 +439,7 @@ export default function SchedulePage() {
   };
 
   const handleLaneMouseDown = (event, lane) => {
-    if (event.button !== 0 || event.target.closest('.event')) return;
+    if (lane !== 'planned' || event.button !== 0 || event.target.closest('.event')) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const y = clamp(event.clientY - rect.top, 0, rect.height);
     const minutes = snapMinutes((y / HOUR_HEIGHT) * 60);
@@ -420,7 +447,7 @@ export default function SchedulePage() {
   };
 
   const projectById = new Map(projects.map(project => [project.id, project]));
-  const projectColor = (schedule) => projectById.get(schedule.project_id)?.color || (schedule.is_planned ? '#4f46e5' : '#16a34a');
+  const projectColor = (schedule) => schedule.color || projectById.get(schedule.project_id)?.color || (schedule.is_planned ? '#4f46e5' : '#16a34a');
 
   const renderSelection = (lane) => {
     if (!dragSelection || dragSelection.lane !== lane) return null;
@@ -451,6 +478,7 @@ export default function SchedulePage() {
             onClick={() => openSchedule(s, canEditFn)}
             onContextMenu={(e) => {
               e.preventDefault();
+              if (s.is_time_block) { openSchedule(s); return; }
               setContextMenu({ x: e.clientX, y: e.clientY, schedule: s });
             }}
             style={{ ...getEventStyle(s, dateStr), borderLeftColor: projectColor(s), borderLeftWidth: 4 }}
@@ -645,17 +673,40 @@ export default function SchedulePage() {
         <>
           <div className="schedule-current-label">{formatDate(`${dateStr}T12:00:00`)}{isToday ? ` - ${T.today}` : ''}</div>
 
-          <div className="timeline-mobile-switch" aria-label={T.switchScheduleLane}>
-            <button className={`btn btn-sm ${mobileLane === 'planned' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setMobileLane('planned')}>{T.planned}</button>
-            <button className={`btn btn-sm ${mobileLane === 'actual' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setMobileLane('actual')}>{T.actual}</button>
-            <button className="btn btn-sm btn-secondary timeline-mobile-add" onClick={() => openCreateSchedule(mobileLane === 'planned')}>+</button>
+          <div className="segmented-control actual-display-switch" aria-label="实际记录显示模式">
+            <button className={actualPreferences.actualDisplayMode === 'blocks' ? 'active' : ''}
+              onClick={() => setActualDisplayMode('blocks')}>时间块</button>
+            <button className={actualPreferences.actualDisplayMode === 'timeline' ? 'active' : ''}
+              onClick={() => setActualDisplayMode('timeline')}>时间轴</button>
           </div>
 
+          {actualPreferences.actualDisplayMode === 'blocks' ? (
+            <>
+              <div className="planned-day-list">
+                <strong>计划日程</strong>
+                <button className="btn btn-sm btn-secondary" onClick={() => openCreateSchedule(true)}>新增计划</button>
+                {plannedSchedules.length === 0 ? <span>暂无计划日程</span> : plannedSchedules.map(item => (
+                  <button key={item.id} className="planned-day-item" onClick={() => openSchedule(item, canEditPlanned)}>
+                    {formatTime(item.start_time)}–{formatTime(item.end_time)} · {item.name}
+                  </button>
+                ))}
+              </div>
+              <ActualTimeBlocks date={dateStr} blocks={actualBlocks} categories={categories}
+                todos={todos} projects={projects} granularity={actualPreferences.timeBlockGranularity}
+                onChanged={loadSchedules} />
+            </>
+          ) : (
+            <>
+              <div className="timeline-mobile-switch" aria-label={T.switchScheduleLane}>
+                <button className={'btn btn-sm ' + (mobileLane === 'planned' ? 'btn-primary' : 'btn-secondary')} onClick={() => setMobileLane('planned')}>{T.planned}</button>
+                <button className={'btn btn-sm ' + (mobileLane === 'actual' ? 'btn-primary' : 'btn-secondary')} onClick={() => setMobileLane('actual')}>{T.actual}</button>
+                <button className="btn btn-sm btn-secondary timeline-mobile-add" onClick={() => openCreateSchedule(mobileLane === 'planned')}>+</button>
+              </div>
           <div className="timeline-compare">
             <div className="timeline-compare-header">
               <h3>{T.planned} <button className="btn btn-sm btn-secondary" onClick={() => openCreateSchedule(true)}>+</button></h3>
               <div className="timeline-axis-title">{T.time}</div>
-              <h3>{T.actual} <button className="btn btn-sm btn-secondary" onClick={() => openCreateSchedule(false)}>+</button></h3>
+              <h3>{T.actual} <button className="btn btn-sm btn-secondary" onClick={() => setActualDisplayMode("blocks")}>编辑时间块</button></h3>
             </div>
 
             <div className="timeline-compare-grid" style={{ '--hour-height': `${HOUR_HEIGHT}px` }}>
@@ -665,11 +716,12 @@ export default function SchedulePage() {
               </div>
               {renderAxis()}
               <div className={`timeline-lane actual ${mobileLane === 'actual' ? 'mobile-active' : ''}`} onMouseDown={e => handleLaneMouseDown(e, 'actual')}>
-                {renderSelection('actual')}
                 {renderEvents(actualSchedules)}
               </div>
             </div>
           </div>
+            </>
+          )}
         </>
       )}
 

@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { logApi, templateApi, todoApi, scheduleApi, projectApi } from '../api/client';
+import { groupTimeBlocks, minuteLabel } from '../utils/timeBlocks';
+import { logApi, templateApi, todoApi, scheduleApi, projectApi, timeBlockApi } from '../api/client';
 import { addDays, dateStrInBeijing, todayStr, formatTime } from '../utils/time';
 import { callChatCompletion } from '../ai/aiClient';
 import { parseAiDraftResponse, parseAiQuestionsResponse } from '../ai/aiDraftParser';
@@ -111,10 +112,12 @@ export default function DailySummaryPage() {
   const getDailyContext = async () => {
     const tomorrow = addDays(selectedDate, 1);
     const nextDay = addDays(tomorrow, 1);
-    const [{ todos, projectData }, todaySchedules, tomorrowSchedules] = await Promise.all([
+    const [{ todos, projectData }, todaySchedules, tomorrowSchedules, todayBlocks, categories] = await Promise.all([
       loadContext(),
       scheduleApi.list({ date_from: `${selectedDate}T00:00:00`, date_to: `${tomorrow}T00:00:00` }).catch(() => []),
       scheduleApi.list({ date_from: `${tomorrow}T00:00:00`, date_to: `${nextDay}T00:00:00` }).catch(() => []),
+      timeBlockApi.list(selectedDate).catch(() => []),
+      timeBlockApi.categories().catch(() => []),
     ]);
     const completedIds = new Set(completedTodos.map(Number));
     todos.forEach(todo => {
@@ -124,7 +127,7 @@ export default function DailySummaryPage() {
     });
     const completedTodoObjects = Array.from(completedIds).map(id => todos.find(todo => Number(todo.id) === id)).filter(Boolean);
     const pendingTodos = todos.filter(todo => !todo.is_completed);
-    return { todos, projectData, todaySchedules, tomorrowSchedules, completedTodoObjects, pendingTodos };
+    return { todos, projectData, todaySchedules, tomorrowSchedules, todayBlocks, categories, completedTodoObjects, pendingTodos };
   };
 
   const handleSave = async () => {
@@ -145,9 +148,14 @@ export default function DailySummaryPage() {
     setAiMessage('');
 
     try {
-      const { todaySchedules, completedTodoObjects, pendingTodos } = await getDailyContext();
-      const scheduleInfo = todaySchedules.map(s => `- ${s.name}，${formatTime(s.start_time)}-${formatTime(s.end_time)}，${s.is_planned ? '计划' : '实际'}`).join('\n') || '无';
-      const userMessage = `日期：${selectedDate}\n\n完成待办：\n${completedTodoObjects.map(t => `- ${t.name}`).join('\n') || '无'}\n\n未完成待办：\n${pendingTodos.map(t => `- ${t.name}，DDL=${t.ddl_date || '无'}，状态=${t.status}`).join('\n') || '无'}\n\n日程：\n${scheduleInfo}\n\n用户日志：\n${log?.log_text || logText || '空'}\n\n请分析今日效率并给出建议。`;
+      const { todaySchedules, todayBlocks, categories, completedTodoObjects, pendingTodos } = await getDailyContext();
+      const scheduleInfo = todaySchedules.map(s => `- ${s.name}，${formatTime(s.start_time)}-${formatTime(s.end_time)}，计划`).join('\n') || '无';
+      const actualInfo = groupTimeBlocks(todayBlocks).map(block => {
+        const category = categories.find(item => item.id === block.category_id)?.name || '未分类';
+        return '- ' + minuteLabel(block.start_minute) + '-' + minuteLabel(block.end_minute) +
+          '，' + category + (block.notes ? '，' + block.notes : '');
+      }).join('\n') || '无';
+      const userMessage = `日期：${selectedDate}\n\n完成待办：\n${completedTodoObjects.map(t => `- ${t.name}`).join('\n') || '无'}\n\n未完成待办：\n${pendingTodos.map(t => `- ${t.name}，DDL=${t.ddl_date || '无'}，状态=${t.status}`).join('\n') || '无'}\n\n计划日程：\n${scheduleInfo}\n\n实际时间块：\n${actualInfo}\n\n用户日志：\n${log?.log_text || logText || '空'}\n\n请分析今日效率并给出建议。`;
       const message = await callChatCompletion({
         systemPrompt: localStorage.getItem(STORAGE_KEY_PROMPT) || DEFAULT_PROMPT,
         userMessage,

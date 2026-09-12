@@ -3,6 +3,8 @@ export const DISPLAY_PREFERENCES_EVENT = 'riji:display-preferences-changed';
 
 export const DEFAULT_DISPLAY_PREFERENCES = Object.freeze({
   timeFormat: '24h',
+  actualDisplayMode: 'blocks',
+  timeBlockGranularity: 15,
   pages: Object.freeze({
     home: true,
     schedule: true,
@@ -35,12 +37,16 @@ export function readDisplayPreferences() {
     const stored = JSON.parse(localStorage.getItem(DISPLAY_PREFERENCES_STORAGE_KEY) || '{}');
     return {
       timeFormat: stored.timeFormat === '12h' ? '12h' : '24h',
+      actualDisplayMode: stored.actualDisplayMode === 'timeline' ? 'timeline' : 'blocks',
+      timeBlockGranularity: stored.timeBlockGranularity === 30 ? 30 : 15,
       pages: mergeKnownFlags(DEFAULT_DISPLAY_PREFERENCES.pages, stored.pages),
       homeModules: mergeKnownFlags(DEFAULT_DISPLAY_PREFERENCES.homeModules, stored.homeModules),
     };
   } catch {
     return {
       timeFormat: DEFAULT_DISPLAY_PREFERENCES.timeFormat,
+      actualDisplayMode: DEFAULT_DISPLAY_PREFERENCES.actualDisplayMode,
+      timeBlockGranularity: DEFAULT_DISPLAY_PREFERENCES.timeBlockGranularity,
       pages: { ...DEFAULT_DISPLAY_PREFERENCES.pages },
       homeModules: { ...DEFAULT_DISPLAY_PREFERENCES.homeModules },
     };
@@ -50,6 +56,8 @@ export function readDisplayPreferences() {
 export function writeDisplayPreferences(preferences) {
   const normalized = {
     timeFormat: preferences.timeFormat === '12h' ? '12h' : '24h',
+    actualDisplayMode: preferences.actualDisplayMode === 'timeline' ? 'timeline' : 'blocks',
+    timeBlockGranularity: preferences.timeBlockGranularity === 30 ? 30 : 15,
     pages: mergeKnownFlags(DEFAULT_DISPLAY_PREFERENCES.pages, preferences.pages),
     homeModules: mergeKnownFlags(DEFAULT_DISPLAY_PREFERENCES.homeModules, preferences.homeModules),
   };

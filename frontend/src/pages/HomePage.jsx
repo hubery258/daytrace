@@ -64,6 +64,18 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    const refreshCurrentPlan = () => scheduleApi.current().then(setCurrentSchedule)
+      .catch(error => console.error('刷新当前计划日程失败', error));
+    const interval = window.setInterval(refreshCurrentPlan, 60000);
+    const onVisible = () => { if (document.visibilityState === 'visible') refreshCurrentPlan(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
+
 
   useEffect(() => {
     const refresh = () => setDisplayPreferences(readDisplayPreferences());

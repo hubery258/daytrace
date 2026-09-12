@@ -63,16 +63,6 @@ async def cancel_timer(db: AsyncSession = Depends(get_db)):
     return await crud.cancel_timer(db, timer)
 
 
-@router.post("/{timer_id}/schedule", response_model=schemas.TimerOut)
-async def attach_schedule(timer_id: int, data: schemas.TimerAttachSchedule, db: AsyncSession = Depends(get_db)):
-    timer = await crud.get_timer(db, timer_id)
-    if not timer:
-        raise HTTPException(status_code=404, detail="计时会话不存在")
-    if timer.status != models.TimerStatus.completed:
-        raise HTTPException(status_code=400, detail="只能为已结束的计时关联日程")
-    return await crud.attach_timer_schedule(db, timer, data.schedule_id)
-
-
 @router.get("/recent", response_model=List[schemas.TimerOut])
 async def recent_timers(limit: int = Query(10, ge=1, le=50), db: AsyncSession = Depends(get_db)):
     return await crud.get_recent_timers(db, limit=limit)

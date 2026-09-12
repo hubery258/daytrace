@@ -9,7 +9,7 @@ from starlette.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from .database import async_engine, Base
-from .routers import data_portability, logs, projects, recurrence, schedules, timer, todos, zju
+from .routers import data_portability, logs, projects, recurrence, schedules, time_blocks, timer, todos, zju
 
 class SPAStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
@@ -74,6 +74,7 @@ async def ensure_sqlite_schema_compat(conn):
             "last_resumed_at": "last_resumed_at DATETIME",
             "paused_at": "paused_at DATETIME",
             "paused_seconds": "paused_seconds INTEGER DEFAULT 0",
+            "active_intervals": "active_intervals JSON DEFAULT '[]'",
             "ended_at": "ended_at DATETIME",
             "created_schedule_id": "created_schedule_id INTEGER",
             "notes": "notes TEXT DEFAULT ''",
@@ -130,6 +131,8 @@ async def ensure_sqlite_schema_compat(conn):
         "log_templates",
         "timer_sessions",
         "recurrence_rules",
+        "time_block_categories",
+        "time_blocks",
     )
     for table_name in uuid_tables:
         result = await conn.execute(text(f"SELECT id FROM {table_name} WHERE uuid IS NULL OR uuid = ''"))
@@ -147,6 +150,15 @@ async def lifespan(app: FastAPI):
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await ensure_sqlite_schema_compat(conn)
+        from sqlalchemy import select
+        from . import models
+        defaults = (("学习", "#347f88"), ("娱乐", "#d89b50"), ("运动", "#4c9b67"), ("开发", "#536fba"), ("休息", "#8a85a9"))
+        existing = await conn.execute(select(models.TimeBlockCategory.id).limit(1))
+        if existing.first() is None:
+            for name, color in defaults:
+                await conn.execute(models.TimeBlockCategory.__table__.insert().values(
+                    uuid=str(uuid.uuid4()), name=name, color=color,
+                    created_at=models.beijing_now(), updated_at=models.beijing_now()))
     yield
     await async_engine.dispose()
 
@@ -154,7 +166,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="日迹 API",
     description="个人效率助手 - 待办 & 日程 & 项目 & AI 分析",
-    version="0.7.5",
+    version="0.10.0",
     lifespan=lifespan,
 )
 
@@ -168,6 +180,7 @@ app.add_middleware(
 
 app.include_router(todos.router)
 app.include_router(schedules.router)
+app.include_router(time_blocks.router)
 app.include_router(timer.router)
 app.include_router(projects.router)
 app.include_router(recurrence.router)

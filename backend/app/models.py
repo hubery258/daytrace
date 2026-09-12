@@ -153,6 +153,37 @@ class Schedule(Base):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
 
 
+class TimeBlockCategory(Base):
+    __tablename__ = "time_block_categories"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String(36), default=new_uuid, unique=True, nullable=False, index=True)
+    name = Column(String(100), nullable=False, unique=True)
+    color = Column(String(32), nullable=False)
+    created_at = Column(DateTime, default=beijing_now, nullable=False)
+    updated_at = Column(DateTime, default=beijing_now, onupdate=beijing_now, nullable=False)
+
+
+class TimeBlock(Base):
+    __tablename__ = "time_blocks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String(36), default=new_uuid, unique=True, nullable=False, index=True)
+    block_date = Column(Date, nullable=False, index=True)
+    start_minute = Column(Integer, nullable=False)
+    end_minute = Column(Integer, nullable=False)
+    granularity = Column(Integer, nullable=False)
+    category_id = Column(Integer, ForeignKey("time_block_categories.id"), nullable=False)
+    notes = Column(Text, default="", nullable=False)
+    linked_todo_id = Column(Integer, ForeignKey("todos.id"), nullable=True)
+    manual_project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    source = Column(String(20), default="manual", nullable=False)
+    source_timer_id = Column(Integer, ForeignKey("timer_sessions.id"), nullable=True)
+    coverage_seconds = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=beijing_now, nullable=False)
+    updated_at = Column(DateTime, default=beijing_now, onupdate=beijing_now, nullable=False)
+
+
 class RecurrenceRule(Base):
     __tablename__ = "recurrence_rules"
 
@@ -195,6 +226,7 @@ class TimerSession(Base):
     last_resumed_at = Column(DateTime, nullable=True)
     paused_at = Column(DateTime, nullable=True)
     paused_seconds = Column(Integer, default=0, nullable=False)
+    active_intervals = Column(JSON, default=list, nullable=False)
     ended_at = Column(DateTime, nullable=True)
     created_schedule_id = Column(Integer, ForeignKey("schedules.id"), nullable=True)
     notes = Column(Text, default="", nullable=False)

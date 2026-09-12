@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { projectApi, timerApi, todoApi } from '../api/client';
-import ScheduleModal from '../components/ScheduleModal';
+import { projectApi, timeBlockApi, timerApi, todoApi } from '../api/client';
+import { readDisplayPreferences } from '../utils/displayPreferences';
 import { BEIJING_TIME_ZONE, parseAsLocal } from '../utils/time';
 
 function pad(n) {
@@ -26,10 +26,6 @@ function computeElapsed(timer) {
   return Math.max(0, Math.floor((ended - started) / 1000) - paused);
 }
 
-function toDateTimeLocal(value) {
-  return value ? value.slice(0, 16) : '';
-}
-
 function formatDateTime(value) {
   if (!value) return '';
   return parseAsLocal(value).toLocaleString('zh-CN', { timeZone: BEIJING_TIME_ZONE, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -42,6 +38,8 @@ export default function TimerPage() {
   const [todos, setTodos] = useState([]);
   const [nowTick, setNowTick] = useState(Date.now());
   const [finishTimer, setFinishTimer] = useState(null);
+  const [categories, setCategories] = useState([]);
+  const [finishCategoryId, setFinishCategoryId] = useState('');
   const [actionBusy, setActionBusy] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [form, setForm] = useState({ name: '', project_id: '', linked_todo_id: '', notes: '' });
@@ -64,6 +62,7 @@ export default function TimerPage() {
     loadRecent().catch(err => console.error('加载最近计时失败', err));
     projectApi.list().then(setProjects).catch(err => console.error('加载项目失败', err));
     todoApi.list({ is_completed: false }).then(setTodos).catch(err => console.error('加载待办失败', err));
+    timeBlockApi.categories().then(items => { setCategories(items); setFinishCategoryId(String(items[0]?.id || '')); }).catch(err => console.error('加载时间块属性失败', err));
   }, [loadTimer, loadRecent]);
 
   useEffect(() => {
@@ -93,7 +92,7 @@ export default function TimerPage() {
     try {
       const started = await timerApi.start({
         name: form.name,
-        project_id: form.project_id ? Number(form.project_id) : null,
+        project_id: form.linked_todo_id ? null : form.project_id ? Number(form.project_id) : null,
         linked_todo_id: form.linked_todo_id ? Number(form.linked_todo_id) : null,
         notes: form.notes,
       });
@@ -126,6 +125,30 @@ export default function TimerPage() {
     return updated;
   };
 
+  const convertFinished = async (completed) => {
+    if (!finishCategoryId) {
+      alert('请先选择实际记录属性');
+      return;
+    }
+    try {
+      const converted = await timeBlockApi.fromTimer(completed.id, {
+        category_id: Number(finishCategoryId),
+        granularity: readDisplayPreferences().timeBlockGranularity,
+      });
+      setFinishTimer(null);
+      if (converted.length === 0) alert('本次计时未覆盖任何时间块的 50%，可在日程页手动补录。');
+      await loadRecent();
+    } catch (error) {
+      alert('计时已结束，但时间块折算失败：' + error.message);
+    }
+  };
+
+  const handleFinish = async () => {
+    if (!finishCategoryId) { alert('请先选择实际记录属性'); return; }
+    const completed = await refreshAfterAction(timerApi.finish);
+    if (completed) await convertFinished(completed);
+  };
+
   const handleCancel = () => {
     if (actionBusy) return;
     setShowCancelConfirm(true);
@@ -146,15 +169,6 @@ export default function TimerPage() {
     }
   };
 
-  const finishPrefill = finishTimer ? {
-    name: finishTimer.name,
-    project_id: finishTimer.project_id,
-    linked_todo_ids: finishTimer.linked_todo_id ? [finishTimer.linked_todo_id] : [],
-    start_time: toDateTimeLocal(finishTimer.started_at),
-    end_time: toDateTimeLocal(finishTimer.ended_at),
-    notes: finishTimer.notes,
-    is_planned: false,
-  } : null;
 
   return (
     <div className="timer-page">
@@ -162,7 +176,7 @@ export default function TimerPage() {
         <div className="timer-head">
           <div>
             <h1>计时</h1>
-            <p>记录正在发生的事，结束确认后生成实际日程。</p>
+            <p>记录正在发生的事，结束后按 50% 覆盖规则折算为实际时间块。</p>
           </div>
           <div className={`timer-status ${timer?.status || 'idle'}`}>{timer ? (timer.status === 'paused' ? '已暂停' : '进行中') : '未开始'}</div>
         </div>
@@ -181,7 +195,10 @@ export default function TimerPage() {
               ) : (
                 <button className="btn btn-primary" disabled={actionBusy} onClick={() => refreshAfterAction(timerApi.resume)}>继续</button>
               )}
-              <button className="btn btn-primary" disabled={actionBusy} onClick={() => refreshAfterAction(timerApi.finish)}>结束</button>
+              <select aria-label="计时属性" value={finishCategoryId} onChange={event => setFinishCategoryId(event.target.value)} disabled={actionBusy}>
+                {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+              </select>
+              <button className="btn btn-primary" disabled={actionBusy || !finishCategoryId} onClick={handleFinish}>结束并记录</button>
               <button ref={cancelButtonRef} type="button" className="btn btn-danger" disabled={actionBusy} onClick={handleCancel}>取消</button>
             </div>
           </div>
@@ -193,14 +210,15 @@ export default function TimerPage() {
             </div>
             <div className="form-group">
               <label>所属项目</label>
-              <select value={form.project_id} onChange={e => setForm(prev => ({ ...prev, project_id: e.target.value }))}>
+              <select value={form.project_id} disabled={Boolean(form.linked_todo_id)} onChange={e => setForm(prev => ({ ...prev, project_id: e.target.value }))}>
                 <option value="">不归属项目</option>
                 {projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
               </select>
+              {form.linked_todo_id && <small>项目将从关联待办推导。</small>}
             </div>
             <div className="form-group">
               <label>关联待办</label>
-              <select value={form.linked_todo_id} onChange={e => setForm(prev => ({ ...prev, linked_todo_id: e.target.value }))}>
+              <select value={form.linked_todo_id} onChange={e => setForm(prev => ({ ...prev, linked_todo_id: e.target.value, project_id: e.target.value ? '' : prev.project_id }))}>
                 <option value="">不关联待办</option>
                 {todos.map(todo => <option key={todo.id} value={todo.id}>{todo.name}</option>)}
               </select>
@@ -220,6 +238,7 @@ export default function TimerPage() {
           <div key={item.id} className="timer-recent-row">
             <strong>{item.name}</strong>
             <span>{formatDuration(item.elapsed_seconds)} · {item.status === 'completed' ? '已结束' : '已取消'}</span>
+            {item.status === 'completed' && <button className="btn btn-sm btn-secondary" onClick={() => setFinishTimer(item)}>折算时间块</button>}
           </div>
         ))}
       </section>
@@ -246,18 +265,22 @@ export default function TimerPage() {
         </div>
       )}
 
-      {finishPrefill && (
-        <ScheduleModal
-          defaultPlanned={false}
-          prefill={finishPrefill}
-          onClose={() => setFinishTimer(null)}
-          onSaved={async (schedule) => {
-            await timerApi.attachSchedule(finishTimer.id, schedule.id);
-            setFinishTimer(null);
-            loadRecent();
-          }}
-        />
+      {finishTimer && (
+        <div className="modal-overlay">
+          <div className="modal-content confirm-dialog" role="dialog" aria-modal="true">
+            <h2>完成时间块折算</h2>
+            <p>计时已结束。选择属性后可写入时间块，之后仍可在日程页修正。</p>
+            <select aria-label="实际记录属性" value={finishCategoryId} onChange={event => setFinishCategoryId(event.target.value)}>
+              {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </select>
+            <div className="form-actions">
+              <button className="btn btn-secondary" onClick={() => setFinishTimer(null)}>关闭</button>
+              <button className="btn btn-primary" disabled={!finishCategoryId} onClick={() => convertFinished(finishTimer)}>折算时间块</button>
+            </div>
+          </div>
+        </div>
       )}
+
     </div>
   );
 }

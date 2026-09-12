@@ -2,7 +2,7 @@ import { CapacitorSQLite, SQLiteConnection } from '@capacitor-community/sqlite';
 
 const connection = new SQLiteConnection(CapacitorSQLite);
 const DB_NAME = 'riji';
-const SCHEMA_VERSION = '0.6.0';
+const SCHEMA_VERSION = '0.10.0';
 let databasePromise;
 
 const schema = `
@@ -34,6 +34,18 @@ CREATE TABLE IF NOT EXISTS schedules (
   location TEXT, notes TEXT NOT NULL DEFAULT '', is_planned INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS time_block_categories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, uuid TEXT NOT NULL UNIQUE, name TEXT NOT NULL UNIQUE,
+  color TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS time_blocks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, uuid TEXT NOT NULL UNIQUE, block_date TEXT NOT NULL,
+  start_minute INTEGER NOT NULL, end_minute INTEGER NOT NULL, granularity INTEGER NOT NULL,
+  category_id INTEGER NOT NULL, notes TEXT NOT NULL DEFAULT '', linked_todo_id INTEGER,
+  manual_project_id INTEGER, source TEXT NOT NULL DEFAULT 'manual', source_timer_id INTEGER,
+  coverage_seconds INTEGER, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_time_blocks_date ON time_blocks(block_date, start_minute);
 CREATE TABLE IF NOT EXISTS daily_logs (
   id INTEGER PRIMARY KEY AUTOINCREMENT, uuid TEXT NOT NULL UNIQUE, log_date TEXT NOT NULL UNIQUE,
   completed_todo_ids TEXT NOT NULL DEFAULT '[]', log_text TEXT NOT NULL DEFAULT '',
@@ -47,7 +59,7 @@ CREATE TABLE IF NOT EXISTS timer_sessions (
   id INTEGER PRIMARY KEY AUTOINCREMENT, uuid TEXT NOT NULL UNIQUE, name TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'running', project_id INTEGER, linked_todo_id INTEGER,
   started_at TEXT NOT NULL, last_resumed_at TEXT, paused_at TEXT, paused_seconds INTEGER NOT NULL DEFAULT 0,
-  ended_at TEXT, created_schedule_id INTEGER, notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
+  ended_at TEXT, created_schedule_id INTEGER, active_intervals TEXT NOT NULL DEFAULT '[]', notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_uuid ON projects(uuid);
@@ -55,22 +67,25 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_todos_uuid ON todos(uuid);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_schedules_uuid ON schedules(uuid);
 `;
 
-const jsonColumns = new Set(['template_json', 'weekdays', 'linked_todo_ids', 'completed_todo_ids']);
+const jsonColumns = new Set(['template_json', 'weekdays', 'linked_todo_ids', 'completed_todo_ids', 'active_intervals']);
 const booleanColumns = new Set(['is_recurrence_exception', 'is_completed', 'is_planned']);
 const entitySpecs = {
   projects: ['name', 'description', 'status', 'ddl_date', 'color', 'completed_at', 'archived_at', 'created_at', 'updated_at'],
   recurrence_rules: ['entity_type', 'template_json', 'frequency', 'start_date', 'end_date', 'weekdays', 'month_day', 'status', 'created_at', 'updated_at'],
   todos: ['name', 'position', 'ddl_type', 'ddl_date', 'reminder_days', 'category', 'status', 'waiting_reply_person', 'notes', 'is_completed', 'completed_at', 'recurrence_date', 'is_recurrence_exception', 'created_at', 'updated_at'],
   schedules: ['name', 'start_time', 'end_time', 'category', 'nature', 'relax_suggestion', 'location', 'notes', 'is_planned', 'recurrence_date', 'is_recurrence_exception', 'created_at', 'updated_at'],
+  time_block_categories: ['name', 'color', 'created_at', 'updated_at'],
+  time_blocks: ['block_date', 'start_minute', 'end_minute', 'granularity', 'category_id', 'notes', 'source', 'coverage_seconds', 'created_at', 'updated_at'],
   daily_logs: ['log_date', 'log_text', 'created_at', 'updated_at'],
   log_templates: ['name', 'content', 'created_at'],
-  timer_sessions: ['name', 'status', 'started_at', 'last_resumed_at', 'paused_at', 'paused_seconds', 'ended_at', 'notes', 'created_at', 'updated_at'],
+  timer_sessions: ['name', 'status', 'started_at', 'last_resumed_at', 'paused_at', 'paused_seconds', 'active_intervals', 'ended_at', 'notes', 'created_at', 'updated_at'],
 };
 const entityOrder = Object.keys(entitySpecs);
 const requiredFields = {
   projects: ['name'], recurrence_rules: ['entity_type', 'frequency', 'start_date'],
   todos: ['name', 'ddl_type', 'category', 'status'],
   schedules: ['name', 'start_time', 'end_time', 'category', 'nature'],
+  time_block_categories: ['name', 'color'], time_blocks: ['block_date', 'start_minute', 'end_minute', 'granularity', 'category_uuid'],
   daily_logs: ['log_date'], log_templates: ['name'], timer_sessions: ['name', 'status', 'started_at'],
 };
 
@@ -132,6 +147,18 @@ async function getDatabase() {
       const todoColumns = await db.query('PRAGMA table_info(todos)');
       if (!(todoColumns.values || []).some(column => column.name === 'position')) {
         await db.execute('ALTER TABLE todos ADD COLUMN position INTEGER');
+      }
+      const timerColumns = await db.query('PRAGMA table_info(timer_sessions)');
+      if (!(timerColumns.values || []).some(column => column.name === 'active_intervals')) {
+        await db.execute("ALTER TABLE timer_sessions ADD COLUMN active_intervals TEXT NOT NULL DEFAULT '[]'");
+      }
+      const categoryCount = await db.query('SELECT COUNT(*) AS count FROM time_block_categories');
+      if (!Number(categoryCount.values?.[0]?.count)) {
+        const defaults = [['学习', '#347f88'], ['娱乐', '#d89b50'], ['运动', '#4c9b67'], ['开发', '#536fba'], ['休息', '#8a85a9']];
+        for (const [name, color] of defaults) {
+          await db.run('INSERT OR IGNORE INTO time_block_categories (uuid, name, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+            [uuid(), name, color, beijingNow(), beijingNow()], false);
+        }
       }
       return db;
     })();
@@ -233,7 +260,7 @@ function projectOutput(project, todos = [], schedules = []) {
 async function projectWithOverview(project) {
   if (!project) return null;
   const todos = (await rows('todos', 'project_id = ?', [project.id], 'created_at DESC')).sort(compareTodoPriority);
-  const schedules = await rows('schedules', 'project_id = ?', [project.id], 'start_time DESC');
+  const schedules = await rows('schedules', 'project_id = ? AND is_planned = 1', [project.id], 'start_time DESC');
   return projectOutput(project, todos, schedules);
 }
 
@@ -262,7 +289,7 @@ async function projectsRequest(method, pathname, params, body) {
   if (method === 'GET' && pathname.endsWith('/overview')) {
     const project = await projectWithOverview(current);
     const todos = (await rows('todos', 'project_id = ?', [id], 'created_at DESC')).sort(compareTodoPriority);
-    const schedules = await rows('schedules', 'project_id = ?', [id], 'start_time ASC');
+    const schedules = await rows('schedules', 'project_id = ? AND is_planned = 1', [id], 'start_time ASC');
     return { project, todos, schedules, progress: project.progress, todo_count: project.todo_count, completed_todo_count: project.completed_todo_count, next_todo: project.next_todo, recent_schedules: project.recent_schedules };
   }
   if (method === 'GET') return projectWithOverview(current);
@@ -359,7 +386,7 @@ async function todosRequest(method, pathname, params, body) {
   const id = Number(match[1]);
   const current = await one('todos', 'id = ?', [id]);
   if (!current) throw new Error('待办不存在');
-  if (method === 'GET') return current;
+  if (method === 'GET') { if (!current.is_planned) throw new Error('日程不存在'); return current; }
   if (method === 'PUT') {
     const data = normalizeTodoInput(body, current);
     if (data.status === 'focusing') await ensureFocusLimit(id);
@@ -374,12 +401,12 @@ async function todosRequest(method, pathname, params, body) {
 async function schedulesRequest(method, pathname, params, body) {
   if (method === 'GET' && pathname === '/schedules/current') {
     const stamp = Date.now();
-    const found = await rows('schedules', '', [], 'start_time ASC');
+    const found = await rows('schedules', 'is_planned = 1', [], 'start_time ASC');
     return found.find((item) => parseDateTime(item.start_time).getTime() <= stamp && parseDateTime(item.end_time).getTime() > stamp) || null;
   }
   if (method === 'GET' && (pathname === '/schedules/' || pathname === '/schedules/week/')) {
-    const clauses = []; const values = [];
-    if (params.has('is_planned')) { clauses.push('is_planned = ?'); values.push(params.get('is_planned') === 'true' ? 1 : 0); }
+    if (params.get('is_planned') === 'false') return [];
+    const clauses = ['is_planned = 1']; const values = [];
     if (params.has('project_id')) { clauses.push('project_id = ?'); values.push(params.get('project_id')); }
     const found = await rows('schedules', clauses.join(' AND '), values, 'start_time ASC');
     const dateFrom = params.has('date_from') ? parseDateTime(params.get('date_from')).getTime() : null;
@@ -391,6 +418,7 @@ async function schedulesRequest(method, pathname, params, body) {
     });
   }
   if (method === 'POST' && pathname === '/schedules/') {
+    if (body.is_planned === false) throw new Error('实际记录请使用时间块');
     if (new Date(body.end_time) <= new Date(body.start_time)) throw new Error('结束时间必须晚于开始时间');
     const stamp = now();
     return insert('schedules', {
@@ -408,6 +436,7 @@ async function schedulesRequest(method, pathname, params, body) {
   if (!current) throw new Error('日程不存在');
   if (method === 'GET') return current;
   if (method === 'PUT') {
+    if (!current.is_planned || body.is_planned === false) throw new Error('实际记录请使用时间块');
     const start = body.start_time || current.start_time; const end = body.end_time || current.end_time;
     if (new Date(end) <= new Date(start)) throw new Error('结束时间必须晚于开始时间');
     const data = { ...body, updated_at: now() };
@@ -415,6 +444,153 @@ async function schedulesRequest(method, pathname, params, body) {
     return update('schedules', id, data);
   }
   if (method === 'DELETE') { await run('DELETE FROM schedules WHERE id = ?', [id]); return null; }
+}
+
+async function blockRows(where, values = [], order = 'b.block_date ASC, b.start_minute ASC') {
+  const found = await query(
+    'SELECT b.*, t.project_id AS todo_project_id FROM time_blocks b LEFT JOIN todos t ON t.id = b.linked_todo_id' +
+      (where ? ' WHERE ' + where : '') + ' ORDER BY ' + order,
+    values,
+  );
+  return found.map(row => {
+    const { todo_project_id: todoProjectId, ...block } = normalizeRow('time_blocks', row);
+    return { ...block, project_id: block.linked_todo_id ? todoProjectId ?? null : block.manual_project_id };
+  });
+}
+
+async function timeBlocksRequest(method, pathname, params, body) {
+  if (method === 'GET' && pathname === '/time-blocks/categories') {
+    return rows('time_block_categories', '', [], 'id ASC');
+  }
+  if (method === 'POST' && pathname === '/time-blocks/categories') {
+    if (!body.name?.trim() || !/^#[0-9a-f]{6}$/i.test(body.color)) throw new Error('属性名称或颜色无效');
+    if (await one('time_block_categories', 'name = ?', [body.name.trim()])) throw new Error('属性名称已存在');
+    const stamp = beijingNow();
+    return insert('time_block_categories', { uuid: uuid(), name: body.name.trim(), color: body.color, created_at: stamp, updated_at: stamp });
+  }
+  const categoryMatch = pathname.match(/^\/time-blocks\/categories\/(\d+)$/);
+  if (categoryMatch) {
+    const id = Number(categoryMatch[1]);
+    const current = await one('time_block_categories', 'id = ?', [id]);
+    if (!current) throw new Error('属性分类不存在');
+    if (method === 'PUT') {
+      if (!body.name?.trim() || !/^#[0-9a-f]{6}$/i.test(body.color)) throw new Error('属性名称或颜色无效');
+      const duplicate = await one('time_block_categories', 'name = ? AND id != ?', [body.name.trim(), id]);
+      if (duplicate) throw new Error('属性名称已存在');
+      return update('time_block_categories', id, { name: body.name.trim(), color: body.color, updated_at: beijingNow() });
+    }
+    if (method === 'DELETE') {
+      if (await one('time_blocks', 'category_id = ?', [id])) throw new Error('该属性已有时间块，不能删除');
+      await run('DELETE FROM time_block_categories WHERE id = ?', [id]);
+      return null;
+    }
+  }
+  if (method === 'GET' && pathname === '/time-blocks/') {
+    const from = params.get('date_from');
+    const to = params.get('date_to') || from;
+    if (!from || !to || to < from || (parseDateTime(to + 'T00:00:00') - parseDateTime(from + 'T00:00:00')) / 86400000 > 45) throw new Error('日期范围无效');
+    return blockRows('b.block_date >= ? AND b.block_date <= ?', [from, to]);
+  }
+  if (method === 'PUT' && pathname === '/time-blocks/range') {
+    const { block_date: date, start_minute: start, end_minute: end, blocks = [] } = body;
+    if (!date || !Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end > 1440 || end <= start || start % 15 || end % 15) throw new Error('时间范围无效');
+    let previous = start;
+    for (const block of [...blocks].sort((a, b) => a.start_minute - b.start_minute)) {
+      if (![15, 30].includes(block.granularity) || block.start_minute % block.granularity ||
+          block.end_minute - block.start_minute !== block.granularity ||
+          block.start_minute < start || block.end_minute > end || block.start_minute < previous ||
+          !['manual', 'timer'].includes(block.source || 'manual')) throw new Error('时间块不连续或粒度无效');
+      if (!await one('time_block_categories', 'id = ?', [block.category_id])) throw new Error('属性分类不存在');
+      if (block.linked_todo_id && !await one('todos', 'id = ?', [block.linked_todo_id])) throw new Error('关联待办不存在');
+      if (!block.linked_todo_id && block.manual_project_id && !await one('projects', 'id = ?', [block.manual_project_id])) throw new Error('关联项目不存在');
+      previous = block.end_minute;
+    }
+    const db = await getDatabase();
+    await db.beginTransaction();
+    try {
+      const existing = await rows('time_blocks', 'block_date = ? AND start_minute < ? AND end_minute > ?', [date, end, start]);
+      for (const old of existing) {
+        await run('DELETE FROM time_blocks WHERE id = ?', [old.id], false);
+        for (const [a, b] of [[old.start_minute, Math.min(old.end_minute, start)], [Math.max(old.start_minute, end), old.end_minute]]) {
+          for (let minute = a; minute + 15 <= b; minute += 15) {
+            await insert('time_blocks', { ...Object.fromEntries(Object.entries(old).filter(([key]) => key !== 'id' && key !== 'project_id')), uuid: uuid(), start_minute: minute,
+              end_minute: minute + 15, granularity: 15,
+              coverage_seconds: old.coverage_seconds == null ? null : Math.min(old.coverage_seconds, 900) }, false);
+          }
+        }
+      }
+      for (const block of blocks) {
+        const stamp = beijingNow();
+        await insert('time_blocks', { uuid: uuid(), block_date: date, start_minute: block.start_minute,
+          end_minute: block.end_minute, granularity: block.granularity, category_id: block.category_id,
+          notes: block.notes || '', linked_todo_id: block.linked_todo_id || null,
+          manual_project_id: block.linked_todo_id ? null : block.manual_project_id || null,
+          source: block.source || 'manual', source_timer_id: block.source_timer_id || null,
+          coverage_seconds: block.coverage_seconds ?? null, created_at: stamp, updated_at: stamp }, false);
+      }
+      await db.commitTransaction();
+    } catch (error) { await db.rollbackTransaction(); throw error; }
+    return timeBlocksRequest('GET', '/time-blocks/', new URLSearchParams({ date_from: date }), {});
+  }
+  const timerMatch = pathname.match(/^\/time-blocks\/from-timer\/(\d+)$/);
+  if (method === 'POST' && timerMatch) {
+    const timer = await one('timer_sessions', 'id = ?', [Number(timerMatch[1])]);
+    if (!timer || timer.status !== 'completed') throw new Error('只能折算已结束的计时');
+    if (![15, 30].includes(body.granularity)) throw new Error('粒度必须为 15 或 30 分钟');
+    if (!await one('time_block_categories', 'id = ?', [body.category_id])) throw new Error('属性分类不存在');
+    if (!timer.active_intervals?.length && timer.paused_seconds) throw new Error('旧计时缺少暂停分段，无法准确折算；可在日程页手动补录');
+    const intervals = timer.active_intervals?.length ? timer.active_intervals : [[timer.started_at, timer.ended_at]];
+    const coverage = new Map();
+    for (const [rawStart, rawEnd] of intervals) {
+      const start = parseDateTime(rawStart).getTime();
+      const end = parseDateTime(rawEnd).getTime();
+      if (end <= start) continue;
+      for (let dayMs = Math.floor((start + 28800000) / 86400000) * 86400000 - 28800000; dayMs < end; dayMs += 86400000) {
+        const date = new Date(dayMs + 28800000).toISOString().slice(0, 10);
+        for (let minute = 0; minute < 1440; minute += body.granularity) {
+          const seconds = Math.max(0, Math.floor((Math.min(end, dayMs + (minute + body.granularity) * 60000) -
+            Math.max(start, dayMs + minute * 60000)) / 1000));
+          if (seconds) {
+            const key = date + ':' + minute;
+            coverage.set(key, (coverage.get(key) || 0) + seconds);
+          }
+        }
+      }
+    }
+    const db = await getDatabase();
+    await db.beginTransaction();
+    try {
+    for (const [key, seconds] of coverage) {
+      if (seconds * 2 < body.granularity * 60) continue;
+      const [date, minuteText] = key.split(':');
+      const minute = Number(minuteText);
+      const existing = await rows('time_blocks', 'block_date = ? AND start_minute < ? AND end_minute > ?',
+        [date, minute + body.granularity, minute]);
+      if (existing.some(block => block.source !== 'timer' || (block.coverage_seconds || 0) >= seconds)) continue;
+      for (const block of existing) {
+        await run('DELETE FROM time_blocks WHERE id = ?', [block.id], false);
+        for (const [a, b] of [[block.start_minute, Math.min(block.end_minute, minute)],
+          [Math.max(block.start_minute, minute + body.granularity), block.end_minute]]) {
+          for (let fragment = a; fragment + 15 <= b; fragment += 15) {
+            await insert('time_blocks', { ...Object.fromEntries(Object.entries(block).filter(([field]) => field !== 'id' && field !== 'project_id')),
+              uuid: uuid(), start_minute: fragment, end_minute: fragment + 15, granularity: 15,
+              coverage_seconds: Math.min(block.coverage_seconds || 0, 900) }, false);
+          }
+        }
+      }
+      const stamp = beijingNow();
+      await insert('time_blocks', { uuid: uuid(), block_date: date, start_minute: minute,
+        end_minute: minute + body.granularity, granularity: body.granularity,
+        category_id: body.category_id, notes: timer.name + (timer.notes ? ' · ' + timer.notes : ''),
+        linked_todo_id: timer.linked_todo_id, manual_project_id: timer.linked_todo_id ? null : timer.project_id,
+        source: 'timer', source_timer_id: timer.id, coverage_seconds: seconds,
+        created_at: stamp, updated_at: stamp }, false);
+    }
+    await db.commitTransaction();
+    } catch (error) { await db.rollbackTransaction(); throw error; }
+    return blockRows('b.source_timer_id = ?', [timer.id]);
+  }
+  return undefined;
 }
 
 async function logsRequest(method, pathname, params, body) {
@@ -459,7 +635,7 @@ async function timerRequest(method, pathname, params, body) {
     return insert('timer_sessions', {
       uuid: uuid(), name: body.name, status: 'running', project_id: body.project_id ?? null,
       linked_todo_id: body.linked_todo_id ?? null, started_at: stamp, last_resumed_at: stamp,
-      paused_at: null, paused_seconds: 0, ended_at: null, created_schedule_id: null,
+      paused_at: null, paused_seconds: 0, active_intervals: [], ended_at: null, created_schedule_id: null,
       notes: body.notes || '', created_at: stamp, updated_at: stamp,
     });
   }
@@ -474,7 +650,9 @@ async function timerRequest(method, pathname, params, body) {
     const stamp = beijingNow();
     if (pathname === '/timer/pause') {
       if (timer.status !== 'running') throw new Error('计时当前不是运行状态');
-      return update('timer_sessions', timer.id, { status: 'paused', paused_at: stamp, updated_at: stamp });
+      const intervals = [...(timer.active_intervals || [])];
+      if (timer.last_resumed_at) intervals.push([timer.last_resumed_at, stamp]);
+      return update('timer_sessions', timer.id, { status: 'paused', paused_at: stamp, active_intervals: intervals, updated_at: stamp });
     }
     if (pathname === '/timer/resume') {
       if (timer.status !== 'paused') throw new Error('计时当前不是暂停状态');
@@ -488,17 +666,15 @@ async function timerRequest(method, pathname, params, body) {
     if (timer.status === 'paused' && timer.paused_at) {
       pausedSeconds += Math.max(0, Math.floor((parseDateTime(stamp) - parseDateTime(timer.paused_at)) / 1000));
     }
+    const intervals = [...(timer.active_intervals || [])];
+    if (pathname === '/timer/finish' && timer.status === 'running' && timer.last_resumed_at) {
+      intervals.push([timer.last_resumed_at, stamp]);
+    }
     return update('timer_sessions', timer.id, {
       status: pathname === '/timer/finish' ? 'completed' : 'canceled', ended_at: stamp,
+      active_intervals: intervals,
       paused_at: null, paused_seconds: pausedSeconds, updated_at: stamp,
     });
-  }
-  const attachMatch = pathname.match(/^\/timer\/(\d+)\/schedule$/);
-  if (method === 'POST' && attachMatch) {
-    const timer = await one('timer_sessions', 'id = ?', [Number(attachMatch[1])]);
-    if (!timer) throw new Error('计时记录不存在');
-    if (timer.status !== 'completed') throw new Error('只有已结束计时可以关联日程');
-    return update('timer_sessions', timer.id, { created_schedule_id: body.schedule_id, updated_at: beijingNow() });
   }
   return undefined;
 }
@@ -514,7 +690,7 @@ async function templatesRequest(method, pathname, body) {
 }
 
 function assertPackage(raw) {
-  if (!raw || raw.app !== 'riji' || raw.schema_version !== SCHEMA_VERSION || typeof raw.entities !== 'object') throw new Error(`仅支持日迹 ${SCHEMA_VERSION} 数据包`);
+  if (!raw || raw.app !== 'riji' || ![SCHEMA_VERSION, '0.6.0'].includes(raw.schema_version) || (!raw.entities || Array.isArray(raw.entities) || typeof raw.entities !== 'object')) throw new Error(`仅支持日迹 ${SCHEMA_VERSION} 数据包`);
   for (const table of entityOrder) {
     const items = raw.entities[table] || [];
     if (!Array.isArray(items)) throw new Error(`entities.${table} 必须是数组`);
@@ -526,12 +702,45 @@ function assertPackage(raw) {
       seen.add(item.uuid);
     }
   }
-  return raw;
+  for (const category of raw.entities.time_block_categories || []) {
+    if (typeof category.name !== 'string' || !category.name.trim() || category.name.length > 100 ||
+        typeof category.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(category.color)) {
+      throw new Error('时间块属性名称或颜色无效');
+    }
+  }
+  const categoryNames = (raw.entities.time_block_categories || []).map(item => item.name);
+  if (new Set(categoryNames).size !== categoryNames.length) throw new Error('数据包中的时间块属性名称重复');
+  const byDay = new Map();
+  for (const block of raw.entities.time_blocks || []) {
+    const { block_date: date, start_minute: start, end_minute: end, granularity: size } = block;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date + 'T00:00:00+08:00')) || ![start, end, size].every(Number.isInteger) ||
+        ![15, 30].includes(size) || start < 0 || end > 1440 || end - start !== size || start % size || !['manual', 'timer'].includes(block.source || 'manual')) {
+      throw new Error('时间块日期、范围或粒度无效');
+    }
+    if (!byDay.has(date)) byDay.set(date, []);
+    byDay.get(date).push([start, end]);
+  }
+  for (const ranges of byDay.values()) {
+    ranges.sort((a, b) => a[0] - b[0]);
+    if (ranges.some((range, index) => index > 0 && ranges[index - 1][1] > range[0])) {
+      throw new Error('数据包中的时间块互相重叠');
+    }
+  }
+  return { ...raw, entities: { ...raw.entities,
+    schedules: (raw.entities.schedules || []).filter(item => item.is_planned !== false),
+    recurrence_rules: (raw.entities.recurrence_rules || []).filter(item =>
+      item.entity_type !== 'schedule' || item.template_json?.is_planned !== false),
+    time_block_categories: raw.entities.time_block_categories || [],
+    time_blocks: raw.entities.time_blocks || [],
+  } };
 }
 
 async function exportData() {
   const source = {};
   for (const table of entityOrder) source[table] = await rows(table);
+  source.schedules = source.schedules.filter(item => item.is_planned);
+  source.recurrence_rules = source.recurrence_rules.filter(item =>
+    item.entity_type !== 'schedule' || item.template_json?.is_planned !== false);
   const maps = {};
   for (const table of entityOrder) maps[table] = new Map(source[table].map((item) => [item.id, item.uuid]));
   const entities = {};
@@ -543,6 +752,13 @@ async function exportData() {
   source.recurrence_rules.forEach((item, index) => { entities.recurrence_rules[index].project_uuid = maps.projects.get(item.project_id) || null; delete entities.recurrence_rules[index].template_json?.project_id; });
   source.todos.forEach((item, index) => { entities.todos[index].project_uuid = maps.projects.get(item.project_id) || null; entities.todos[index].recurrence_rule_uuid = maps.recurrence_rules.get(item.recurrence_rule_id) || null; });
   source.schedules.forEach((item, index) => { entities.schedules[index].project_uuid = maps.projects.get(item.project_id) || null; entities.schedules[index].recurrence_rule_uuid = maps.recurrence_rules.get(item.recurrence_rule_id) || null; entities.schedules[index].linked_todo_uuids = (item.linked_todo_ids || []).map((id) => maps.todos.get(id)).filter(Boolean); });
+  source.time_blocks.forEach((item, index) => {
+    delete entities.time_blocks[index].category_id;
+    entities.time_blocks[index].category_uuid = maps.time_block_categories.get(item.category_id) || null;
+    entities.time_blocks[index].linked_todo_uuid = maps.todos.get(item.linked_todo_id) || null;
+    entities.time_blocks[index].manual_project_uuid = item.linked_todo_id ? null : maps.projects.get(item.manual_project_id) || null;
+    entities.time_blocks[index].source_timer_uuid = maps.timer_sessions.get(item.source_timer_id) || null;
+  });
   source.daily_logs.forEach((item, index) => { entities.daily_logs[index].completed_todo_uuids = (item.completed_todo_ids || []).map((id) => maps.todos.get(id)).filter(Boolean); });
   source.timer_sessions.forEach((item, index) => { entities.timer_sessions[index].project_uuid = maps.projects.get(item.project_id) || null; entities.timer_sessions[index].linked_todo_uuid = maps.todos.get(item.linked_todo_id) || null; entities.timer_sessions[index].created_schedule_uuid = maps.schedules.get(item.created_schedule_id) || null; });
   return { app: 'riji', schema_version: SCHEMA_VERSION, exported_at: now(), entities };
@@ -557,9 +773,9 @@ async function previewImport(raw, mode = 'merge') {
     const dates = table === 'daily_logs' ? new Set(existing.map((item) => item.log_date)) : new Set();
     const total = (pack.entities[table] || []).length;
     const incoming = pack.entities[table] || [];
-    const updateCount = incoming.filter((item) => uuids.has(item.uuid) || (table === 'daily_logs' && dates.has(item.log_date))).length;
+    const updateCount = incoming.filter((item) => uuids.has(item.uuid) || (table === 'daily_logs' && dates.has(item.log_date)) || (table === 'time_block_categories' && existing.some(local => local.name === item.name))).length;
     const matchedLocalIds = new Set(existing
-      .filter(local => incoming.some(item => item.uuid === local.uuid || (table === 'daily_logs' && item.log_date === local.log_date)))
+      .filter(local => incoming.some(item => item.uuid === local.uuid || (table === 'daily_logs' && item.log_date === local.log_date) || (table === 'time_block_categories' && item.name === local.name)))
       .map(local => local.id));
     entities[table] = {
       total,
@@ -587,12 +803,38 @@ async function importData(raw, mode = 'merge') {
   await db.beginTransaction();
   try {
     for (const table of entityOrder) {
+      if (table === 'time_blocks' && mode === 'merge') {
+        const incoming = pack.entities.time_blocks || [];
+        const incomingUuids = new Set(incoming.map(item => item.uuid));
+        for (const item of incoming) {
+          const existing = await rows('time_blocks', 'block_date = ? AND start_minute < ? AND end_minute > ?',
+            [item.block_date, item.end_minute, item.start_minute]);
+          for (const old of existing) {
+            if (incomingUuids.has(old.uuid)) continue;
+            await run('DELETE FROM time_blocks WHERE id = ?', [old.id], false);
+            for (const [a, b] of [[old.start_minute, Math.min(old.end_minute, item.start_minute)],
+              [Math.max(old.start_minute, item.end_minute), old.end_minute]]) {
+              for (let minute = a; minute + 15 <= b; minute += 15) {
+                await insert('time_blocks', { ...Object.fromEntries(Object.entries(old).filter(([field]) => field !== 'id' && field !== 'project_id')),
+                  uuid: uuid(), start_minute: minute, end_minute: minute + 15, granularity: 15,
+                  coverage_seconds: old.coverage_seconds == null ? null : Math.min(old.coverage_seconds, 900) }, false);
+              }
+            }
+          }
+        }
+      }
       result[table] = { created: 0, updated: 0 };
       for (const item of pack.entities[table] || []) {
         let current = await one(table, 'uuid = ?', [item.uuid]);
         if (!current && table === 'daily_logs') current = await one(table, 'log_date = ?', [item.log_date]);
+        if (!current && table === 'time_block_categories') current = await one(table, 'name = ?', [item.name]);
         const data = { uuid: item.uuid };
         for (const field of entitySpecs[table]) if (field in item) data[field] = item[field];
+        if (table === 'time_blocks') {
+          const category = await one('time_block_categories', 'uuid = ?', [item.category_uuid]);
+          if (!category) throw new Error('数据包引用了不存在的属性 UUID');
+          data.category_id = category.id;
+        }
         if (current) {
           await update(table, current.id, data, false); result[table].updated += 1; updated += 1;
         } else {
@@ -611,8 +853,13 @@ async function importData(raw, mode = 'merge') {
     for (const item of pack.entities.recurrence_rules || []) await update('recurrence_rules', maps.recurrence_rules.get(item.uuid), { project_id: resolve('projects', item.project_uuid) }, false);
     for (const item of pack.entities.todos || []) await update('todos', maps.todos.get(item.uuid), { project_id: resolve('projects', item.project_uuid), recurrence_rule_id: resolve('recurrence_rules', item.recurrence_rule_uuid) }, false);
     for (const item of pack.entities.schedules || []) await update('schedules', maps.schedules.get(item.uuid), { project_id: resolve('projects', item.project_uuid), recurrence_rule_id: resolve('recurrence_rules', item.recurrence_rule_uuid), linked_todo_ids: (item.linked_todo_uuids || []).map((value) => resolve('todos', value)) }, false);
+    for (const item of pack.entities.time_blocks || []) await update('time_blocks', maps.time_blocks.get(item.uuid), {
+      linked_todo_id: resolve('todos', item.linked_todo_uuid),
+      manual_project_id: item.linked_todo_uuid ? null : resolve('projects', item.manual_project_uuid),
+      source_timer_id: resolve('timer_sessions', item.source_timer_uuid),
+    }, false);
     for (const item of pack.entities.daily_logs || []) await update('daily_logs', maps.daily_logs.get(item.uuid), { completed_todo_ids: (item.completed_todo_uuids || []).map((value) => resolve('todos', value)) }, false);
-    for (const item of pack.entities.timer_sessions || []) await update('timer_sessions', maps.timer_sessions.get(item.uuid), { project_id: resolve('projects', item.project_uuid), linked_todo_id: resolve('todos', item.linked_todo_uuid), created_schedule_id: resolve('schedules', item.created_schedule_uuid) }, false);
+    for (const item of pack.entities.timer_sessions || []) await update('timer_sessions', maps.timer_sessions.get(item.uuid), { project_id: resolve('projects', item.project_uuid), linked_todo_id: resolve('todos', item.linked_todo_uuid), created_schedule_id: maps.schedules.has(item.created_schedule_uuid) ? resolve('schedules', item.created_schedule_uuid) : null }, false);
     if (mode === 'replace') {
       for (const table of [...entityOrder].reverse()) {
         const keepIds = new Set((pack.entities[table] || []).map(item => maps[table].get(item.uuid)).filter(Boolean));
@@ -621,6 +868,13 @@ async function importData(raw, mode = 'merge') {
           await run(`DELETE FROM ${table} WHERE id IN (${removeIds.map(() => '?').join(', ')})`, removeIds, false);
           deleted += removeIds.length;
         }
+      }
+    }
+    if (mode === 'replace' && !(pack.entities.time_block_categories || []).length) {
+      const defaults = [['学习', '#347f88'], ['娱乐', '#d89b50'], ['运动', '#4c9b67'], ['开发', '#536fba'], ['休息', '#8a85a9']];
+      for (const [name, color] of defaults) {
+        await run('INSERT OR IGNORE INTO time_block_categories (uuid, name, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+          [uuid(), name, color, beijingNow(), beijingNow()], false);
       }
     }
     await db.commitTransaction();
@@ -642,7 +896,7 @@ export async function mobileRequest(path, options = {}) {
   const body = options.body ? JSON.parse(options.body) : {};
   const url = new URL(path, 'https://riji.local');
   const pathname = url.pathname;
-  const handlers = [projectsRequest, todosRequest, schedulesRequest, logsRequest, timerRequest];
+  const handlers = [projectsRequest, todosRequest, schedulesRequest, timeBlocksRequest, logsRequest, timerRequest];
   for (const handler of handlers) {
     const value = await handler(method, pathname, url.searchParams, body);
     if (value !== undefined) return value;
