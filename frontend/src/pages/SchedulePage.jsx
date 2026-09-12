@@ -630,7 +630,7 @@ export default function SchedulePage() {
   const isToday = dateStr === todayStr();
 
   return (
-    <div className="schedule-page">
+    <div className={"schedule-page" + (viewMode === "day" && actualPreferences.actualDisplayMode === "blocks" ? " schedule-page-blocks" : "")}>
       <header className="page-hero page-hero-compact schedule-page-hero">
         <div>
           <div className="eyebrow">让计划与现实，在同一天相遇</div>
@@ -644,13 +644,13 @@ export default function SchedulePage() {
           <button className={viewMode === 'week' ? 'active' : ''} onClick={() => setViewMode('week')}>{T.weekView}</button>
           <button className={viewMode === 'month' ? 'active' : ''} onClick={() => setViewMode('month')}>{T.monthView}</button>
         </div>
-        <button className="btn btn-sm btn-secondary" disabled={aiLoading} onClick={handleAiArrangeGaps}>{aiLoading ? "AI arranging..." : "AI arrange gaps"}</button>
+        <button className="btn btn-sm btn-secondary schedule-ai-button" disabled={aiLoading} onClick={handleAiArrangeGaps}>{aiLoading ? "AI 安排中…" : "AI 补空档"}</button>
         <div className="week-nav improved">
-          <button className="btn btn-sm btn-secondary" onClick={goPrev}>{prevLabel}</button>
+          <button className="btn btn-sm btn-secondary" aria-label={prevLabel} onClick={goPrev}>{viewMode === "day" && actualPreferences.actualDisplayMode === "blocks" ? "‹" : prevLabel}</button>
           <button className="btn btn-sm btn-secondary" onClick={goToday}>{T.today}</button>
           <input type="date" value={jumpDate} onChange={e => setJumpDate(e.target.value)} aria-label={T.selectScheduleDate} />
           <button className="btn btn-sm btn-primary" onClick={handleJumpDate}>{T.jump}</button>
-          <button className="btn btn-sm btn-secondary" onClick={goNext}>{nextLabel}</button>
+          <button className="btn btn-sm btn-secondary" aria-label={nextLabel} onClick={goNext}>{viewMode === "day" && actualPreferences.actualDisplayMode === "blocks" ? "›" : nextLabel}</button>
         </div>
       </div>
 
@@ -685,6 +685,7 @@ export default function SchedulePage() {
               <div className="planned-day-list">
                 <strong>计划日程</strong>
                 <button className="btn btn-sm btn-secondary" onClick={() => openCreateSchedule(true)}>新增计划</button>
+                <button className="btn btn-sm btn-quiet planned-day-ai" disabled={aiLoading} onClick={handleAiArrangeGaps}>{aiLoading ? 'AI 安排中…' : 'AI 补空档'}</button>
                 {plannedSchedules.length === 0 ? <span>暂无计划日程</span> : plannedSchedules.map(item => (
                   <button key={item.id} className="planned-day-item" onClick={() => openSchedule(item, canEditPlanned)}>
                     {formatTime(item.start_time)}–{formatTime(item.end_time)} · {item.name}
