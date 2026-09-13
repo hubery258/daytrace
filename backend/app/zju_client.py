@@ -871,6 +871,36 @@ def _matches_selected_zdbk_semester(item: dict[str, Any], semester: int) -> bool
     return any(value in semester_text for value in ("春", "夏")) and not any(value in semester_text for value in ("秋", "冬"))
 
 
+def _zdbk_year_markers(item: dict[str, Any]) -> list[str]:
+    """Return explicit academic-year markers exposed by different ZDBK responses."""
+    values: list[str] = []
+    for key in ("xnmmc", "xnm", "xn", "xnxq", "xkkh", "jxb_id", "jxbid"):
+        value = item.get(key)
+        if value is not None and str(value).strip():
+            values.append(str(value).strip())
+    return values
+
+
+def _matches_selected_zdbk_academic_year(item: dict[str, Any], academic_year: str) -> bool:
+    """Ignore rows explicitly belonging to another academic year."""
+    selected_start = str(academic_year or "").strip().split("-", 1)[0]
+    if not re.fullmatch(r"\d{4}", selected_start):
+        return True
+    found_year = False
+    for marker in _zdbk_year_markers(item):
+        pair = re.search(r"(?<!\d)(\d{4})\s*[-~至]\s*(\d{4})(?!\d)", marker)
+        if pair:
+            found_year = True
+            if pair.group(1) == selected_start:
+                return True
+            continue
+        year = re.search(r"(?<!\d)(\d{4})(?!\d)", marker)
+        if year:
+            found_year = True
+            if year.group(1) == selected_start:
+                return True
+    return not found_year
+
 def _zdbk_half_indexes(item: dict[str, Any]) -> list[int]:
     first_half, second_half, has_marker = _zdbk_half_flags(item)
     if not has_marker or not (first_half or second_half):
@@ -1142,6 +1172,8 @@ def expand_zdbk_timetable(
 
     output: list[ExternalSchedule] = []
     for item in items:
+        if not _matches_selected_zdbk_academic_year(item, academic_year):
+            continue
         if not _matches_selected_zdbk_semester(item, semester):
             continue
 
