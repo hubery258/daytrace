@@ -1,12 +1,12 @@
 {
   "name": "riji-frontend",
   "private": true,
-  "version": "0.10.0",
+  "version": "0.10.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node --test src/ai/aiClient.test.js src/ai/aiDraftParser.test.js src/ai/aiPrompts.test.js src/utils/timeBlocks.test.js",
+    "test": "node --test src/ai/aiClient.test.js src/ai/aiDraftParser.test.js src/ai/aiPrompts.test.js src/utils/timeBlocks.test.js src/utils/timeStatistics.test.js",
     "preview": "vite preview",
     "desktop:dev": "npm run build && electron electron/main.cjs",
     "desktop:dir": "npm run build && electron-builder --dir",

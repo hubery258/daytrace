@@ -2,7 +2,6 @@ export const AI_STORAGE_KEYS = {
   apiKey: 'simpletasker_api_key',
   apiBase: 'simpletasker_api_base',
   model: 'simpletasker_ai_model',
-  prompt: 'simpletasker_ai_prompt',
 };
 
 export const DEFAULT_AI_API_BASE = 'https://api.deepseek.com';

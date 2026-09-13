@@ -11,6 +11,7 @@ export const DEFAULT_DISPLAY_PREFERENCES = Object.freeze({
     timer: true,
     projects: true,
     todos: true,
+    stats: true,
     summary: true,
     zju: true,
   }),

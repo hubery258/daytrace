@@ -166,7 +166,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="日迹 API",
     description="个人效率助手 - 待办 & 日程 & 项目 & AI 分析",
-    version="0.10.0",
+    version="0.10.1",
     lifespan=lifespan,
 )
 

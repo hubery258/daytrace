@@ -116,7 +116,7 @@ Electron 下载不稳定时可指定镜像：
 5. 先在带时间戳的临时目录构建，成功后复制到稳定路径：
 
    ```text
-   release/desktop/riji-desktop-0.10.0.exe
+   release/desktop/riji-desktop-0.10.1.exe
    ```
 
 ### 2.3 运行与验证
@@ -124,7 +124,7 @@ Electron 下载不稳定时可指定镜像：
 直接双击：
 
 ```text
-release/desktop/riji-desktop-0.10.0.exe
+release/desktop/riji-desktop-0.10.1.exe
 ```
 
 至少检查：
@@ -248,7 +248,7 @@ cd D:\cs\task
 
    ```text
    frontend/android/app/build/outputs/apk/debug/app-debug.apk
-   release/android/riji-android-0.10.0-debug.apk
+   release/android/riji-android-0.10.1-debug.apk
    ```
 
 ### 3.4 安装到实体手机
@@ -259,7 +259,7 @@ cd D:\cs\task
 $adb = ".\.android-sdk\platform-tools\adb.exe"
 
 & $adb devices
-& $adb install -r ".\release\android\riji-android-0.10.0-debug.apk"
+& $adb install -r ".\release\android\riji-android-0.10.1-debug.apk"
 ```
 
 `adb devices` 应显示：
@@ -319,7 +319,7 @@ $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
 
 ```powershell
 & $adb uninstall com.riji.app
-& $adb install ".\release\android\riji-android-0.10.0-debug.apk"
+& $adb install ".\release\android\riji-android-0.10.1-debug.apk"
 ```
 
 **Gradle 内存、文件移动或缓存问题**
@@ -444,8 +444,8 @@ Android 本地 SQLite
 git branch --show-current
 git status --short
 
-Get-FileHash ".\release\android\riji-android-0.10.0-debug.apk" -Algorithm SHA256
-Get-FileHash ".\release\desktop\riji-desktop-0.10.0.exe" -Algorithm SHA256
+Get-FileHash ".\release\android\riji-android-0.10.1-debug.apk" -Algorithm SHA256
+Get-FileHash ".\release\desktop\riji-desktop-0.10.1.exe" -Algorithm SHA256
 ```
 
 记录：
