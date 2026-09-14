@@ -94,7 +94,6 @@ class Project(Base):
 
 class Todo(Base):
     __tablename__ = "todos"
-
     id = Column(Integer, primary_key=True, autoincrement=True)
     uuid = Column(String(36), default=new_uuid, unique=True, nullable=False, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
@@ -132,7 +131,6 @@ class Todo(Base):
 
 class Schedule(Base):
     __tablename__ = "schedules"
-
     id = Column(Integer, primary_key=True, autoincrement=True)
     uuid = Column(String(36), default=new_uuid, unique=True, nullable=False, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
@@ -204,12 +202,25 @@ class RecurrenceRule(Base):
 
 class RecurrenceException(Base):
     __tablename__ = "recurrence_exceptions"
-
     id = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String(36), default=new_uuid, unique=True, nullable=False, index=True)
     recurrence_rule_id = Column(Integer, ForeignKey("recurrence_rules.id"), nullable=False)
     entity_type = Column(SAEnum(RecurrenceEntityType), nullable=False)
     recurrence_date = Column(Date, nullable=False)
     action = Column(SAEnum(RecurrenceExceptionAction), default=RecurrenceExceptionAction.deleted, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+
+
+class RecurrenceInstanceClaim(Base):
+    """Derived uniqueness guard for one generated recurrence slot."""
+
+    __tablename__ = "recurrence_instance_claims"
+
+    # The stable rule UUID keeps claims portable across local integer-id remaps.
+    # Claims are derived data and are rebuilt after restore instead of exported.
+    rule_uuid = Column(String(36), primary_key=True)
+    entity_type = Column(SAEnum(RecurrenceEntityType), primary_key=True)
+    recurrence_date = Column(Date, primary_key=True)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
 
 

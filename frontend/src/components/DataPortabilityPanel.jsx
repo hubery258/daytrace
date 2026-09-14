@@ -14,18 +14,33 @@ function fileName(prefix = 'backup') {
   return `riji-${prefix}-${stamp}.json`;
 }
 
-async function savePackage(pack, prefix = 'backup', shareAfterSave = true) {
+async function savePackage(pack, prefix = 'backup', shareAfterSave = true, verifyWrite = false) {
   const json = JSON.stringify(pack, null, 2);
   const name = fileName(prefix);
   if (Capacitor.isNativePlatform()) {
     const path = shareAfterSave ? name : `日迹/${name}`;
+    const directory = shareAfterSave ? Directory.Cache : Directory.Documents;
     const saved = await Filesystem.writeFile({
       path,
       data: json,
-      directory: shareAfterSave ? Directory.Cache : Directory.Documents,
+      directory,
       encoding: Encoding.UTF8,
       recursive: true,
     });
+    if (verifyWrite) {
+      const readBack = await Filesystem.readFile({ path, directory, encoding: Encoding.UTF8 });
+      if (typeof readBack.data !== 'string' || readBack.data !== json) {
+        throw new Error('恢复前安全备份写入后校验失败');
+      }
+      try {
+        const verified = JSON.parse(readBack.data);
+        if (verified.schema_version !== pack.schema_version || verified.package_uuid !== pack.package_uuid) {
+          throw new Error('backup identity mismatch');
+        }
+      } catch {
+        throw new Error('恢复前安全备份不是可读取的完整 JSON 数据包');
+      }
+    }
     if (shareAfterSave) {
       await Share.share({ title: '导出日迹数据', text: '日迹 JSON 数据包', files: [saved.uri], dialogTitle: '保存或分享数据包' });
     }
@@ -83,17 +98,23 @@ export default function DataPortabilityPanel() {
       : '确认合并导入？相同 UUID 的实体以数据包为准；导入时间块会覆盖同日期重叠的本地时间块，其余包外数据保留。';
     if (!window.confirm(confirmation)) return;
     clearFeedback(); setBusy(true);
+    let importStarted = false;
     try {
       let safetyLocation = '';
       if (mode === 'replace') {
-        safetyLocation = await savePackage(await dataApi.export(), 'before-restore', false);
+        try {
+          safetyLocation = await savePackage(await dataApi.export(), 'before-restore', false, true);
+        } catch (backupError) {
+          throw new Error(`恢复前安全备份写入或校验失败，未执行恢复：${backupError.message || '未知错误'}`);
+        }
       }
+      importStarted = true;
       const result = await dataApi.import(pendingPackage, mode);
       setMessage(mode === 'replace'
         ? `完整恢复完成：新增 ${result.created} 条，更新 ${result.updated} 条，删除 ${result.deleted} 条。恢复前备份：${safetyLocation}`
         : `导入完成：新增 ${result.created} 条，更新 ${result.updated} 条。刷新页面后可查看全部数据。`);
       setPendingPackage(null); setPreview(null);
-    } catch (err) { setError(`导入失败，数据库已回滚且未删除本地数据：${err.message || '未知错误'}`); }
+    } catch (err) { setError(importStarted ? `导入失败，数据库已回滚且未删除本地数据：${err.message || '未知错误'}` : (err.message || '导入前检查失败')); }
     finally { setBusy(false); }
   };
 

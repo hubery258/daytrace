@@ -78,7 +78,7 @@ class TodoCreate(BaseModel):
     ddl_type: DDLType = DDLType.none
     ddl_date: Optional[datetime] = None
     reminder_days: Optional[int] = Field(None, ge=0)
-    category: str = "浠诲姟"
+    category: str = "任务"
     status: TodoStatus = TodoStatus.not_focusing
     waiting_reply_person: Optional[str] = Field(None, max_length=100)
     notes: str = ""
@@ -88,11 +88,21 @@ class TodoCreate(BaseModel):
         if self.ddl_type == DDLType.none:
             self.ddl_date = None
             self.reminder_days = None
-            if not self.category or self.category == "浠诲姟":
+            if not self.category or self.category == "任务":
                 self.category = "计划箱"
         elif not self.category or self.category == "计划箱":
-            self.category = "浠诲姟"
-        if self.status != TodoStatus.waiting_reply:
+            self.category = "任务"
+        if self.ddl_type in (DDLType.hard, DDLType.soft):
+            if self.ddl_date is None:
+                raise ValueError("ddl_date is required for hard or soft DDL")
+            if self.reminder_days is None:
+                raise ValueError("reminder_days is required for hard or soft DDL")
+        if self.status == TodoStatus.waiting_reply:
+            person = (self.waiting_reply_person or "").strip()
+            if not person:
+                raise ValueError("waiting_reply_person is required for waiting_reply status")
+            self.waiting_reply_person = person
+        else:
             self.waiting_reply_person = None
         return self
 
@@ -109,7 +119,7 @@ class TodoCreate(BaseModel):
     def check_reminder_days(cls, v, info):
         ddl_type = info.data.get("ddl_type")
         if ddl_type in (DDLType.hard, DDLType.soft) and v is None:
-            raise ValueError("ddl_date is required for hard or soft DDL")
+            raise ValueError("reminder_days is required for hard or soft DDL")
         return v
 
 
@@ -136,7 +146,7 @@ class TodoUpdate(BaseModel):
                 self.category = "计划箱"
         elif self.ddl_type in (DDLType.hard, DDLType.soft):
             if self.category in (None, "", "任务"):
-                self.category = "浠诲姟"
+                self.category = "任务"
         if self.status is not None and self.status != TodoStatus.waiting_reply:
             self.waiting_reply_person = None
         return self

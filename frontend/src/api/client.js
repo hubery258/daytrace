@@ -1,172 +1,28 @@
-import { Capacitor } from '@capacitor/core';
-import { mobileRequest } from '../data/mobileDatabase';
-const BASE_URL = '/api';
+export * from './clientCore.js';
 
-async function request(path, options = {}) {
+import { Capacitor } from '@capacitor/core';
+
+const BASE_URL = '/api';
+async function requestTimeBlock(path, options = {}) {
   if (Capacitor.isNativePlatform()) {
+    const { mobileRequest } = await import('../data/mobileDatabase.js');
     return mobileRequest(path, options);
   }
-
-  const url = `${BASE_URL}${path}`;
-  const config = {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  };
-
-  const res = await fetch(url, config);
-  if (res.status === 204) return null;
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || '请求失败');
-  }
-  return res.json();
+  const response = await fetch(`${BASE_URL}${path}`, { headers: { 'Content-Type': 'application/json' }, ...options });
+  if (response.status === 204) return null;
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.detail || '请求失败');
+  return payload;
 }
 
-// ============ Projects ============
-export const projectApi = {
-  list: (params = {}) => {
-    const qs = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== null) qs.set(k, v);
-    });
-    return request(`/projects/?${qs.toString()}`);
-  },
-  get: (id) => request(`/projects/${id}`),
-  overview: (id) => request(`/projects/${id}/overview`),
-  create: (data) => request('/projects/', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id, data) => request(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  delete: (id) => request(`/projects/${id}`, { method: 'DELETE' }),
-};
-// ============ Todos ============
-export const todoApi = {
-  list: (params = {}) => {
-    const qs = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== null) qs.set(k, v);
-    });
-    return request(`/todos/?${qs.toString()}`);
-  },
-  get: (id) => request(`/todos/${id}`),
-  create: (data) => request('/todos/', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id, data) => request(`/todos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  complete: (id, logDate) => request(`/todos/${id}/complete`, { method: 'POST', body: JSON.stringify({ log_date: logDate }) }),
-  delete: (id) => request(`/todos/${id}`, { method: 'DELETE' }),
-  focusing: () => request('/todos/focusing'),
-  waitingReply: () => request('/todos/waiting-reply'),
-  ddlNear: () => request('/todos/ddl-near'),
-};
-
-// ============ Schedules ============
-export const scheduleApi = {
-  list: (params = {}) => {
-    const qs = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== null) qs.set(k, v);
-    });
-    return request(`/schedules/?${qs.toString()}`);
-  },
-  get: (id) => request(`/schedules/${id}`),
-  create: (data) => request('/schedules/', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id, data) => request(`/schedules/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  delete: (id) => request(`/schedules/${id}`, { method: 'DELETE' }),
-  current: () => request('/schedules/current'),
-  week: (startDate) => request(`/schedules/week/?start_date=${startDate.toISOString()}`),
-};
-
-
-// ============ Actual time blocks ============
+// v0.10 actual time-block endpoints are kept as an additive API while the
+// v0.8 capability manifest remains stable for the shared Android contract.
 export const timeBlockApi = {
-  list: (dateFrom, dateTo = dateFrom) => request('/time-blocks/?' + new URLSearchParams({ date_from: dateFrom, date_to: dateTo })),
-  replaceRange: (data) => request('/time-blocks/range', { method: 'PUT', body: JSON.stringify(data) }),
-  categories: () => request('/time-blocks/categories'),
-  createCategory: (data) => request('/time-blocks/categories', { method: 'POST', body: JSON.stringify(data) }),
-  updateCategory: (id, data) => request('/time-blocks/categories/' + id, { method: 'PUT', body: JSON.stringify(data) }),
-  deleteCategory: (id) => request('/time-blocks/categories/' + id, { method: 'DELETE' }),
-  fromTimer: (timerId, data) => request('/time-blocks/from-timer/' + timerId, { method: 'POST', body: JSON.stringify(data) }),
-};
-
-
-// ============ Recurrence Rules ============
-export const recurrenceApi = {
-  list: (params = {}) => {
-    const qs = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== null) qs.set(k, v);
-    });
-    return request(`/recurrence-rules/?${qs.toString()}`);
-  },
-  get: (id) => request(`/recurrence-rules/${id}`),
-  create: (data) => request('/recurrence-rules/', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id, data) => request(`/recurrence-rules/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  syncTodo: (todoId, data) => request(`/recurrence-rules/from-todo/${todoId}/sync`, { method: 'POST', body: JSON.stringify(data) }),
-  syncSchedule: (scheduleId, data) => request(`/recurrence-rules/from-schedule/${scheduleId}/sync`, { method: 'POST', body: JSON.stringify(data) }),
-  delete: (id, deleteFutureInstances = false) => request(`/recurrence-rules/${id}?${new URLSearchParams({ delete_future_instances: deleteFutureInstances }).toString()}`, { method: 'DELETE' }),
-  generate: (data) => request('/recurrence-rules/generate', { method: 'POST', body: JSON.stringify(data) }),
-};
-// ============ Timer ============
-export const timerApi = {
-  current: () => request('/timer/current'),
-  start: (data) => request('/timer/start', { method: 'POST', body: JSON.stringify(data) }),
-  updateCurrent: (data) => request('/timer/current', { method: 'PUT', body: JSON.stringify(data) }),
-  pause: () => request('/timer/pause', { method: 'POST' }),
-  resume: () => request('/timer/resume', { method: 'POST' }),
-  finish: () => request('/timer/finish', { method: 'POST' }),
-  cancel: () => request('/timer/cancel', { method: 'POST' }),
-  recent: (limit = 10) => request(`/timer/recent?${new URLSearchParams({ limit }).toString()}`),
-};
-
-
-// ============ DailyLog ============
-export const logApi = {
-  list: (params = {}) => {
-    const qs = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== null) qs.set(k, v);
-    });
-    return request(`/logs/?${qs.toString()}`);
-  },
-  get: (date) => request(`/logs/${date}`),
-  upsert: (data) => request('/logs/', { method: 'POST', body: JSON.stringify(data) }),
-};
-
-// ============ LogTemplate ============
-export const templateApi = {
-  list: () => request('/templates'),
-  create: (data) => request('/templates', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id, data) => request(`/templates/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  delete: (id) => request(`/templates/${id}`, { method: 'DELETE' }),
-};
-
-// ============ ZJU Todo Import ============
-export const zjuApi = {
-  getCredentials: () => request('/zju/credentials'),
-  saveCredentials: (data) => request('/zju/credentials', { method: 'PUT', body: JSON.stringify(data) }),
-  clearPassword: () => request('/zju/credentials/password', { method: 'DELETE' }),
-  clearPintiaCookie: () => request('/zju/credentials/pintia', { method: 'DELETE' }),
-  preview: (data) => request('/zju/preview', { method: 'POST', body: JSON.stringify(data) }),
-  importTodos: (data) => request('/zju/import', { method: 'POST', body: JSON.stringify(data) }),
-  undoLast: () => request('/zju/undo-last', { method: 'POST' }),
-  getCalendarCache: ({ academic_year, semester }) => {
-    const qs = new URLSearchParams({ academic_year, semester });
-    return request(`/zju/calendar/cache?${qs.toString()}`);
-  },
-  fetchCalendar: (data) => request('/zju/calendar/fetch', { method: 'POST', body: JSON.stringify(data) }),
-  previewSchedule: (data) => request('/zju/schedule/preview', { method: 'POST', body: JSON.stringify(data) }),
-  importSchedule: (data) => request('/zju/schedule/import', { method: 'POST', body: JSON.stringify(data) }),
-  undoLastSchedule: () => request('/zju/schedule/undo-last', { method: 'POST' }),
-  getGradeCache: (strategy = 'scholarship') => request(`/zju/grades/cache?${new URLSearchParams({ strategy }).toString()}`),
-  fetchGrades: (data) => request('/zju/grades/fetch', { method: 'POST', body: JSON.stringify(data) }),
-  clearGradeCache: () => request('/zju/grades/clear-cache', { method: 'POST' }),
-};
-
-// ============ Health ============
-// ============ Data portability ============
-export const dataApi = {
-  export: () => request('/data/export'),
-  previewImport: (dataPackage, mode = 'merge') => request('/data/import/preview', { method: 'POST', body: JSON.stringify({ package: dataPackage, mode }) }),
-  import: (dataPackage, mode = 'merge') => request('/data/import', { method: 'POST', body: JSON.stringify({ package: dataPackage, mode }) }),
-};
-
-export const healthApi = {
-  check: () => request('/health/'),
+  list: (dateFrom, dateTo = dateFrom) => requestTimeBlock('/time-blocks/?' + new URLSearchParams({ date_from: dateFrom, date_to: dateTo })),
+  replaceRange: (data) => requestTimeBlock('/time-blocks/range', { method: 'PUT', body: JSON.stringify(data) }),
+  categories: () => requestTimeBlock('/time-blocks/categories'),
+  createCategory: (data) => requestTimeBlock('/time-blocks/categories', { method: 'POST', body: JSON.stringify(data) }),
+  updateCategory: (id, data) => requestTimeBlock('/time-blocks/categories/' + id, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteCategory: (id) => requestTimeBlock('/time-blocks/categories/' + id, { method: 'DELETE' }),
+  fromTimer: (timerId, data) => requestTimeBlock('/time-blocks/from-timer/' + timerId, { method: 'POST', body: JSON.stringify(data) }),
 };

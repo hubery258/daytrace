@@ -1,9 +1,10 @@
 import asyncio
 from datetime import datetime, date, timedelta, timezone
 from typing import Optional, List
-from sqlalchemy import select, and_, or_, update
+from sqlalchemy import select, and_, or_, update, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from . import models, schemas
+from .recurrence_claims import ensure_recurrence_claim, rebuild_recurrence_claims
 
 
 def beijing_now() -> datetime:
@@ -11,6 +12,82 @@ def beijing_now() -> datetime:
 
 
 _daily_log_lock = asyncio.Lock()
+_recurrence_generation_lock = asyncio.Lock()
+_todo_focus_lock = asyncio.Lock()
+
+
+class TodoFocusLimitError(ValueError):
+    pass
+
+
+def _validated_todo_update_data(todo: models.Todo, data: schemas.TodoUpdate) -> dict:
+    update_data = data.model_dump(exclude_unset=True)
+    ddl_type = update_data.get("ddl_type", todo.ddl_type)
+    ddl_date = update_data.get("ddl_date", todo.ddl_date)
+    reminder_days = update_data.get("reminder_days", todo.reminder_days)
+    if ddl_type is None:
+        raise ValueError("ddl_type cannot be null")
+    if ddl_type in (models.DDLType.hard, models.DDLType.soft):
+        if ddl_date is None:
+            raise ValueError("ddl_date is required for hard or soft DDL")
+        if reminder_days is None:
+            raise ValueError("reminder_days is required for hard or soft DDL")
+
+    status = update_data.get("status", todo.status)
+    waiting_reply_person = update_data.get("waiting_reply_person", todo.waiting_reply_person)
+    if status is None:
+        raise ValueError("status cannot be null")
+    if status == models.TodoStatus.waiting_reply:
+        person = (waiting_reply_person or "").strip()
+        if not person:
+            raise ValueError("waiting_reply_person is required for waiting_reply status")
+        if "waiting_reply_person" in update_data or status != todo.status:
+            update_data["waiting_reply_person"] = person
+    elif "waiting_reply_person" in update_data or status != todo.status:
+        update_data["waiting_reply_person"] = None
+    return update_data
+
+
+def _validated_schedule_update_data(schedule: models.Schedule, data: schemas.ScheduleUpdate) -> dict:
+    update_data = data.model_dump(exclude_unset=True)
+    start_time = update_data.get("start_time", schedule.start_time)
+    end_time = update_data.get("end_time", schedule.end_time)
+    if start_time is None or end_time is None:
+        raise ValueError("start_time and end_time cannot be null")
+    if end_time <= start_time:
+        raise ValueError("end_time must be after start_time")
+    return update_data
+
+
+def _json_update_values(values: dict) -> dict:
+    result = {}
+    for key, value in values.items():
+        if hasattr(value, "value"):
+            result[key] = value.value
+        elif isinstance(value, (datetime, date)):
+            result[key] = value.isoformat()
+        else:
+            result[key] = value
+    return result
+
+
+async def _ensure_deleted_recurrence_exception(
+    db: AsyncSession,
+    recurrence_rule_id: int,
+    entity_type: models.RecurrenceEntityType,
+    recurrence_date: date,
+) -> None:
+    result = await db.execute(select(models.RecurrenceException.id).where(
+        models.RecurrenceException.recurrence_rule_id == recurrence_rule_id,
+        models.RecurrenceException.entity_type == entity_type,
+        models.RecurrenceException.recurrence_date == recurrence_date,
+    ).limit(1))
+    if result.scalar_one_or_none() is None:
+        db.add(models.RecurrenceException(
+            recurrence_rule_id=recurrence_rule_id,
+            entity_type=entity_type,
+            recurrence_date=recurrence_date,
+        ))
 
 
 def _next_todo(todos: List[models.Todo]) -> Optional[models.Todo]:
@@ -112,6 +189,8 @@ async def delete_project(db: AsyncSession, project_id: int) -> bool:
         return False
     await db.execute(update(models.Todo).where(models.Todo.project_id == project_id).values(project_id=None))
     await db.execute(update(models.Schedule).where(models.Schedule.project_id == project_id).values(project_id=None))
+    await db.execute(update(models.RecurrenceRule).where(models.RecurrenceRule.project_id == project_id).values(project_id=None))
+    await db.execute(update(models.TimerSession).where(models.TimerSession.project_id == project_id).values(project_id=None))
     await db.delete(project)
     await db.commit()
     return True
@@ -146,12 +225,31 @@ async def get_project_overview(db: AsyncSession, project_id: int) -> Optional[di
 
 # ============ Todo CRUD ============
 
+async def _assert_focusing_capacity(
+    db: AsyncSession,
+    *,
+    exclude_todo_id: Optional[int] = None,
+) -> None:
+    statement = select(models.Todo.id).where(
+        models.Todo.status == models.TodoStatus.focusing,
+        models.Todo.is_completed == False,
+    )
+    if exclude_todo_id is not None:
+        statement = statement.where(models.Todo.id != exclude_todo_id)
+    focused_ids = (await db.execute(statement)).scalars().all()
+    if len(focused_ids) >= 3:
+        raise TodoFocusLimitError("关注中的待办最多 3 个")
+
+
 async def create_todo(db: AsyncSession, data: schemas.TodoCreate) -> models.Todo:
-    todo = models.Todo(**data.model_dump())
-    db.add(todo)
-    await db.commit()
-    await db.refresh(todo)
-    return todo
+    async with _todo_focus_lock:
+        if data.status == models.TodoStatus.focusing:
+            await _assert_focusing_capacity(db)
+        todo = models.Todo(**data.model_dump())
+        db.add(todo)
+        await db.commit()
+        await db.refresh(todo)
+        return todo
 
 
 async def get_todo(db: AsyncSession, todo_id: int) -> Optional[models.Todo]:
@@ -220,20 +318,25 @@ async def get_ddl_near_todos(db: AsyncSession) -> List[models.Todo]:
 
 
 async def update_todo(db: AsyncSession, todo_id: int, data: schemas.TodoUpdate) -> Optional[models.Todo]:
-    todo = await get_todo(db, todo_id)
-    if not todo:
-        return None
-    update_data = data.model_dump(exclude_unset=True)
-    if "is_completed" in update_data:
-        update_data["completed_at"] = beijing_now() if update_data["is_completed"] else None
-    edited_fields = set(update_data) - {"is_completed", "completed_at"}
-    if todo.recurrence_rule_id and edited_fields:
-        update_data["is_recurrence_exception"] = True
-    for key, value in update_data.items():
-        setattr(todo, key, value)
-    await db.commit()
-    await db.refresh(todo)
-    return todo
+    async with _todo_focus_lock:
+        todo = await get_todo(db, todo_id)
+        if not todo:
+            return None
+        update_data = _validated_todo_update_data(todo, data)
+        final_status = update_data.get("status", todo.status)
+        final_is_completed = update_data.get("is_completed", todo.is_completed)
+        if final_status == models.TodoStatus.focusing and not final_is_completed:
+            await _assert_focusing_capacity(db, exclude_todo_id=todo.id)
+        if "is_completed" in update_data:
+            update_data["completed_at"] = beijing_now() if update_data["is_completed"] else None
+        edited_fields = set(update_data) - {"is_completed", "completed_at"}
+        if todo.recurrence_rule_id and edited_fields:
+            update_data["is_recurrence_exception"] = True
+        for key, value in update_data.items():
+            setattr(todo, key, value)
+        await db.commit()
+        await db.refresh(todo)
+        return todo
 
 
 async def complete_todo_and_log(
@@ -278,11 +381,9 @@ async def delete_todo(db: AsyncSession, todo_id: int) -> bool:
     if not todo:
         return False
     if todo.recurrence_rule_id and todo.recurrence_date:
-        db.add(models.RecurrenceException(
-            recurrence_rule_id=todo.recurrence_rule_id,
-            entity_type=models.RecurrenceEntityType.todo,
-            recurrence_date=todo.recurrence_date,
-        ))
+        await _ensure_deleted_recurrence_exception(
+            db, todo.recurrence_rule_id, models.RecurrenceEntityType.todo, todo.recurrence_date
+        )
     await db.delete(todo)
     await db.commit()
     return True
@@ -360,7 +461,7 @@ async def update_schedule(db: AsyncSession, schedule_id: int, data: schemas.Sche
     schedule = await get_schedule(db, schedule_id)
     if not schedule:
         return None
-    update_data = data.model_dump(exclude_unset=True)
+    update_data = _validated_schedule_update_data(schedule, data)
     if schedule.recurrence_rule_id and update_data:
         update_data["is_recurrence_exception"] = True
     for key, value in update_data.items():
@@ -374,11 +475,9 @@ async def delete_schedule(db: AsyncSession, schedule_id: int) -> bool:
     if not schedule:
         return False
     if schedule.recurrence_rule_id and schedule.recurrence_date:
-        db.add(models.RecurrenceException(
-            recurrence_rule_id=schedule.recurrence_rule_id,
-            entity_type=models.RecurrenceEntityType.schedule,
-            recurrence_date=schedule.recurrence_date,
-        ))
+        await _ensure_deleted_recurrence_exception(
+            db, schedule.recurrence_rule_id, models.RecurrenceEntityType.schedule, schedule.recurrence_date
+        )
     await db.delete(schedule)
     await db.commit()
     return True
@@ -616,7 +715,24 @@ async def update_recurrence_rule(db: AsyncSession, rule_id: int, data: schemas.R
     if not rule:
         return None
     update_data = data.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
+    merged = {
+        "entity_type": rule.entity_type,
+        "template_json": update_data.get("template_json", rule.template_json),
+        "frequency": update_data.get("frequency", rule.frequency),
+        "start_date": update_data.get("start_date", rule.start_date),
+        "end_date": update_data.get("end_date", rule.end_date),
+        "weekdays": update_data.get("weekdays", rule.weekdays),
+        "month_day": update_data.get("month_day", rule.month_day),
+        "project_id": update_data.get("project_id", rule.project_id),
+        "status": update_data.get("status", rule.status),
+    }
+    try:
+        validated = schemas.RecurrenceRuleCreate.model_validate(merged)
+    except ValueError as exc:
+        raise ValueError(f"invalid recurrence rule update: {exc}") from exc
+    normalized = validated.model_dump()
+    normalized.pop("entity_type", None)
+    for key, value in normalized.items():
         setattr(rule, key, value)
     rule.updated_at = datetime.now()
     await db.commit()
@@ -648,6 +764,7 @@ async def delete_recurrence_rule(db: AsyncSession, rule_id: int, delete_future_i
             ))
             for schedule in result.scalars().all():
                 await db.delete(schedule)
+        await rebuild_recurrence_claims(db)
     await db.commit()
     return True
 
@@ -769,7 +886,25 @@ def _build_schedule_from_rule(rule: models.RecurrenceRule, day: date) -> models.
     )
 
 
+async def _begin_recurrence_write_transaction(db: AsyncSession) -> None:
+    bind = db.get_bind()
+    if bind.dialect.name == "sqlite" and not db.in_transaction():
+        # Reserve the SQLite writer before reading rules. This avoids a
+        # cross-process deferred-transaction lock upgrade race.
+        await db.execute(text("BEGIN IMMEDIATE"))
+
+
 async def generate_recurrence_instances(db: AsyncSession, data: schemas.RecurrenceGenerateRequest) -> dict:
+    async with _recurrence_generation_lock:
+        try:
+            return await _generate_recurrence_instances_unlocked(db, data)
+        except Exception:
+            await db.rollback()
+            raise
+
+
+async def _generate_recurrence_instances_unlocked(db: AsyncSession, data: schemas.RecurrenceGenerateRequest) -> dict:
+    await _begin_recurrence_write_transaction(db)
     created_todo_ids: List[int] = []
     created_schedule_ids: List[int] = []
     rules = await get_recurrence_rules(db, entity_type=data.entity_type)
@@ -781,11 +916,15 @@ async def generate_recurrence_instances(db: AsyncSession, data: schemas.Recurren
         for day in _iter_dates(data.date_from, data.date_to):
             if not _rule_matches(rule, day):
                 continue
-            if await _has_recurrence_instance(db, rule, day):
-                continue
-            if await _has_deleted_exception(db, rule, day):
+            has_instance = await _has_recurrence_instance(db, rule, day)
+            has_exception = await _has_deleted_exception(db, rule, day)
+            if has_instance or has_exception:
+                # Heal claims for pre-v0.8 data without touching source rows.
+                await ensure_recurrence_claim(db, rule, day)
                 continue
             if rule.entity_type == models.RecurrenceEntityType.todo:
+                if not await ensure_recurrence_claim(db, rule, day):
+                    continue
                 todo = _build_todo_from_rule(rule, day)
                 db.add(todo)
                 await db.flush()
@@ -799,6 +938,10 @@ async def generate_recurrence_instances(db: AsyncSession, data: schemas.Recurren
                     is_planned=True,
                 )
                 if overlaps:
+                    # Do not consume this recurrence slot while an unrelated
+                    # planned schedule blocks it.
+                    continue
+                if not await ensure_recurrence_claim(db, rule, day):
                     continue
                 db.add(schedule)
                 await db.flush()
@@ -900,7 +1043,7 @@ async def sync_recurrence_from_todo(db: AsyncSession, todo_id: int, data: schema
     if not rule or rule.entity_type != models.RecurrenceEntityType.todo:
         return None
 
-    update_data = data.model_dump(exclude_unset=True, mode="json")
+    update_data = _json_update_values(_validated_todo_update_data(todo, data))
     template = dict(rule.template_json or {})
     for key, value in update_data.items():
         if key == "project_id":
@@ -938,7 +1081,7 @@ async def sync_recurrence_from_schedule(db: AsyncSession, schedule_id: int, data
     if not rule or rule.entity_type != models.RecurrenceEntityType.schedule:
         return None
 
-    update_data = data.model_dump(exclude_unset=True, mode="json")
+    update_data = _json_update_values(_validated_schedule_update_data(schedule, data))
     template = dict(rule.template_json or {})
     for key, value in update_data.items():
         if key == "project_id":

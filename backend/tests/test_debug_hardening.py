@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from app import crud, models, schemas
-from app.data_portability import ENTITY_ORDER, import_package, preview_package
+from app.data_portability import ENTITY_ORDER, export_package, import_package, preview_package
 from app.database import Base
 from app.zju_client import _parse_datetime
 
@@ -190,6 +190,172 @@ class DatabaseHardeningTests(unittest.IsolatedAsyncioTestCase):
             overview = await crud.get_project_overview(session, project.id)
             self.assertEqual(overview['next_todo'].name, '手动第一')
             self.assertEqual([todo.name for todo in overview['todos']], ['手动第一', '手动第二', '最近 DDL'])
+
+
+    async def test_recurrence_generation_and_deleted_exception_are_idempotent(self):
+        target_date = date(2099, 1, 5)
+        async with self.sessions() as session:
+            rule = await crud.create_recurrence_rule(session, schemas.RecurrenceRuleCreate(
+                entity_type=models.RecurrenceEntityType.todo,
+                template_json={'name': '每日复盘'},
+                frequency=models.RecurrenceFrequency.daily,
+                start_date=target_date,
+            ))
+            request = schemas.RecurrenceGenerateRequest(date_from=target_date, date_to=target_date)
+            first = await crud.generate_recurrence_instances(session, request)
+            second = await crud.generate_recurrence_instances(session, request)
+            self.assertEqual(len(first['created_todo_ids']), 1)
+            self.assertEqual(second['created_todo_ids'], [])
+
+            todo = await crud.get_todo(session, first['created_todo_ids'][0])
+            session.add(models.RecurrenceException(
+                recurrence_rule_id=rule.id,
+                entity_type=models.RecurrenceEntityType.todo,
+                recurrence_date=target_date,
+            ))
+            await session.commit()
+            self.assertTrue(await crud.delete_todo(session, todo.id))
+            regenerated = await crud.generate_recurrence_instances(session, request)
+            exceptions = list((await session.execute(select(models.RecurrenceException))).scalars())
+            self.assertEqual(regenerated['created_todo_ids'], [])
+            self.assertEqual(len(exceptions), 1)
+
+    async def test_recurrence_sync_preserves_explicit_instance_exception(self):
+        start = date(2099, 2, 1)
+        async with self.sessions() as session:
+            rule = await crud.create_recurrence_rule(session, schemas.RecurrenceRuleCreate(
+                entity_type=models.RecurrenceEntityType.todo,
+                template_json={'name': '原模板'},
+                frequency=models.RecurrenceFrequency.daily,
+                start_date=start,
+            ))
+            generated = await crud.generate_recurrence_instances(session, schemas.RecurrenceGenerateRequest(
+                date_from=start, date_to=date(2099, 2, 2),
+            ))
+            first = await crud.get_todo(session, generated['created_todo_ids'][0])
+            second = await crud.get_todo(session, generated['created_todo_ids'][1])
+            await crud.update_todo(session, second.id, schemas.TodoUpdate(name='单项修改'))
+            await crud.sync_recurrence_from_todo(session, first.id, schemas.TodoUpdate(name='同步模板'))
+            first = await crud.get_todo(session, first.id)
+            second = await crud.get_todo(session, second.id)
+            self.assertEqual(first.name, '同步模板')
+            self.assertEqual(second.name, '单项修改')
+            self.assertTrue(second.is_recurrence_exception)
+            self.assertEqual((await crud.get_recurrence_rule(session, rule.id)).template_json['name'], '同步模板')
+
+    async def test_invalid_merged_updates_are_rejected(self):
+        async with self.sessions() as session:
+            rule = await crud.create_recurrence_rule(session, schemas.RecurrenceRuleCreate(
+                entity_type=models.RecurrenceEntityType.todo,
+                template_json={'name': '规则'},
+                frequency=models.RecurrenceFrequency.daily,
+                start_date=date(2099, 3, 1),
+            ))
+            with self.assertRaises(ValueError):
+                await crud.update_recurrence_rule(
+                    session, rule.id,
+                    schemas.RecurrenceRuleUpdate(frequency=models.RecurrenceFrequency.weekly),
+                )
+
+            todo = await crud.create_todo(session, schemas.TodoCreate(name='待办'))
+            with self.assertRaises(ValueError):
+                await crud.update_todo(
+                    session, todo.id, schemas.TodoUpdate(ddl_type=models.DDLType.hard)
+                )
+            with self.assertRaises(ValueError):
+                await crud.update_todo(session, todo.id, schemas.TodoUpdate(
+                    status=models.TodoStatus.waiting_reply,
+                ))
+
+            schedule = await crud.create_schedule(session, schemas.ScheduleCreate(
+                name='日程', start_time=datetime(2099, 3, 1, 9), end_time=datetime(2099, 3, 1, 10),
+            ))
+            with self.assertRaises(ValueError):
+                await crud.update_schedule(session, schedule.id, schemas.ScheduleUpdate(
+                    end_time=datetime(2099, 3, 1, 8),
+                ))
+
+        with self.assertRaises(ValueError):
+            schemas.TodoCreate(name='缺 DDL', ddl_type=models.DDLType.hard)
+        with self.assertRaises(ValueError):
+            schemas.TodoCreate(name='缺回复人', status=models.TodoStatus.waiting_reply)
+
+    async def test_legacy_0_6_package_without_exceptions_is_supported(self):
+        legacy_entities = {
+            name: [] for name in ENTITY_ORDER if name != 'recurrence_exceptions'
+        }
+        package = {'app': 'riji', 'schema_version': '0.6.0', 'entities': legacy_entities}
+        async with self.sessions() as session:
+            result = await import_package(session, package)
+            self.assertEqual(result['schema_version'], '0.8.0')
+            self.assertEqual(result['entities']['recurrence_exceptions'], {'created': 0, 'updated': 0})
+
+    async def test_0_8_recurrence_exception_round_trip_remaps_rule_uuid(self):
+        target_date = date(2099, 4, 1)
+        async with self.sessions() as session:
+            rule = await crud.create_recurrence_rule(session, schemas.RecurrenceRuleCreate(
+                entity_type=models.RecurrenceEntityType.todo,
+                template_json={'name': '不会复活'},
+                frequency=models.RecurrenceFrequency.daily,
+                start_date=target_date,
+            ))
+            session.add(models.RecurrenceException(
+                recurrence_rule_id=rule.id,
+                entity_type=models.RecurrenceEntityType.todo,
+                recurrence_date=target_date,
+            ))
+            await session.commit()
+            package = await export_package(session)
+            self.assertEqual(package['schema_version'], '0.8.0')
+            self.assertEqual(
+                package['entities']['recurrence_exceptions'][0]['recurrence_rule_uuid'],
+                rule.uuid,
+            )
+
+        target_engine = create_async_engine(
+            'sqlite+aiosqlite:///:memory:', poolclass=StaticPool,
+        )
+        target_sessions = async_sessionmaker(target_engine, expire_on_commit=False)
+        try:
+            async with target_engine.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            async with target_sessions() as session:
+                await import_package(session, package, mode='replace')
+                restored_rule = (await session.execute(select(models.RecurrenceRule))).scalar_one()
+                restored_exception = (await session.execute(select(models.RecurrenceException))).scalar_one()
+                self.assertEqual(restored_exception.recurrence_rule_id, restored_rule.id)
+                generated = await crud.generate_recurrence_instances(
+                    session,
+                    schemas.RecurrenceGenerateRequest(date_from=target_date, date_to=target_date),
+                )
+                self.assertEqual(generated['created_todo_ids'], [])
+        finally:
+            await target_engine.dispose()
+
+    async def test_project_delete_detaches_rules_and_timers(self):
+        async with self.sessions() as session:
+            project = await crud.create_project(session, schemas.ProjectCreate(name='可删除项目'))
+            rule = await crud.create_recurrence_rule(session, schemas.RecurrenceRuleCreate(
+                entity_type=models.RecurrenceEntityType.todo,
+                template_json={'name': '规则'},
+                frequency=models.RecurrenceFrequency.daily,
+                start_date=date(2099, 5, 1),
+                project_id=project.id,
+            ))
+            timer = await crud.start_timer(session, schemas.TimerStart(name='计时', project_id=project.id))
+            self.assertTrue(await crud.delete_project(session, project.id))
+            self.assertIsNone((await crud.get_recurrence_rule(session, rule.id)).project_id)
+            self.assertIsNone((await crud.get_timer(session, timer.id)).project_id)
+
+    async def test_invalid_data_portability_mode_is_rejected(self):
+        package = {
+            'app': 'riji',
+            'schema_version': '0.8.0',
+            'entities': {name: [] for name in ENTITY_ORDER},
+        }
+        async with self.sessions() as session:
+            with self.assertRaises(ValueError):
+                await preview_package(session, package, mode='append')
 
 
 if __name__ == '__main__':

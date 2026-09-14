@@ -359,11 +359,11 @@ export default function ZjuPage() {
           </label>
           <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
             <input type="checkbox" checked={savePassword} onChange={e => setSavePassword(e.target.checked)} />
-            明文保存 ZJU 密码到本地 SQLite
+            在本机保存 ZJU 密码（Android 使用系统安全存储）
           </label>
           <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
             <input type="checkbox" checked={savePintiaCookie} onChange={e => setSavePintiaCookie(e.target.checked)} />
-            明文保存 Pintia Cookie 到本地 SQLite
+            在本机保存 Pintia Cookie（Android 使用系统安全存储）
           </label>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
