@@ -1,15 +1,5 @@
 apply plugin: 'com.android.application'
 
-def releaseKeystorePropertiesFile = rootProject.file('keystore.properties')
-def releaseKeystoreProperties = new Properties()
-if (releaseKeystorePropertiesFile.exists()) {
-    releaseKeystorePropertiesFile.withInputStream { releaseKeystoreProperties.load(it) }
-}
-def releaseSigningKeys = ['storeFile', 'storePassword', 'keyAlias', 'keyPassword']
-def hasReleaseSigning = releaseSigningKeys.every { key ->
-    releaseKeystoreProperties.getProperty(key)?.trim()
-}
-
 android {
     namespace = "com.riji.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -17,8 +7,8 @@ android {
         applicationId "com.riji.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 9
-        versionName "0.8.0"
+        versionCode 11
+        versionName "0.10.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -26,39 +16,11 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
-    signingConfigs {
-        if (hasReleaseSigning) {
-            release {
-                storeFile rootProject.file(releaseKeystoreProperties.getProperty('storeFile'))
-                storePassword releaseKeystoreProperties.getProperty('storePassword')
-                keyAlias releaseKeystoreProperties.getProperty('keyAlias')
-                keyPassword releaseKeystoreProperties.getProperty('keyPassword')
-                enableV1Signing true
-                enableV2Signing true
-                enableV3Signing true
-            }
-        }
-    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            if (hasReleaseSigning) {
-                signingConfig signingConfigs.release
-            }
         }
-    }
-}
-
-gradle.taskGraph.whenReady { graph ->
-    def requestsReleaseArtifact = graph.allTasks.any { task ->
-        task.project == project && task.name in ['assembleRelease', 'bundleRelease', 'packageRelease']
-    }
-    if (requestsReleaseArtifact && !hasReleaseSigning) {
-        throw new GradleException(
-            'Release signing is not configured. Copy keystore.properties.example to ' +
-            'android/keystore.properties and fill it with local, untracked credentials.'
-        )
     }
 }
 

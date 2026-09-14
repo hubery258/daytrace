@@ -5,7 +5,7 @@ import { Share } from '@capacitor/share';
 import { dataApi } from '../api/client';
 
 const entityLabels = {
-  projects: '项目', todos: '待办', schedules: '日程', daily_logs: '每日总结',
+  projects: '项目', todos: '待办', schedules: '计划日程', time_block_categories: '时间块属性', time_blocks: '实际时间块', daily_logs: '每日总结',
   log_templates: '日志模板', timer_sessions: '计时会话', recurrence_rules: '重复规则',
 };
 
@@ -95,7 +95,7 @@ export default function DataPortabilityPanel() {
     const updated = Object.values(preview.entities).reduce((sum, item) => sum + item.update, 0);
     const confirmation = mode === 'replace'
       ? `确认完整恢复？将新增 ${preview.total - updated} 条、覆盖 ${updated} 条，并删除 ${preview.delete_total || 0} 条本地数据。恢复前会先自动保存当前数据。`
-      : '确认合并导入？相同 UUID 的本地实体会被数据包内容覆盖；未出现在包中的本地数据会保留。';
+      : '确认合并导入？相同 UUID 的实体以数据包为准；导入时间块会覆盖同日期重叠的本地时间块，其余包外数据保留。';
     if (!window.confirm(confirmation)) return;
     clearFeedback(); setBusy(true);
     let importStarted = false;
@@ -122,7 +122,7 @@ export default function DataPortabilityPanel() {
     <div className="card">
       <div className="card-header">数据导入导出</div>
       <p style={{ color: 'var(--text-secondary)', fontSize: '0.86rem', lineHeight: 1.6 }}>
-        JSON 数据包覆盖项目、待办、日程、每日总结、日志模板、计时会话和重复规则。合并导入保留包外数据；完整恢复会先在本机保存当前数据，再将核心数据替换为数据包内容。
+        JSON 数据包覆盖项目、待办、计划日程、实际时间块及属性、每日总结、日志模板、计时会话和重复规则。旧版实际日程会在导入时跳过。合并导入会覆盖同日期重叠的本地时间块，并保留其他包外数据；完整恢复会先在本机保存当前数据，再将核心数据替换为数据包内容。
       </p>
       <div className="form-group" style={{ maxWidth: 420 }}>
         <label htmlFor="import-mode">导入模式</label>

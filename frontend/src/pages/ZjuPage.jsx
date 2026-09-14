@@ -429,6 +429,7 @@ export default function ZjuPage() {
 
         </div>
         <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 10 }}>
+          预览范围：<strong>{calendarLabel}</strong>。返回数据会再次按学年和学期校验，避免混入其他年级课程。
           校历只会在点击“拉取并缓存校历”时访问 Celechron CDN；预览课表只使用本地缓存。
           当前缓存：{calendarState?.has_cache ? `已缓存（${calendarState.fetched_at ? formatDateTime(calendarState.fetched_at) : '时间未知'}）` : '未缓存'}
         </div>

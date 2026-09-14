@@ -1,6 +1,6 @@
-# 日迹 Android v0.8 与 Windows 桌面版打包指南
+# 日迹 Android 与 Windows 桌面体验版打包指南
 
-本文用于在 Windows 开发机上重新构建日迹 Android v0.8 Debug/Release APK，以及 Windows Electron portable 体验版。
+本文用于以后在 Windows 开发机上重新构建日迹 v0.10.x 的 Android debug APK 和 Windows Electron portable 体验版。
 
 当前技术结构：
 
@@ -9,7 +9,7 @@
 - Android：Capacitor + Android WebView + `@capacitor-community/sqlite`。
 - 两端数据库相互独立，通过逻辑 JSON 数据包手动迁移数据。
 
-当前 Android 应用版本为 `0.8.0`，Windows portable 仍为 `0.7.5`。JSON 当前导出 `schema_version: 0.8.0`，并兼容导入 `0.6.0` 与 `0.8.0`。
+JSON 数据包 schema_version 为 0.10.0，包含时间块及属性；仍接受 0.6.0 旧包并跳过旧实际日程。
 
 ## 你需要的知识
 
@@ -116,7 +116,7 @@ Electron 下载不稳定时可指定镜像：
 5. 先在带时间戳的临时目录构建，成功后复制到稳定路径：
 
    ```text
-   release/desktop/riji-desktop-0.7.5.exe
+   release/desktop/riji-desktop-0.10.1.exe
    ```
 
 ### 2.3 运行与验证
@@ -124,7 +124,7 @@ Electron 下载不稳定时可指定镜像：
 直接双击：
 
 ```text
-release/desktop/riji-desktop-0.7.5.exe
+release/desktop/riji-desktop-0.10.1.exe
 ```
 
 至少检查：
@@ -165,7 +165,7 @@ sidecar 日志位于 Electron 的应用日志目录。启动失败时，错误�
 
 当前产物是未正式代码签名的体验版，出现未知发布者提示属于已知限制。正式发布前应购买或配置 Windows 代码签名证书。
 
-## 三、打包 Android v0.8
+## 三、打包 Android 体验版
 
 ### 3.1 安装 Android 构建环境
 
@@ -238,44 +238,20 @@ cd D:\cs\task
 
 1. 检查 Android SDK 路径。
 2. 检查 JDK，并拒绝低于 21 的版本。
-3. 执行 `npm ci`，严格使用 lockfile 安装依赖。
-4. 依次执行客户端契约、Android 本地数据层、ZJU 纯函数和平台边界测试。
-5. 执行 `npm run android:sync`：
+3. 执行 `npm install`。
+4. 执行 `npm run android:sync`：
    - Vite 构建 React 前端。
-   - Capacitor 把 `frontend/dist` 同步到 Android 工程并更新插件配置。
-6. 以单工作线程执行 Gradle `testDebugUnitTest`，再根据 `-Configuration` 执行 `assembleDebug` 或 `assembleRelease`。
-7. 复制 APK 到稳定路径；Debug 默认为：
+   - Capacitor 把 `frontend/dist` 同步到 Android 工程。
+   - 更新 SQLite、Filesystem 和 Share 插件配置。
+5. 以单工作线程执行 Gradle `assembleDebug`，减少开发机资源竞争。
+6. 生成并复制 APK：
+
    ```text
-   release/android/riji-android-0.8.0-debug.apk
+   frontend/android/app/build/outputs/apk/debug/app-debug.apk
+   release/android/riji-android-0.10.1-debug.apk
    ```
 
-### 3.4 配置签名 Release APK
-
-Release 构建必须使用用户自己的签名密钥。复制模板并只在本机填写：
-
-```powershell
-Copy-Item ".\frontend\android\keystore.properties.example" ".\frontend\android\keystore.properties"
-```
-
-`keystore.properties` 需要配置 `storeFile`、`storePassword`、`keyAlias` 和 `keyPassword`。真实属性文件和 `.jks` 私钥均被 Git 忽略，不得提交、写入日志或加入 JSON 备份。
-
-```powershell
-.\scripts\build-android.ps1 `
-  -Configuration Release `
-  -AndroidSdk ".\.android-sdk" `
-  -JavaHome ".\.jdk-21\jdk-21.0.12+8" `
-  -GradlePath ".\.downloads\gradle-dist\gradle-8.14.3\bin\gradle.bat"
-```
-
-输出路径：
-
-```text
-release/android/riji-android-0.8.0-release.apk
-```
-
-发布前用 Android SDK 的 `apksigner verify --verbose --print-certs` 验证签名，并记录 SHA-256。若没有本机签名配置，脚本会明确失败，不生成伪 release 包。
-
-### 3.5 安装到实体手机
+### 3.4 安装到实体手机
 
 开启开发者选项和 USB 调试，连接手机后执行：
 
@@ -283,7 +259,7 @@ release/android/riji-android-0.8.0-release.apk
 $adb = ".\.android-sdk\platform-tools\adb.exe"
 
 & $adb devices
-& $adb install -r ".\release\android\riji-android-0.8.0-debug.apk"
+& $adb install -r ".\release\android\riji-android-0.10.1-debug.apk"
 ```
 
 `adb devices` 应显示：
@@ -296,7 +272,7 @@ $adb = ".\.android-sdk\platform-tools\adb.exe"
 
 也可以把 APK 复制到手机，在文件管理器中打开，并允许该文件管理器“安装未知应用”。
 
-### 3.6 Android 验证清单
+### 3.5 Android 验证清单
 
 至少跑通：
 
@@ -316,7 +292,7 @@ $adb = ".\.android-sdk\platform-tools\adb.exe"
 & $adb logcat | Select-String "com.riji.app|Capacitor|SQLite|AndroidRuntime"
 ```
 
-### 3.7 Android 构建常见问题
+### 3.6 Android 构建常见问题
 
 **提示 JDK 版本不足**
 
@@ -343,7 +319,7 @@ $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
 
 ```powershell
 & $adb uninstall com.riji.app
-& $adb install ".\release\android\riji-android-0.8.0-debug.apk"
+& $adb install ".\release\android\riji-android-0.10.1-debug.apk"
 ```
 
 **Gradle 内存、文件移动或缓存问题**
@@ -371,7 +347,7 @@ Android 本地 SQLite
 | 场景 | 当前状态 |
 | --- | --- |
 | Windows 电脑 A → Windows 电脑 B | 支持，通过 JSON 文件手动迁移 |
-| 浏览器/FastAPI 版 → Windows Electron 版 | 支持；当前导出 0.8.0，并兼容 0.6.0 / 0.8.0 数据包 |
+| 浏览器/FastAPI 版 → Windows Electron 版 | 支持，只要数据包为 `schema_version: 0.6.0` |
 | Windows 桌面端 → Android | 支持，已完成往返验证 |
 | Android → Windows 桌面端 | 支持，已完成往返验证 |
 | Android 手机 A → Android 手机 B | 数据协议支持；通过文件分享/保存后导入，建议在实体手机上再做一次兼容性验证 |
@@ -402,7 +378,8 @@ Android 本地 SQLite
 
 - 项目。
 - 待办。
-- 日程。
+- 计划日程。
+- 实际时间块及属性分类。
 - 每日总结。
 - 日志模板。
 - 计时会话。
@@ -411,10 +388,9 @@ Android 本地 SQLite
 核心实体使用 UUID。关系字段在数据包内也使用 UUID，在目标设备写入 SQLite 时重新映射为该设备自己的整数 ID。
 
 合并规则：
-- 重复实例例外。
 
 - 相同 UUID：导入包内容优先。
-- 本地存在、但数据包里没有的实体：保留。
+- 本地存在、但数据包里没有的实体：保留；同日期重叠的时间块由导入包覆盖。
 - 每日总结还会按日期识别旧数据冲突。
 - 导入前显示各实体的新增和更新数量。
 - Android 导入在一个外层事务中执行，失败时回滚。
@@ -422,7 +398,6 @@ Android 本地 SQLite
 默认不导出：
 
 - AI API Key。
-- 完整恢复会先生成并读回校验本机安全备份，再事务化替换；任一步失败均回滚。
 - ZJU 密码。
 - Pintia Cookie。
 - Session。
@@ -432,9 +407,6 @@ Android 本地 SQLite
 ### 实际迁移步骤
 
 源设备：
-- ZJU 缓存与导入映射。
-- 重复实例 claim。
-- 其他只服务于运行时或去重的内部表。
 
 1. 设置 → 数据导入导出。
 2. 点击“导出 JSON”。
@@ -452,19 +424,19 @@ Android 本地 SQLite
 
 导入前仍建议先导出目标设备自己的备份。当前是体验版，不应把唯一一份重要数据只保存在一个设备中。
 
-## 五、发布前限制与门槛
+## 五、体验版限制
 
-完整状态、证据和实体设备矩阵见 [`docs/v0.8-android-acceptance.md`](./v0.8-android-acceptance.md)。截至 2026-08-31：
+测试版暂不可完整体验的功能、Android v0.6 边界和已知限制已经集中记录在：
 
-- 代码、前后端测试、Android 原生单测、lint 和 Debug APK 构建已通过。
-- 尚无连接的实体设备，因此文件选择、进程回收、升级安装、低版本/当前版本双机矩阵尚未完成。
-- 仓库不包含用户 release 私钥；未配置签名时无法产出签名 Release APK。
-- Celechron 校历源 HTTPS 当前不可用；Android 不降级到 HTTP，实时刷新明确报错，已有缓存可读。
+- [`docs/v0.6-packaging.md`](./v0.6-packaging.md) 的“Android v0.6 已知限制”和验收记录。
+
+这里不重复展开。与打包直接相关的限制是：
+
+- Android APK 使用 debug 签名，不是应用商店发布包。
 - Windows portable 尚未正式代码签名。
-- 没有自动更新、账号、云同步或后台同步机制。
-- Android 与桌面数据相互独立，只能通过 JSON 手动迁移或恢复。
-
-以上门槛未全部通过前，Debug APK 仅供验证，不应标记为正式发布完成。
+- 没有自动更新机制。
+- 尚未覆盖完整实体手机型号矩阵。
+- Android 与桌面数据相互独立，只能通过 JSON 手动迁移。
 
 ## 六、每次打包后的交付检查
 
@@ -472,8 +444,8 @@ Android 本地 SQLite
 git branch --show-current
 git status --short
 
-Get-FileHash ".\release\android\riji-android-0.8.0-debug.apk" -Algorithm SHA256
-Get-FileHash ".\release\desktop\riji-desktop-0.7.5.exe" -Algorithm SHA256
+Get-FileHash ".\release\android\riji-android-0.10.1-debug.apk" -Algorithm SHA256
+Get-FileHash ".\release\desktop\riji-desktop-0.10.1.exe" -Algorithm SHA256
 ```
 
 记录：

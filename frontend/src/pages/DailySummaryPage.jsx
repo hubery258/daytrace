@@ -1,46 +1,23 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { logApi, templateApi, todoApi, scheduleApi, projectApi } from '../api/client';
-import { addDays, dateStrInBeijing, todayStr, formatTime } from '../utils/time';
-import { callChatCompletion, loadAiConfig } from '../ai/aiClient';
-import { parseAiDraftResponse, parseAiQuestionsResponse } from '../ai/aiDraftParser';
-import {
-  AI_DRAFT_SYSTEM_PROMPT,
-  AI_REFLECTION_QUESTION_SYSTEM_PROMPT,
-  AI_REFLECTION_SUMMARY_SYSTEM_PROMPT,
-  buildDailyDraftUserMessage,
-  buildReflectionQuestionUserMessage,
-  buildReflectionSummaryUserMessage,
-} from '../ai/aiPrompts';
+import { logApi, projectApi, scheduleApi, templateApi, todoApi } from '../api/client';
+import { addDays, dateStrInBeijing, todayStr } from '../utils/time';
+import { callChatCompletion } from '../ai/aiClient';
+import { parseAiDraftResponse } from '../ai/aiDraftParser';
+import { AI_DRAFT_SYSTEM_PROMPT, buildDailyDraftUserMessage } from '../ai/aiPrompts';
 import AiDraftReviewModal from '../components/AiDraftReviewModal';
 import AiResponseDiagnostics from '../components/AiResponseDiagnostics';
 
-const TODAY = todayStr();
-const STORAGE_KEY_PROMPT = 'simpletasker_ai_prompt';
-
-const DEFAULT_PROMPT = `你是一位个人效率助手。请根据用户提供的今日待办、日程和日志，生成温和、具体、可执行的效率分析和明日建议，控制在 300-500 字左右。`;
+const STORAGE_KEY_API_KEY = 'simpletasker_api_key';
 
 export default function DailySummaryPage() {
-  const [log, setLog] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(todayStr());
   const [logText, setLogText] = useState('');
   const [completedTodos, setCompletedTodos] = useState([]);
-  const [templates, setTemplates] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(TODAY);
-  const [loading, setLoading] = useState(false);
   const [allTodos, setAllTodos] = useState([]);
   const [projects, setProjects] = useState([]);
-
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiMessage, setAiMessage] = useState('');
-  const [aiError, setAiError] = useState('');
-  const [hasApiKey, setHasApiKey] = useState(null);
-
-  const [reflectionLoading, setReflectionLoading] = useState(false);
-  const [reflectionQuestions, setReflectionQuestions] = useState([]);
-  const [reflectionAnswer, setReflectionAnswer] = useState('');
-  const [reflectionSummary, setReflectionSummary] = useState('');
-  const [reflectionError, setReflectionError] = useState('');
-
+  const [templates, setTemplates] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [draftLoading, setDraftLoading] = useState(false);
   const [draftError, setDraftError] = useState('');
   const [draftWarnings, setDraftWarnings] = useState([]);
@@ -48,15 +25,13 @@ export default function DailySummaryPage() {
   const [showDraftReview, setShowDraftReview] = useState(false);
   const [draftDiagnostics, setDraftDiagnostics] = useState(null);
 
-  const loadLog = useCallback(async (date) => {
+  const loadLog = useCallback(async date => {
     setLoading(true);
     try {
       const data = await logApi.get(date);
-      setLog(data);
       setLogText(data.log_text || '');
       setCompletedTodos(data.completed_todo_ids || []);
     } catch {
-      setLog(null);
       setLogText('');
       setCompletedTodos([]);
     } finally {
@@ -74,202 +49,17 @@ export default function DailySummaryPage() {
     return { todos, projectData };
   }, []);
 
-  const loadTemplates = useCallback(async () => {
-    try {
-      const data = await templateApi.list();
-      setTemplates(data);
-    } catch (err) {
-      console.error('加载模板失败', err);
-    }
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    loadAiConfig()
-      .then(config => {
-        if (active) setHasApiKey(Boolean(config.apiKey));
-      })
-      .catch(error => {
-        if (active) {
-          setHasApiKey(false);
-          setAiError(error.message || '无法读取设备上的 AI Key。');
-        }
-      });
-    return () => { active = false; };
-  }, []);
-
   useEffect(() => {
     loadLog(selectedDate);
-    loadTemplates();
     loadContext();
-    setAiMessage('');
-    setAiError('');
-    setReflectionQuestions([]);
-    setReflectionAnswer('');
-    setReflectionSummary('');
-    setReflectionError('');
+    templateApi.list().then(setTemplates).catch(() => setTemplates([]));
     setDraftError('');
     setDraftWarnings([]);
     setDraftItems([]);
     setShowDraftReview(false);
     setDraftDiagnostics(null);
-  }, [selectedDate, loadLog, loadTemplates, loadContext]);
+  }, [selectedDate, loadLog, loadContext]);
 
-  const requireApiKey = async (setter) => {
-    try {
-      const configured = Boolean((await loadAiConfig()).apiKey);
-      setHasApiKey(configured);
-      if (!configured) {
-        setter('请先在设置页配置 API Key。');
-        return false;
-      }
-      return true;
-    } catch (error) {
-      setter(error.message || '无法读取设备上的 AI Key。');
-      return false;
-    }
-  };
-
-  const getDailyContext = async () => {
-    const tomorrow = addDays(selectedDate, 1);
-    const nextDay = addDays(tomorrow, 1);
-    const [{ todos, projectData }, todaySchedules, tomorrowSchedules] = await Promise.all([
-      loadContext(),
-      scheduleApi.list({ date_from: `${selectedDate}T00:00:00`, date_to: `${tomorrow}T00:00:00` }).catch(() => []),
-      scheduleApi.list({ date_from: `${tomorrow}T00:00:00`, date_to: `${nextDay}T00:00:00` }).catch(() => []),
-    ]);
-    const completedIds = new Set(completedTodos.map(Number));
-    todos.forEach(todo => {
-      if (todo.is_completed && todo.completed_at && dateStrInBeijing(todo.completed_at) === selectedDate) {
-        completedIds.add(Number(todo.id));
-      }
-    });
-    const completedTodoObjects = Array.from(completedIds).map(id => todos.find(todo => Number(todo.id) === id)).filter(Boolean);
-    const pendingTodos = todos.filter(todo => !todo.is_completed);
-    return { todos, projectData, todaySchedules, tomorrowSchedules, completedTodoObjects, pendingTodos };
-  };
-
-  const handleSave = async () => {
-    try {
-      await logApi.upsert({ log_date: selectedDate, completed_todo_ids: visibleCompletedIds, log_text: logText });
-      alert('已保存');
-    } catch (err) {
-      alert('保存失败：' + err.message);
-    }
-  };
-
-  const applyTemplate = (content) => setLogText(prev => prev + (prev ? '\n' : '') + content);
-
-  const handleAiAnalyze = async () => {
-    if (!(await requireApiKey(setAiError))) return;
-    setAiLoading(true);
-    setAiError('');
-    setAiMessage('');
-
-    try {
-      const { todaySchedules, completedTodoObjects, pendingTodos } = await getDailyContext();
-      const scheduleInfo = todaySchedules.map(s => `- ${s.name}，${formatTime(s.start_time)}-${formatTime(s.end_time)}，${s.is_planned ? '计划' : '实际'}`).join('\n') || '无';
-      const userMessage = `日期：${selectedDate}\n\n完成待办：\n${completedTodoObjects.map(t => `- ${t.name}`).join('\n') || '无'}\n\n未完成待办：\n${pendingTodos.map(t => `- ${t.name}，DDL=${t.ddl_date || '无'}，状态=${t.status}`).join('\n') || '无'}\n\n日程：\n${scheduleInfo}\n\n用户日志：\n${log?.log_text || logText || '空'}\n\n请分析今日效率并给出建议。`;
-      const message = await callChatCompletion({
-        systemPrompt: localStorage.getItem(STORAGE_KEY_PROMPT) || DEFAULT_PROMPT,
-        userMessage,
-        maxTokens: 900,
-        temperature: 0.7,
-      });
-      setAiMessage(message || 'AI 没有返回内容。');
-    } catch (err) {
-      setAiError(err.message);
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  const handleStartReflection = async () => {
-    if (!(await requireApiKey(setReflectionError))) return;
-    setReflectionLoading(true);
-    setReflectionError('');
-    setReflectionQuestions([]);
-    setReflectionAnswer('');
-    setReflectionSummary('');
-
-    try {
-      const { projectData, todaySchedules, completedTodoObjects, pendingTodos } = await getDailyContext();
-      const raw = await callChatCompletion({
-        systemPrompt: AI_REFLECTION_QUESTION_SYSTEM_PROMPT,
-        userMessage: buildReflectionQuestionUserMessage({ selectedDate, logText, completedTodos: completedTodoObjects, pendingTodos, todaySchedules, projects: projectData }),
-        maxTokens: 700,
-        temperature: 0.35,
-      });
-      const result = parseAiQuestionsResponse(raw, 'reflection_questions');
-      setReflectionQuestions(result.questions);
-      setReflectionError(result.errors.join('\n'));
-    } catch (err) {
-      setReflectionError(err.message || 'AI 复盘提问失败。');
-    } finally {
-      setReflectionLoading(false);
-    }
-  };
-
-  const handleFinishReflection = async () => {
-    if (!(await requireApiKey(setReflectionError))) return;
-    setReflectionLoading(true);
-    setReflectionError('');
-    setReflectionSummary('');
-
-    try {
-      const { projectData, todaySchedules, completedTodoObjects, pendingTodos } = await getDailyContext();
-      const summary = await callChatCompletion({
-        systemPrompt: AI_REFLECTION_SUMMARY_SYSTEM_PROMPT,
-        userMessage: buildReflectionSummaryUserMessage({ selectedDate, logText, questions: reflectionQuestions, answer: reflectionAnswer, completedTodos: completedTodoObjects, pendingTodos, todaySchedules, projects: projectData }),
-        maxTokens: 1000,
-        temperature: 0.55,
-      });
-      setReflectionSummary(summary || 'AI 没有返回内容。');
-    } catch (err) {
-      setReflectionError(err.message || 'AI 复盘总结失败。');
-    } finally {
-      setReflectionLoading(false);
-    }
-  };
-
-  const handleAiGenerateDrafts = async () => {
-    setDraftDiagnostics(null);
-    if (!(await requireApiKey(setDraftError))) return;
-    setDraftLoading(true);
-    setDraftError('');
-    setDraftWarnings([]);
-    setDraftItems([]);
-
-    try {
-      const { todos, projectData, todaySchedules, tomorrowSchedules, completedTodoObjects, pendingTodos } = await getDailyContext();
-      const { text: raw, responseMeta } = await callChatCompletion({
-        systemPrompt: AI_DRAFT_SYSTEM_PROMPT,
-        userMessage: buildDailyDraftUserMessage({ selectedDate, logText: [logText, reflectionSummary].filter(Boolean).join('\n\n复盘结果：\n'), completedTodos: completedTodoObjects, pendingTodos, todaySchedules, tomorrowSchedules, projects: projectData }),
-        maxTokens: 1600,
-        temperature: 0.3,
-        includeResponseMetadata: true,
-      });
-      const result = parseAiDraftResponse(raw, { projects: projectData, todos, schedules: tomorrowSchedules });
-      setDraftDiagnostics({ ...result, responseMeta });
-      setDraftWarnings(result.warnings);
-      setDraftItems(result.drafts);
-      setShowDraftReview(result.drafts.length > 0);
-      setDraftError(result.errors.join('\n'));
-    } catch (err) {
-      setDraftError(err.message || '草稿生成失败。');
-    } finally {
-      setDraftLoading(false);
-    }
-  };
-
-  const handleDraftCreated = async () => {
-    setShowDraftReview(false);
-    setDraftItems([]);
-    setDraftDiagnostics(null);
-    await loadContext();
-  };
-
-  const isToday = selectedDate === TODAY;
   const visibleCompletedIds = Array.from(new Set([
     ...completedTodos.map(Number),
     ...allTodos
@@ -277,66 +67,129 @@ export default function DailySummaryPage() {
       .map(todo => Number(todo.id)),
   ]));
 
+  const saveLog = async () => {
+    try {
+      await logApi.upsert({
+        log_date: selectedDate,
+        completed_todo_ids: visibleCompletedIds,
+        log_text: logText,
+      });
+      alert('日志已保存');
+    } catch (cause) {
+      alert('保存失败：' + cause.message);
+    }
+  };
+
+  const generateSuggestions = async () => {
+    setDraftDiagnostics(null);
+    if (!localStorage.getItem(STORAGE_KEY_API_KEY)) {
+      setDraftError('请先在设置页配置 API Key。');
+      return;
+    }
+    setDraftLoading(true);
+    setDraftError('');
+    setDraftWarnings([]);
+    setDraftItems([]);
+    try {
+      const tomorrow = addDays(selectedDate, 1);
+      const nextDay = addDays(tomorrow, 1);
+      const [{ todos, projectData }, todaySchedules, tomorrowSchedules] = await Promise.all([
+        loadContext(),
+        scheduleApi.list({ date_from: selectedDate + 'T00:00:00', date_to: tomorrow + 'T00:00:00' }).catch(() => []),
+        scheduleApi.list({ date_from: tomorrow + 'T00:00:00', date_to: nextDay + 'T00:00:00' }).catch(() => []),
+      ]);
+      const plannedToday = todaySchedules.filter(item => item.is_planned);
+      const plannedTomorrow = tomorrowSchedules.filter(item => item.is_planned);
+      const completedIds = new Set(visibleCompletedIds);
+      const completedTodoObjects = Array.from(completedIds)
+        .map(id => todos.find(todo => Number(todo.id) === id)).filter(Boolean);
+      const pendingTodos = todos.filter(todo => !todo.is_completed);
+      const { text: raw, responseMeta } = await callChatCompletion({
+        systemPrompt: AI_DRAFT_SYSTEM_PROMPT,
+        userMessage: buildDailyDraftUserMessage({
+          selectedDate, logText, completedTodos: completedTodoObjects, pendingTodos,
+          todaySchedules: plannedToday, tomorrowSchedules: plannedTomorrow, projects: projectData,
+        }),
+        maxTokens: 1600,
+        temperature: 0.3,
+        includeResponseMetadata: true,
+      });
+      const result = parseAiDraftResponse(raw, { projects: projectData, todos, schedules: plannedTomorrow });
+      setDraftDiagnostics({ ...result, responseMeta });
+      setDraftWarnings(result.warnings);
+      setDraftItems(result.drafts);
+      setShowDraftReview(result.drafts.length > 0);
+      setDraftError(result.errors.join('\n'));
+    } catch (cause) {
+      setDraftError(cause.message || '建议生成失败。');
+    } finally {
+      setDraftLoading(false);
+    }
+  };
+
+  const isToday = selectedDate === todayStr();
+  const hasApiKey = !!localStorage.getItem(STORAGE_KEY_API_KEY);
+
   return (
     <div className="summary-layout">
       <header className="page-hero page-hero-compact">
         <div>
-          <div className="eyebrow">回望不是停下，是为了更清楚地继续</div>
-          <h1>{isToday ? '今日总结' : '往日记录'}</h1>
-          <p>把完成、感受与真实投入放在一起，安静地收好这一天。</p>
+          <div className="eyebrow">把一天留给自己</div>
+          <h1>每日日志</h1>
+          <p>手写记录和完成事项留在这里；实际投入请到统计页查看。</p>
         </div>
       </header>
       <div className="summary-date-bar">
-        <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} max={TODAY} />
-        <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{isToday ? '今日总结' : '往日记录'}</span>
+        <input type="date" value={selectedDate} onChange={event => setSelectedDate(event.target.value)} max={todayStr()} />
+        <Link to="/stats" className="btn btn-sm btn-secondary">查看时间统计</Link>
       </div>
 
-      <div className="ai-chat">
-        <h3>AI 单独总结</h3>
-        {!hasApiKey && <div className="ai-chat-placeholder"><p>还没有配置 API Key。</p><Link to="/settings" style={{ color: 'var(--primary)', fontSize: '0.9rem' }}>前往设置</Link></div>}
-        {hasApiKey && !aiMessage && !aiLoading && <div style={{ textAlign: 'center', padding: '16px 0 8px' }}><button className="btn btn-primary" onClick={handleAiAnalyze}>分析今日</button></div>}
-        {aiLoading && <div className="ai-chat-placeholder"><p>AI 正在分析...</p></div>}
-        {aiError && <div className="ai-draft-error">{aiError}<div style={{ marginTop: 8 }}><button className="btn btn-sm btn-secondary" onClick={handleAiAnalyze}>重试</button></div></div>}
-        {aiMessage && <div><div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.8, fontSize: '0.92rem', background: '#f9fafb', padding: '16px', borderRadius: 8, marginBottom: 12 }}>{aiMessage}</div><button className="btn btn-sm btn-secondary" onClick={handleAiAnalyze}>重新分析</button></div>}
-      </div>
+      <section className="card">
+        <h2 style={{ marginBottom: 12 }}>当天记录</h2>
+        {templates.length > 0 && <div className="template-bar">{templates.map(item =>
+          <button key={item.id} className="template-chip" onClick={() => setLogText(previous =>
+            previous + (previous ? '\n' : '') + item.content)} title={item.name}>{item.name}</button>)}</div>}
+        <div className="log-editor">
+          <textarea value={logText} onChange={event => setLogText(event.target.value)}
+            placeholder="记录今天的想法、收获与感受…" readOnly={!isToday} />
+        </div>
+        {isToday && <div className="form-actions"><button className="btn btn-primary" onClick={saveLog}>保存日志</button></div>}
+      </section>
 
-      <div className="ai-chat">
-        <h3>AI 复盘</h3>
-        <p className="hint-line">单轮流程：AI 先提问，你回答后再生成复盘总结。结果不会自动保存。</p>
-        {hasApiKey && reflectionQuestions.length === 0 && !reflectionSummary && <div style={{ textAlign: 'center', padding: '12px 0' }}><button className="btn btn-primary" disabled={reflectionLoading} onClick={handleStartReflection}>{reflectionLoading ? '提问中...' : '开始 AI 复盘'}</button></div>}
-        {reflectionQuestions.length > 0 && (
-          <div className="ai-followup-panel">
-            <strong>问题</strong>
-            <ol>{reflectionQuestions.map((question, index) => <li key={index}>{question}</li>)}</ol>
-            <div className="form-group"><label>你的回答</label><textarea value={reflectionAnswer} onChange={e => setReflectionAnswer(e.target.value)} placeholder="回答一次，然后生成复盘总结。" /></div>
-            <button className="btn btn-primary" disabled={reflectionLoading || !reflectionAnswer.trim()} onClick={handleFinishReflection}>{reflectionLoading ? '总结中...' : '生成复盘总结'}</button>
-          </div>
-        )}
-        {reflectionError && <div className="ai-draft-error" style={{ whiteSpace: 'pre-wrap' }}>{reflectionError}</div>}
-        {reflectionSummary && <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.8, background: '#f9fafb', padding: 16, borderRadius: 8, marginTop: 12 }}>{reflectionSummary}</div>}
-        {hasApiKey && <div style={{ textAlign: 'center', paddingTop: 16 }}><button className="btn btn-secondary" disabled={draftLoading} onClick={handleAiGenerateDrafts}>{draftLoading ? '生成草稿中...' : '生成明日草稿'}</button></div>}
-        {draftError && !draftDiagnostics && <div className="ai-draft-error" style={{ whiteSpace: 'pre-wrap' }}>{draftError}</div>}
+      <section className="completed-list">
+        <h2>当天完成的待办</h2>
+        {loading ? <p className="hint-line">加载中…</p> :
+          visibleCompletedIds.length === 0 ? <p className="hint-line">暂无完成的待办。</p> :
+            visibleCompletedIds.map(id => {
+              const todo = allTodos.find(item => Number(item.id) === id);
+              return <div key={id} className="daily-completed-item">{todo?.name || '待办 #' + id}</div>;
+            })}
+      </section>
+
+      <section className="ai-chat">
+        <h2>AI 待办与日程建议</h2>
+        <p className="hint-line">结合当天日志和计划，提出下一天的待办或日程草稿；确认后才写入。</p>
+        {!hasApiKey && <p className="hint-line">尚未配置 API Key。<Link to="/settings">前往设置</Link></p>}
+        {hasApiKey && <button className="btn btn-primary" disabled={draftLoading} onClick={generateSuggestions}>
+          {draftLoading ? '正在生成建议…' : '生成下一天的建议'}
+        </button>}
+        {draftError && !draftDiagnostics && <div className="ai-draft-error" role="alert">{draftError}</div>}
         <AiResponseDiagnostics diagnostics={draftDiagnostics} />
-        {draftWarnings.length > 0 && <div className="ai-draft-warning">{draftWarnings.map((warning, index) => <div key={index}>{warning}</div>)}</div>}
-        {draftItems.length > 0 && !showDraftReview && <div style={{ textAlign: 'center', paddingTop: 12 }}><button className="btn btn-sm btn-primary" onClick={() => setShowDraftReview(true)}>打开 {draftItems.length} 条草稿</button></div>}
-      </div>
+        {draftWarnings.length > 0 && <div className="ai-draft-warning">{draftWarnings.map((warning, index) =>
+          <div key={index}>{warning}</div>)}</div>}
+        {draftItems.length > 0 && !showDraftReview && <button className="btn btn-sm btn-secondary"
+          onClick={() => setShowDraftReview(true)}>查看 {draftItems.length} 条建议</button>}
+      </section>
 
-      {showDraftReview && <AiDraftReviewModal drafts={draftItems} warnings={draftWarnings} diagnostics={draftDiagnostics} projects={projects} todos={allTodos} onClose={() => setShowDraftReview(false)} onCreated={handleDraftCreated} />}
-
-      <div className="completed-list">
-        <h3>今日完成待办</h3>
-        {loading ? <div className="hint-line">加载中...</div> : visibleCompletedIds.length === 0 ? <div className="hint-line">暂无完成的待办。</div> : visibleCompletedIds.map((id, index) => {
-          const todo = allTodos.find(t => Number(t.id) === Number(id));
-          return <div key={index} style={{ padding: '4px 0', fontSize: '0.9rem' }}>{todo ? todo.name : `待办 #${id}`}</div>;
-        })}
-      </div>
-
-      <div className="card">
-        <h3 style={{ marginBottom: 12 }}>今日日志</h3>
-        {templates.length > 0 && <div className="template-bar">{templates.map(t => <button key={t.id} className="template-chip" onClick={() => applyTemplate(t.content)} title={t.name}>{t.name}</button>)}</div>}
-        <div className="log-editor"><textarea value={logText} onChange={e => setLogText(e.target.value)} placeholder="记录今天的想法、收获和反思..." readOnly={!isToday} /></div>
-        {isToday && <div style={{ marginTop: 12, display: 'flex', gap: 8 }}><button className="btn btn-primary" onClick={handleSave}>保存日志</button></div>}
-      </div>
+      {showDraftReview && <AiDraftReviewModal drafts={draftItems} warnings={draftWarnings}
+        diagnostics={draftDiagnostics} projects={projects} todos={allTodos}
+        onClose={() => setShowDraftReview(false)}
+        onCreated={async () => {
+          setShowDraftReview(false);
+          setDraftItems([]);
+          setDraftDiagnostics(null);
+          await loadContext();
+        }} />}
     </div>
   );
 }

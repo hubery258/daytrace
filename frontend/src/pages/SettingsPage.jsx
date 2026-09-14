@@ -1,19 +1,18 @@
 import { useEffect, useState } from 'react';
 import DataPortabilityPanel from '../components/DataPortabilityPanel';
+import { timeBlockApi } from '../api/client';
 import {
   DEFAULT_DISPLAY_PREFERENCES,
   readDisplayPreferences,
   writeDisplayPreferences,
 } from '../utils/displayPreferences';
-import {
-  AI_STORAGE_KEYS,
-  DEFAULT_AI_API_BASE,
-  DEFAULT_AI_MODEL,
-  loadAiConfig,
-  saveAiConfig,
-} from '../ai/aiClient';
 
-const STORAGE_KEY_PROMPT = AI_STORAGE_KEYS.prompt;
+const STORAGE_KEY_API_KEY = 'simpletasker_api_key';
+const STORAGE_KEY_API_BASE = 'simpletasker_api_base';
+const STORAGE_KEY_MODEL = 'simpletasker_ai_model';
+
+const DEFAULT_API_BASE = 'https://api.deepseek.com';
+const DEFAULT_MODEL = 'deepseek-chat';
 
 const PAGE_SWITCHES = [
   ['home', '首页', '每天打开时的总览入口'],
@@ -21,7 +20,8 @@ const PAGE_SWITCHES = [
   ['timer', '计时', '记录真实投入的时间'],
   ['projects', '项目', '承载需要持续推进的事项'],
   ['todos', '待办', '集中查看与整理任务'],
-  ['summary', '今日总结', '完成记录、日志与复盘'],
+  ['stats', '统计', '按实际时间块查看时间和任务投入'],
+  ['summary', '日志', '记录每日文字和已完成待办'],
   ['zju', 'ZJU', '浙大数据的只读导入与概览'],
 ];
 
@@ -32,21 +32,6 @@ const HOME_MODULE_SWITCHES = [
   ['projects', '项目进展', '显示最多三个进行中的项目'],
   ['nearDeadlines', '临近 DDL', '显示即将到期的硬性与弹性事项'],
 ];
-
-const DEFAULT_PROMPT = `你是一位专业的个人效率助手，你的任务是帮助用户分析每日的时间管理情况并提供改进建议。
-
-## 你的职责
-1. 阅读用户提供的今日待办完成情况和日程执行情况
-2. 分析用户的效率表现，指出亮点和不足
-3. 针对不足之处给出具体的改进建议
-4. 根据用户明天的日程和待办，给出合理的明日安排建议
-
-## 注意事项
-- 保持语气温和、鼓励，像一位关心朋友成长的导师
-- 分析要具体，引用实际数据（如完成了几个待办、日程执行率等）
-- 建议要可操作，不要太空泛
-- 如果用户某天表现不佳，不要批评，而是帮助用户找到原因
-- 回复长度控制在 300-500 字`;
 
 function SettingToggle({ checked, title, description, onChange }) {
   return (
@@ -62,51 +47,69 @@ export default function SettingsPage() {
   const [apiKey, setApiKey] = useState('');
   const [apiBase, setApiBase] = useState('');
   const [model, setModel] = useState('');
-  const [prompt, setPrompt] = useState('');
   const [saved, setSaved] = useState(false);
-  const [aiSaving, setAiSaving] = useState(false);
-  const [aiStorageError, setAiStorageError] = useState('');
   const [displayPreferences, setDisplayPreferences] = useState(readDisplayPreferences);
   const [displaySaved, setDisplaySaved] = useState(false);
+  const [blockCategories, setBlockCategories] = useState([]);
+  const [categoryEdits, setCategoryEdits] = useState({});
+  const [newCategory, setNewCategory] = useState({ name: '', color: '#347f88' });
+  const [categoryError, setCategoryError] = useState('');
 
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const config = await loadAiConfig();
-        if (cancelled) return;
-        setApiKey(config.apiKey);
-        setApiBase(config.apiBase || DEFAULT_AI_API_BASE);
-        setModel(config.model || DEFAULT_AI_MODEL);
-        setPrompt(localStorage.getItem(STORAGE_KEY_PROMPT) || DEFAULT_PROMPT);
-      } catch (error) {
-        if (!cancelled) setAiStorageError(error.message || '无法读取设备上的 AI Key');
-      }
-    };
-    void load();
-    return () => { cancelled = true; };
+    setApiKey(localStorage.getItem(STORAGE_KEY_API_KEY) || '');
+    setApiBase(localStorage.getItem(STORAGE_KEY_API_BASE) || DEFAULT_API_BASE);
+    setModel(localStorage.getItem(STORAGE_KEY_MODEL) || DEFAULT_MODEL);
   }, []);
 
-  const normalizedApiBase = () => (apiBase.trim() || DEFAULT_AI_API_BASE).replace(/\/+$/, '');
-  const normalizedModel = () => model.trim() || DEFAULT_AI_MODEL;
+  const loadCategories = async () => {
+    const items = await timeBlockApi.categories();
+    setBlockCategories(items);
+    setCategoryEdits(Object.fromEntries(items.map(item => [item.id, { name: item.name, color: item.color }])));
+  };
 
-  const handleSave = async () => {
-    setAiSaving(true);
-    setAiStorageError('');
+  useEffect(() => { loadCategories().catch(error => setCategoryError(error.message)); }, []);
+
+  const saveCategory = async (id) => {
     try {
-      await saveAiConfig({
-        apiKey,
-        apiBase: normalizedApiBase(),
-        model: normalizedModel(),
-        prompt,
-      });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    } catch (error) {
-      setAiStorageError(error.message || '保存 AI 设置失败');
-    } finally {
-      setAiSaving(false);
-    }
+      await timeBlockApi.updateCategory(id, categoryEdits[id]);
+      setCategoryError('');
+      await loadCategories();
+    } catch (error) { setCategoryError(error.message); }
+  };
+
+  const addCategory = async (event) => {
+    event.preventDefault();
+    try {
+      await timeBlockApi.createCategory(newCategory);
+      setNewCategory({ name: '', color: '#347f88' });
+      setCategoryError('');
+      await loadCategories();
+    } catch (error) { setCategoryError(error.message); }
+  };
+
+  const removeCategory = async (id) => {
+    try {
+      await timeBlockApi.deleteCategory(id);
+      setCategoryError('');
+      await loadCategories();
+    } catch (error) { setCategoryError(error.message); }
+  };
+
+  const updateActualPreference = (key, value) => {
+    setDisplayPreferences(writeDisplayPreferences({ ...displayPreferences, [key]: value }));
+    setDisplaySaved(true);
+    setTimeout(() => setDisplaySaved(false), 1600);
+  };
+
+  const normalizedApiBase = () => (apiBase.trim() || DEFAULT_API_BASE).replace(/\/+$/, '');
+  const normalizedModel = () => model.trim() || DEFAULT_MODEL;
+
+  const handleSave = () => {
+    localStorage.setItem(STORAGE_KEY_API_KEY, apiKey.trim());
+    localStorage.setItem(STORAGE_KEY_API_BASE, normalizedApiBase());
+    localStorage.setItem(STORAGE_KEY_MODEL, normalizedModel());
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
   };
 
   const updateDisplayPreference = (group, key, checked) => {
@@ -130,6 +133,8 @@ export default function SettingsPage() {
   const resetDisplayPreferences = () => {
     const defaults = {
       timeFormat: DEFAULT_DISPLAY_PREFERENCES.timeFormat,
+      actualDisplayMode: DEFAULT_DISPLAY_PREFERENCES.actualDisplayMode,
+      timeBlockGranularity: DEFAULT_DISPLAY_PREFERENCES.timeBlockGranularity,
       pages: { ...DEFAULT_DISPLAY_PREFERENCES.pages },
       homeModules: { ...DEFAULT_DISPLAY_PREFERENCES.homeModules },
     };
@@ -192,31 +197,67 @@ export default function SettingsPage() {
               </select>
             </div>
           </div>
+          <div className="settings-panel">
+            <div className="settings-panel-title"><h3>实际记录</h3><p>同一份时间块数据可按时间块或时间轴查看。</p></div>
+            <div className="form-group">
+              <label htmlFor="actual-display-mode">显示模式</label>
+              <select id="actual-display-mode" value={displayPreferences.actualDisplayMode}
+                onChange={event => updateActualPreference('actualDisplayMode', event.target.value)}>
+                <option value="blocks">时间块</option>
+                <option value="timeline">时间轴</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label htmlFor="time-block-granularity">时间块粒度</label>
+              <select id="time-block-granularity" value={displayPreferences.timeBlockGranularity}
+                onChange={event => updateActualPreference('timeBlockGranularity', Number(event.target.value))}>
+                <option value={15}>15 分钟</option>
+                <option value={30}>30 分钟</option>
+              </select>
+            </div>
+          </div>
+          <div className="settings-panel">
+            <div className="settings-panel-title"><h3>时间块属性</h3><p>属性与颜色用于实际记录和时间轴。</p></div>
+            <div className="setting-toggle-list">
+              {blockCategories.map(item => (
+                <div className="form-group" key={item.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input aria-label="属性名称" value={categoryEdits[item.id]?.name || ''}
+                    onChange={event => setCategoryEdits(prev => ({ ...prev, [item.id]: { ...prev[item.id], name: event.target.value } }))} />
+                  <input aria-label="属性颜色" type="color" value={categoryEdits[item.id]?.color || item.color}
+                    onChange={event => setCategoryEdits(prev => ({ ...prev, [item.id]: { ...prev[item.id], color: event.target.value } }))} />
+                  <button type="button" className="btn btn-sm btn-secondary" onClick={() => saveCategory(item.id)}>保存</button>
+                  <button type="button" className="btn btn-sm btn-quiet" onClick={() => removeCategory(item.id)}>删除</button>
+                </div>
+              ))}
+            </div>
+            <form className="form-group" onSubmit={addCategory} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input aria-label="新属性名称" value={newCategory.name} required maxLength={100} placeholder="添加属性"
+                onChange={event => setNewCategory(prev => ({ ...prev, name: event.target.value }))} />
+              <input aria-label="新属性颜色" type="color" value={newCategory.color}
+                onChange={event => setNewCategory(prev => ({ ...prev, color: event.target.value }))} />
+              <button className="btn btn-sm btn-primary" type="submit">添加</button>
+            </form>
+            {categoryError && <p role="alert" className="notice notice-error">{categoryError}</p>}
+          </div>
         </div>
       </section>
 
       <section className="settings-section" aria-labelledby="ai-settings-title">
-        <div className="settings-section-heading"><div><span className="settings-index">02</span><h2 id="ai-settings-title">AI 辅助</h2><p>日迹直接使用你配置的 OpenAI-compatible 接口，Key 不会提交给日迹后端。</p></div></div>
+        <div className="settings-section-heading"><div><span className="settings-index">02</span><h2 id="ai-settings-title">AI 辅助</h2><p>日迹直接使用你配置的 OpenAI-compatible 接口，Key 仅用于待办与日程建议，不会提交给日迹后端。</p></div></div>
         <div className="settings-panel settings-form-panel">
           <div className="form-group">
             <label htmlFor="ai-api-key">AI API Key</label>
             <input id="ai-api-key" type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-...（兼容 OpenAI 格式）" />
-            <div className="field-hint">Android 使用系统密钥库加密保存；Key 不进入业务数据库、日志或 JSON 备份。</div>
+            <div className="field-hint">仅保存在当前设备的浏览器存储中。</div>
           </div>
           <div className="settings-form-grid">
-            <div className="form-group"><label htmlFor="ai-api-base">API 地址</label><input id="ai-api-base" value={apiBase} onChange={e => setApiBase(e.target.value)} placeholder={DEFAULT_AI_API_BASE} /></div>
-            <div className="form-group"><label htmlFor="ai-model">模型名</label><input id="ai-model" value={model} onChange={e => setModel(e.target.value)} placeholder={DEFAULT_AI_MODEL} /></div>
-          </div>
-          <div className="form-group">
-            <label htmlFor="ai-prompt">预设提示词</label>
-            <textarea id="ai-prompt" value={prompt} onChange={e => setPrompt(e.target.value)} className="prompt-editor" />
+            <div className="form-group"><label htmlFor="ai-api-base">API 地址</label><input id="ai-api-base" value={apiBase} onChange={e => setApiBase(e.target.value)} placeholder={DEFAULT_API_BASE} /></div>
+            <div className="form-group"><label htmlFor="ai-model">模型名</label><input id="ai-model" value={model} onChange={e => setModel(e.target.value)} placeholder={DEFAULT_MODEL} /></div>
           </div>
           <div className="settings-form-actions">
-            <button className="btn btn-quiet" onClick={() => setPrompt(DEFAULT_PROMPT)}>恢复默认 Prompt</button>
-            <button className="btn btn-primary" disabled={aiSaving} onClick={handleSave}>{aiSaving ? '保存中...' : '保存 AI 设置'}</button>
+            <button className="btn btn-primary" onClick={handleSave}>保存 AI 设置</button>
             {saved && <span className="saved-indicator" role="status">已保存</span>}
           </div>
-          {aiStorageError && <div className="notice notice-error">{aiStorageError}</div>}
         </div>
       </section>
 

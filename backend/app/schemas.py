@@ -246,6 +246,74 @@ class ScheduleOut(BaseModel):
 
 
 
+# ============ Actual time blocks ============
+
+class TimeBlockCategoryCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    color: str = Field(..., pattern=r"^#[0-9a-fA-F]{6}$")
+
+
+class TimeBlockCategoryOut(TimeBlockCategoryCreate):
+    id: int
+    uuid: str
+
+    class Config:
+        from_attributes = True
+
+
+class TimeBlockItem(BaseModel):
+    start_minute: int = Field(..., ge=0, lt=1440)
+    end_minute: int = Field(..., gt=0, le=1440)
+    granularity: int
+    category_id: int
+    notes: str = ""
+    linked_todo_id: Optional[int] = None
+    manual_project_id: Optional[int] = None
+    source: str = "manual"
+    source_timer_id: Optional[int] = None
+    coverage_seconds: Optional[int] = None
+
+    @model_validator(mode="after")
+    def validate_block(self):
+        if self.granularity not in (15, 30):
+            raise ValueError("粒度必须为 15 或 30 分钟")
+        if self.end_minute - self.start_minute != self.granularity or self.start_minute % self.granularity:
+            raise ValueError("时间块必须与粒度对齐")
+        if self.source not in ("manual", "timer"):
+            raise ValueError("来源必须为 manual 或 timer")
+        if self.linked_todo_id is not None:
+            self.manual_project_id = None
+        return self
+
+
+class TimeBlockReplace(BaseModel):
+    block_date: date
+    start_minute: int = Field(..., ge=0, lt=1440)
+    end_minute: int = Field(..., gt=0, le=1440)
+    blocks: List[TimeBlockItem] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_range(self):
+        if self.end_minute <= self.start_minute or self.start_minute % 15 or self.end_minute % 15:
+            raise ValueError("时间范围必须按 15 分钟对齐")
+        ordered = sorted(self.blocks, key=lambda block: block.start_minute)
+        previous = self.start_minute
+        for block in ordered:
+            if block.start_minute < self.start_minute or block.end_minute > self.end_minute or block.start_minute < previous:
+                raise ValueError("时间块超出选择范围或互相重叠")
+            previous = block.end_minute
+        return self
+
+
+class TimeBlockOut(TimeBlockItem):
+    id: int
+    uuid: str
+    block_date: date
+    project_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+
+
 # ============ Recurrence ============
 
 class RecurrenceRuleBase(BaseModel):
@@ -349,6 +417,7 @@ class TimerOut(BaseModel):
     last_resumed_at: Optional[datetime] = None
     paused_at: Optional[datetime] = None
     paused_seconds: int = 0
+    active_intervals: List[List[str]] = Field(default_factory=list)
     ended_at: Optional[datetime] = None
     created_schedule_id: Optional[int] = None
     notes: str
@@ -358,10 +427,6 @@ class TimerOut(BaseModel):
 
     class Config:
         from_attributes = True
-
-
-class TimerAttachSchedule(BaseModel):
-    schedule_id: int
 
 
 # ============ DailyLog ============

@@ -405,7 +405,7 @@ async def get_schedule(db: AsyncSession, schedule_id: int) -> Optional[models.Sc
 
 async def get_schedules(
     db: AsyncSession,
-    is_planned: Optional[bool] = None,
+    is_planned: Optional[bool] = True,
     date_from: Optional[datetime] = None,
     date_to: Optional[datetime] = None,
     project_id: Optional[int] = None,
@@ -449,6 +449,7 @@ async def get_current_schedule(db: AsyncSession) -> Optional[models.Schedule]:
     now = beijing_now()
     result = await db.execute(
         select(models.Schedule).where(
+            models.Schedule.is_planned.is_(True),
             models.Schedule.start_time <= now,
             models.Schedule.end_time > now,
         ).order_by(models.Schedule.start_time.asc()).limit(1)
@@ -527,8 +528,13 @@ async def update_timer_details(db: AsyncSession, timer: models.TimerSession, dat
 
 
 async def pause_timer(db: AsyncSession, timer: models.TimerSession) -> models.TimerSession:
+    now = beijing_now()
+    intervals = list(timer.active_intervals or [])
+    if timer.last_resumed_at and now > timer.last_resumed_at:
+        intervals.append([timer.last_resumed_at.isoformat(), now.isoformat()])
+    timer.active_intervals = intervals
     timer.status = models.TimerStatus.paused
-    timer.paused_at = beijing_now()
+    timer.paused_at = now
     timer.updated_at = timer.paused_at
     await db.commit()
     await db.refresh(timer)
@@ -553,6 +559,8 @@ async def finish_timer(db: AsyncSession, timer: models.TimerSession) -> models.T
     if timer.status == models.TimerStatus.paused and timer.paused_at:
         timer.paused_seconds = (timer.paused_seconds or 0) + max(0, int((now - timer.paused_at).total_seconds()))
         timer.paused_at = None
+    if timer.status == models.TimerStatus.running and timer.last_resumed_at and now > timer.last_resumed_at:
+        timer.active_intervals = [*(timer.active_intervals or []), [timer.last_resumed_at.isoformat(), now.isoformat()]]
     timer.status = models.TimerStatus.completed
     timer.ended_at = now
     timer.updated_at = now
@@ -569,14 +577,6 @@ async def cancel_timer(db: AsyncSession, timer: models.TimerSession) -> models.T
     timer.ended_at = now
     timer.paused_at = None
     timer.updated_at = now
-    await db.commit()
-    await db.refresh(timer)
-    return timer
-
-
-async def attach_timer_schedule(db: AsyncSession, timer: models.TimerSession, schedule_id: int) -> models.TimerSession:
-    timer.created_schedule_id = schedule_id
-    timer.updated_at = beijing_now()
     await db.commit()
     await db.refresh(timer)
     return timer
@@ -910,6 +910,9 @@ async def _generate_recurrence_instances_unlocked(db: AsyncSession, data: schema
     rules = await get_recurrence_rules(db, entity_type=data.entity_type)
     rules = [rule for rule in rules if rule.status == models.RecurrenceRuleStatus.active]
     for rule in rules:
+        if (rule.entity_type == models.RecurrenceEntityType.schedule and
+                (rule.template_json or {}).get("is_planned", True) is False):
+            continue
         for day in _iter_dates(data.date_from, data.date_to):
             if not _rule_matches(rule, day):
                 continue
@@ -1072,7 +1075,7 @@ async def sync_recurrence_from_todo(db: AsyncSession, todo_id: int, data: schema
 
 async def sync_recurrence_from_schedule(db: AsyncSession, schedule_id: int, data: schemas.ScheduleUpdate) -> Optional[models.Schedule]:
     schedule = await get_schedule(db, schedule_id)
-    if not schedule or not schedule.recurrence_rule_id:
+    if not schedule or not schedule.is_planned or not schedule.recurrence_rule_id:
         return None
     rule = await get_recurrence_rule(db, schedule.recurrence_rule_id)
     if not rule or rule.entity_type != models.RecurrenceEntityType.schedule:

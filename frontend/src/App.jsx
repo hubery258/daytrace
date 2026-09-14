@@ -7,6 +7,7 @@ import TodoSummaryPage from './pages/TodoSummaryPage';
 import ProjectListPage from './pages/ProjectListPage';
 import ProjectDetailPage from './pages/ProjectDetailPage';
 import DailySummaryPage from './pages/DailySummaryPage';
+import StatisticsPage from './pages/StatisticsPage';
 import SettingsPage from './pages/SettingsPage';
 import ZjuPage from './pages/ZjuPage';
 import AiCreatePage from './pages/AiCreatePage';
@@ -19,7 +20,8 @@ const NAV_ITEMS = [
   { key: 'timer', to: '/timer', label: '计时' },
   { key: 'projects', to: '/projects', label: '项目' },
   { key: 'todos', to: '/todos', label: '待办' },
-  { key: 'summary', to: '/summary', label: '今日总结' },
+  { key: 'stats', to: '/stats', label: '统计' },
+  { key: 'summary', to: '/summary', label: '日志' },
   { key: 'zju', to: '/zju', label: 'ZJU' },
 ];
 
@@ -68,6 +70,7 @@ export default function App() {
           <Route path="/projects" element={<ProjectListPage />} />
           <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
           <Route path="/todos" element={<TodoSummaryPage />} />
+          <Route path="/stats" element={<StatisticsPage />} />
           <Route path="/summary" element={<DailySummaryPage />} />
           <Route path="/zju" element={<ZjuPage />} />
           <Route path="/ai-create" element={<AiCreatePage />} />

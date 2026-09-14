@@ -56,7 +56,7 @@ export default function ScheduleModal({
     linked_todo_ids: schedule?.linked_todo_ids || prefill.linked_todo_ids || [],
     location: schedule?.location || prefill.location || '',
     notes: schedule?.notes || prefill.notes || '',
-    is_planned: schedule?.is_planned ?? prefill.is_planned ?? defaultPlanned,
+    is_planned: true,
   });
   const [recurrence, setRecurrence] = useState({
     enabled: false,
@@ -103,6 +103,7 @@ export default function ScheduleModal({
     nature: 'no_other_task',
     relax_suggestion: null,
     linked_todo_ids: form.linked_todo_ids.filter(Boolean).map(Number),
+    is_planned: true,
   });
 
   const createRecurrenceRule = async (payload) => {
@@ -156,14 +157,6 @@ export default function ScheduleModal({
           <div className="form-group">
             <label>日程名称 *</label>
             <input value={form.name} onChange={e => handleChange('name', e.target.value)} placeholder="输入日程名称" required autoFocus={shouldAutoFocus()} />
-          </div>
-
-          <div className="form-group">
-            <label>类型</label>
-            <select value={form.is_planned ? 'planned' : 'actual'} onChange={e => handleChange('is_planned', e.target.value === 'planned')} disabled={canCreateRule}>
-              <option value="planned">计划日程</option>
-              <option value="actual">实际记录</option>
-            </select>
           </div>
 
           <div className="form-group">
