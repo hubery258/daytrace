@@ -54,3 +54,6 @@ Thumbs.db
 /frontend/android/*.keystore
 /frontend/android/app/*.jks
 /frontend/android/app/*.keystore
+
+/docs/*
+!/docs/build-packaging-guide.md

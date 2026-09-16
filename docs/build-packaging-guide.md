@@ -11,6 +11,12 @@
 
 JSON 数据包 schema_version 为 0.10.0，包含时间块及属性；仍接受 0.6.0 旧包并跳过旧实际日程。
 
+## 产物命名
+
+- v0.11.0 起，新构建产物统一使用 daytrace-* 命名，例如 daytrace-desktop-0.11.0.exe、daytrace-android-0.11.0-debug.apk。
+- v0.10.x 及以前的 riji-* 产物只作为历史版本保留，不再用于新构建。
+- 新导出的 JSON 文件也统一使用 daytrace-*.json；WebDAV 同步文件使用 daytrace-latest.json。
+
 ## 你需要的知识
 
 不要求全部精通。第一次打包前，至少应理解下面这些概念：
@@ -428,7 +434,7 @@ Android 本地 SQLite
 
 测试版暂不可完整体验的功能、Android v0.6 边界和已知限制已经集中记录在：
 
-- [`docs/v0.6-packaging.md`](./v0.6-packaging.md) 的“Android v0.6 已知限制”和验收记录。
+- [`docs/archive/v0.6-packaging.md`](./archive/v0.6-packaging.md) 的“Android v0.6 已知限制”和验收记录。
 
 这里不重复展开。与打包直接相关的限制是：
 

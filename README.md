@@ -1,26 +1,31 @@
 # 日迹
 
-日迹是一个个人效率工具，核心不是“把待办列出来”，而是帮助用户把一天里的计划、执行和复盘连起来。
+日迹是一个本地优先的个人效率工具，核心不是把待办简单列出来，而是帮助用户把一天里的计划、执行、实际记录和复盘统计连起来。
 
-目前它适合单人本地使用：先规划日程和待办，过程中关注当前最重要的任务，晚上在今日总结里回看完成情况、记录日志，并可用自己的 OpenAI-compatible API Key 生成效率分析和明日建议。
+当前版本号：**v0.10.1**。v0.10.x 系列已完成，包括实际记录时间块化、时间统计和时间块体验打磨；v0.8 的 Android 本地单机功能已完成代码与自动化验证，实体机矩阵和签名 release 仍是 v1.0.0 前的发布门槛。
 
 ## 当前范围
 
-- 待办：支持 DDL 类型、提醒天数、分类、关注状态、等待答复状态和备注。
-- 日程：支持规划日程和实际记录，共用一条 0-24 点时间轴做左右对照。
-- 首页：显示当前日程、等待答复、关注中任务、临近 DDL。
-- 今日总结：保存完成待办和日志，并支持 AI 分析。
-- 设置：本地保存 API Key、API 地址、模型名和提示词。
-- v0.6：Electron 桌面体验版、Capacitor Android 工程和基础 JSON 导入导出。
-
-当前不包含账号同步、系统级提醒、通用脚本平台和 AI 越过用户确认直接修改数据。
+- 待办：支持 DDL 类型、提醒天数、分类、关注状态、等待答复、备注和重复规则。
+- 项目：可以把待办和计划日程归入同一个项目，用于承载更大的任务或目标。
+- 计划日程：用于安排未来时间，保留开始/结束时间、性质、关联待办、项目、地点和备注。
+- 实际时间块：用于记录已经发生的时间，支持 15/30 分钟粒度、属性与颜色、备注、关联待办或项目。
+- 计时：计时结束后按时间块覆盖规则折算为实际记录，并允许在时间块界面手动修正。
+- 首页：显示当前计划日程、等待答复、关注中任务、项目和临近 DDL。
+- 每日日志：保存完成待办和文字日志，支持日志模板。
+- 统计：按属性、待办和项目汇总实际时间块，支持单日、自然周、自然年、自定义范围和已记录时长口径。
+- AI：使用用户自己的 OpenAI-compatible API Key 生成待办/计划日程草稿；草稿必须经用户确认后才写入。
+- ZJU 集成：只读导入学习任务、Pintia、本科课表和成绩/学分概览。
+- 数据迁移：JSON 导出、预览、合并导入和完整恢复；新版数据包为 `schema_version: 0.10.0`，旧 `0.6.0` 包仍可导入并跳过旧实际日程。
+- 多端：Web、Windows Electron、Android Capacitor 本地单机版；三端通过 JSON 手动迁移数据，不做实时同步。
 
 ## 数据与隐私
 
-- 默认使用 SQLite，本地单机即可运行。
-- API Key 仅保存在浏览器 `localStorage`，不会上传到后端。
-- JSON 导出覆盖核心个人数据，不包含 AI API Key、ZJU 密码、Cookie、Session 或 token。
-- v0.6 没有登录和多设备同步；不同端通过 JSON 手动迁移。
+- 默认使用本地 SQLite，本地单机即可运行。
+- AI API Key 仅保存在当前设备；Web 使用浏览器本地存储，Android 使用系统安全存储能力。
+- 后端不接收用户的 AI API Key。
+- JSON 导出覆盖核心个人数据，不包含 AI API Key、ZJU 密码、Pintia Cookie、Session 或 token。
+- 旧版本 `is_planned=false` 的实际日程不会自动转为时间块；升级时建议先导出备份，再使用 `scripts/clean-v010-legacy-json.py` 清洗旧包后导入。
 
 ## 环境要求
 
@@ -68,8 +73,7 @@ npm run dev
 npm.cmd run dev
 ```
 
-
-## v0.7 体验版构建
+## 体验版构建
 
 Windows 桌面 portable：
 
@@ -77,7 +81,7 @@ Windows 桌面 portable：
 .\scripts\build-desktop.ps1
 ```
 
-Android debug APK（需要 JDK 21、Android SDK Platform 36 和 `ANDROID_HOME`）：
+Android debug APK，需要 JDK 21、Android SDK Platform 36 和 `ANDROID_HOME`：
 
 ```powershell
 .\scripts\build-android.ps1 -AndroidSdk "C:\path\to\Android\Sdk" -JavaHome "C:\path\to\jdk-21"
@@ -125,6 +129,14 @@ docker compose -f docker-compose.dev.yml up -d
 
 开发模式前端地址：`http://localhost:5173`
 
+## 当前边界
+
+- v1.0.0 前不做账号、多端实时同步和自动云备份。
+- v1.0.0 前不做系统级提醒和通知。
+- 不做通用脚本市场、自动签到、刷课、自动答题或自动提交。
+- AI 不越过用户确认直接创建或修改数据。
+- 复杂子任务、多层级项目、看板、甘特图和复杂 RRULE 不进入 v1.0 范围。
+
 ## 常用检查
 
 前端生产构建：
@@ -132,6 +144,20 @@ docker compose -f docker-compose.dev.yml up -d
 ```bash
 cd frontend
 npm.cmd run build
+```
+
+前端测试：
+
+```bash
+cd frontend
+npm.cmd test
+```
+
+后端测试：
+
+```bash
+cd backend
+python -m unittest discover -s tests
 ```
 
 后端语法检查：
