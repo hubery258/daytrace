@@ -1,6 +1,6 @@
 # 日迹 Android 与 Windows 桌面体验版打包指南
 
-本文用于以后在 Windows 开发机上重新构建日迹 v0.10.x 的 Android debug APK 和 Windows Electron portable 体验版。
+本文用于以后在 Windows 开发机上重新构建日迹 v0.11.0 的 Android debug APK 和 Windows Electron portable 体验版。
 
 当前技术结构：
 
@@ -9,7 +9,7 @@
 - Android：Capacitor + Android WebView + `@capacitor-community/sqlite`。
 - 两端数据库相互独立，通过逻辑 JSON 数据包手动迁移数据。
 
-JSON 数据包 schema_version 为 0.10.0，包含时间块及属性；仍接受 0.6.0 旧包并跳过旧实际日程。
+JSON 数据包 schema_version 为 0.10.0，包含时间块及属性；仍接受 0.6.0 旧包并跳过旧实际日程。WebDAV 同步文件为 daytrace-latest.json。
 
 ## 产物命名
 
@@ -34,7 +34,7 @@ JSON 数据包 schema_version 为 0.10.0，包含时间块及属性；仍接受 
    - 学习：[Electron 官方介绍与教程](https://www.electronjs.org/docs/latest/)、[Electron 第一个应用](https://www.electronjs.org/docs/latest/tutorial/tutorial-first-app)
 
 4. **Python 虚拟环境、FastAPI 和 PyInstaller**
-   - FastAPI 提供桌面端本地 API；PyInstaller 把 Python 后端及依赖封装为 `riji-sidecar.exe`。
+   - FastAPI 提供桌面端本地 API；PyInstaller 把 Python 后端及依赖封装为 `daytrace-sidecar.exe`。
    - 学习：[Python venv](https://docs.python.org/3/library/venv.html)、[FastAPI 官方教程](https://fastapi.tiangolo.com/tutorial/)、[PyInstaller 使用指南](https://pyinstaller.org/en/stable/usage.html)
 
 5. **Capacitor、Android WebView 与原生插件**
@@ -114,7 +114,7 @@ Electron 下载不稳定时可指定镜像：
 2. 用 PyInstaller 把 `backend/desktop_sidecar.py` 构建为：
 
    ```text
-   backend/dist/riji-sidecar.exe
+   backend/dist/daytrace-sidecar.exe
    ```
 
 3. 执行 `npm install` 和 `npm run build`，生成 Vite 前端资源。
@@ -122,7 +122,7 @@ Electron 下载不稳定时可指定镜像：
 5. 先在带时间戳的临时目录构建，成功后复制到稳定路径：
 
    ```text
-   release/desktop/riji-desktop-0.10.1.exe
+   release/desktop/daytrace-desktop-0.11.0.exe
    ```
 
 ### 2.3 运行与验证
@@ -130,7 +130,7 @@ Electron 下载不稳定时可指定镜像：
 直接双击：
 
 ```text
-release/desktop/riji-desktop-0.10.1.exe
+release/desktop/daytrace-desktop-0.11.0.exe
 ```
 
 至少检查：
@@ -254,7 +254,7 @@ cd D:\cs\task
 
    ```text
    frontend/android/app/build/outputs/apk/debug/app-debug.apk
-   release/android/riji-android-0.10.1-debug.apk
+   release/android/daytrace-android-0.11.0-debug.apk
    ```
 
 ### 3.4 安装到实体手机
@@ -265,7 +265,7 @@ cd D:\cs\task
 $adb = ".\.android-sdk\platform-tools\adb.exe"
 
 & $adb devices
-& $adb install -r ".\release\android\riji-android-0.10.1-debug.apk"
+& $adb install -r ".\release\android\daytrace-android-0.11.0-debug.apk"
 ```
 
 `adb devices` 应显示：
@@ -325,7 +325,7 @@ $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
 
 ```powershell
 & $adb uninstall com.riji.app
-& $adb install ".\release\android\riji-android-0.10.1-debug.apk"
+& $adb install ".\release\android\daytrace-android-0.11.0-debug.apk"
 ```
 
 **Gradle 内存、文件移动或缓存问题**
@@ -450,8 +450,8 @@ Android 本地 SQLite
 git branch --show-current
 git status --short
 
-Get-FileHash ".\release\android\riji-android-0.10.1-debug.apk" -Algorithm SHA256
-Get-FileHash ".\release\desktop\riji-desktop-0.10.1.exe" -Algorithm SHA256
+Get-FileHash ".\release\android\daytrace-android-0.11.0-debug.apk" -Algorithm SHA256
+Get-FileHash ".\release\desktop\daytrace-desktop-0.11.0.exe" -Algorithm SHA256
 ```
 
 记录：

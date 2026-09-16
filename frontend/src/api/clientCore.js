@@ -229,6 +229,18 @@ export const dataApi = {
   import: bindCapability('data.import', (dataPackage, mode = 'merge') => ({ path: '/data/import', options: jsonOptions('POST', { package: dataPackage, mode }) })),
 };
 
+// v0.11.0 manual WebDAV sync. Web and Windows Electron hit the local backend
+// proxy; Android serves the same paths from its native data layer.
+export const syncApi = {
+  getConfig: bindCapability('sync.getWebdavConfig', () => ({ path: '/sync/webdav/config' })),
+  saveConfig: bindCapability('sync.saveWebdavConfig', (data) => ({ path: '/sync/webdav/config', options: jsonOptions('PUT', data) })),
+  testConnection: bindCapability('sync.testWebdav', (data) => ({ path: '/sync/webdav/test', options: jsonOptions('POST', data) })),
+  preflightUpload: bindCapability('sync.preflightWebdavUpload', () => ({ path: '/sync/webdav/upload/preflight', options: jsonOptions('POST', {}) })),
+  upload: bindCapability('sync.uploadWebdav', (data) => ({ path: '/sync/webdav/upload', options: jsonOptions('POST', data) })),
+  download: bindCapability('sync.downloadWebdav', () => ({ path: '/sync/webdav/download', options: jsonOptions('POST', {}) })),
+  status: bindCapability('sync.webdavStatus', () => ({ path: '/sync/webdav/status' })),
+};
+
 export const healthApi = {
   check: bindCapability('health.check', () => ({ path: '/health/' })),
 };
@@ -251,5 +263,6 @@ export const clientCapabilityBindings = Object.freeze({
   templateApi: bindingMap(templateApi),
   zjuApi: bindingMap(zjuApi),
   dataApi: bindingMap(dataApi),
+  syncApi: bindingMap(syncApi),
   healthApi: bindingMap(healthApi),
 });

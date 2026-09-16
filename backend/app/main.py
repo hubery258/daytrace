@@ -10,9 +10,9 @@ from starlette.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from .database import async_engine, Base
-from .routers import data_portability, logs, projects, recurrence, schedules, time_blocks, timer, todos, zju
+from .routers import data_portability, logs, projects, recurrence, schedules, sync_webdav, time_blocks, timer, todos, zju
 
-SQLITE_SCHEMA_VERSION = 9
+SQLITE_SCHEMA_VERSION = 10
 
 class SPAStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
@@ -219,7 +219,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="日迹 API",
     description="个人效率助手 - 待办 & 日程 & 项目 & AI 分析",
-    version="0.10.1",
+    version="0.11.0",
     lifespan=lifespan,
 )
 
@@ -239,6 +239,7 @@ app.include_router(projects.router)
 app.include_router(recurrence.router)
 app.include_router(logs.router)
 app.include_router(data_portability.router)
+app.include_router(sync_webdav.router)
 app.include_router(zju.router)
 
 

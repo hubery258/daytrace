@@ -112,7 +112,7 @@ try {
     if (-not (Test-Path -LiteralPath $apk)) { throw "Missing Android artifact: $apk" }
     $releaseDir = Join-Path $repoRoot 'release\android'
     $appVersion = ([IO.File]::ReadAllText((Join-Path $frontendDir 'package.json'), [Text.Encoding]::UTF8) | ConvertFrom-Json).version
-    $stableApk = Join-Path $releaseDir "riji-android-$appVersion-$variant.apk"
+    $stableApk = Join-Path $releaseDir "daytrace-android-$appVersion-$variant.apk"
     New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
     Copy-Item -LiteralPath $apk -Destination $stableApk -Force
     $sha256 = (Get-FileHash -LiteralPath $stableApk -Algorithm SHA256).Hash

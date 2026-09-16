@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import DataPortabilityPanel from '../components/DataPortabilityPanel';
+import WebdavSyncPanel from '../components/WebdavSyncPanel';
 import { timeBlockApi } from '../api/client';
 import {
   DEFAULT_DISPLAY_PREFERENCES,
@@ -261,9 +262,20 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      <section className="settings-section" aria-labelledby="data-settings-title">
+      <section className="settings-section" aria-labelledby="data-settings-title" id="local-data-section">
         <div className="settings-section-heading"><div><span className="settings-index">03</span><h2 id="data-settings-title">本地数据</h2><p>导出与导入你的核心个人数据。展示开关不会参与数据删除。</p></div></div>
         <DataPortabilityPanel />
+      </section>
+
+      <section className="settings-section" aria-labelledby="webdav-settings-title" id="webdav-section">
+        <div className="settings-section-heading">
+          <div>
+            <span className="settings-index">04</span>
+            <h2 id="webdav-settings-title">WebDAV 同步</h2>
+            <p>使用你自己的 WebDAV 服务器保存和获取日迹数据文件。同步不经过日迹开发者的服务器。</p>
+          </div>
+        </div>
+        <WebdavSyncPanel />
       </section>
     </div>
   );

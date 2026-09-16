@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, safeStorage } = require('electron');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const net = require('node:net');
@@ -7,6 +7,62 @@ const path = require('node:path');
 let mainWindow = null;
 let sidecar = null;
 let quitting = false;
+
+/**
+ * WebDAV password storage for the desktop build.
+ *
+ * safeStorage encrypts with the OS keychain (DPAPI on Windows). Only ciphertext
+ * is written to the user data directory, and the value is never logged.
+ */
+const SECRETS_FILE = () => path.join(app.getPath('userData'), 'desktop-secrets.json');
+const SECRET_KEY_PATTERN = /^[A-Za-z0-9_.:-]{1,128}$/;
+
+function readSecrets() {
+  try {
+    const raw = fs.readFileSync(SECRETS_FILE(), 'utf8');
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeSecrets(secrets) {
+  fs.writeFileSync(SECRETS_FILE(), JSON.stringify(secrets), { mode: 0o600 });
+}
+
+function requireSecretKey(key) {
+  if (typeof key !== 'string' || !SECRET_KEY_PATTERN.test(key)) throw new Error('secret key is invalid');
+  return key;
+}
+
+function registerSecretHandlers() {
+  ipcMain.handle('riji-secure:set', (_event, key, value) => {
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('safeStorage is unavailable');
+    if (typeof value !== 'string' || value.length === 0) throw new Error('secret value is invalid');
+    const secrets = readSecrets();
+    secrets[requireSecretKey(key)] = safeStorage.encryptString(value).toString('base64');
+    writeSecrets(secrets);
+    return true;
+  });
+  ipcMain.handle('riji-secure:get', (_event, key) => {
+    const stored = readSecrets()[requireSecretKey(key)];
+    if (typeof stored !== 'string' || !stored) return null;
+    try {
+      return safeStorage.decryptString(Buffer.from(stored, 'base64'));
+    } catch {
+      return null;
+    }
+  });
+  ipcMain.handle('riji-secure:remove', (_event, key) => {
+    const secrets = readSecrets();
+    const name = requireSecretKey(key);
+    if (!Object.hasOwn(secrets, name)) return false;
+    delete secrets[name];
+    writeSecrets(secrets);
+    return true;
+  });
+}
 
 function reserveLoopbackPort() {
   return new Promise((resolve, reject) => {
@@ -59,7 +115,7 @@ async function startSidecar() {
     : path.resolve(__dirname, '..', 'dist');
   const backendDir = path.resolve(__dirname, '..', '..', 'backend');
   const executable = app.isPackaged
-    ? path.join(process.resourcesPath, 'sidecar', process.platform === 'win32' ? 'riji-sidecar.exe' : 'riji-sidecar')
+    ? path.join(process.resourcesPath, 'sidecar', process.platform === 'win32' ? 'daytrace-sidecar.exe' : 'daytrace-sidecar')
     : findDevelopmentPython(backendDir);
   const args = app.isPackaged ? [] : [path.join(backendDir, 'desktop_sidecar.py')];
   const logPath = path.join(app.getPath('logs'), 'sidecar.log');
@@ -103,6 +159,7 @@ async function createWindow() {
       minHeight: 600,
       show: false,
       webPreferences: {
+        preload: path.join(__dirname, 'preload.cjs'),
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
@@ -126,7 +183,10 @@ if (!hasLock) {
       mainWindow.focus();
     }
   });
-  app.whenReady().then(createWindow);
+  app.whenReady().then(() => {
+    registerSecretHandlers();
+    return createWindow();
+  });
   app.on('before-quit', () => {
     quitting = true;
     stopSidecar();

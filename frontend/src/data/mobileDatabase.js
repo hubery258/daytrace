@@ -1,9 +1,12 @@
 import { CapacitorSQLite, SQLiteConnection } from '@capacitor-community/sqlite';
 
+import { createSyncRoutes, createWebdavProtocol } from '../platform/webdavSync.js';
+
 const connection = new SQLiteConnection(CapacitorSQLite);
 const DB_NAME = 'riji';
 const SCHEMA_VERSION = '0.10.0';
 let databasePromise;
+let databaseOverride = null;
 
 const schema = `
 CREATE TABLE IF NOT EXISTS projects (
@@ -65,10 +68,22 @@ CREATE TABLE IF NOT EXISTS timer_sessions (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_uuid ON projects(uuid);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_todos_uuid ON todos(uuid);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_schedules_uuid ON schedules(uuid);
+CREATE TABLE IF NOT EXISTS webdav_config (
+  id INTEGER PRIMARY KEY CHECK (id = 1), uuid TEXT NOT NULL,
+  base_url TEXT NOT NULL DEFAULT '', username TEXT NOT NULL DEFAULT '',
+  remote_directory TEXT NOT NULL DEFAULT 'daytrace',
+  remote_filename TEXT NOT NULL DEFAULT 'daytrace-latest.json',
+  remember_password INTEGER NOT NULL DEFAULT 0,
+  allow_insecure_http INTEGER NOT NULL DEFAULT 0,
+  last_sync_at TEXT, last_success_at TEXT, last_download_at TEXT,
+  last_status TEXT NOT NULL DEFAULT 'idle', last_error TEXT NOT NULL DEFAULT '',
+  last_error_code TEXT NOT NULL DEFAULT '', last_remote_etag TEXT,
+  last_remote_modified_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
 `;
 
 const jsonColumns = new Set(['template_json', 'weekdays', 'linked_todo_ids', 'completed_todo_ids', 'active_intervals']);
-const booleanColumns = new Set(['is_recurrence_exception', 'is_completed', 'is_planned']);
+const booleanColumns = new Set(['is_recurrence_exception', 'is_completed', 'is_planned', 'remember_password', 'allow_insecure_http']);
 const entitySpecs = {
   projects: ['name', 'description', 'status', 'ddl_date', 'color', 'completed_at', 'archived_at', 'created_at', 'updated_at'],
   recurrence_rules: ['entity_type', 'template_json', 'frequency', 'start_date', 'end_date', 'weekdays', 'month_day', 'status', 'created_at', 'updated_at'],
@@ -132,6 +147,7 @@ function uuid() {
 }
 
 async function getDatabase() {
+  if (databaseOverride) return databaseOverride;
   if (!databasePromise) {
     databasePromise = (async () => {
       const consistency = await connection.checkConnectionsConsistency();
@@ -891,11 +907,30 @@ async function portabilityRequest(method, pathname, body) {
   if (method === 'POST' && pathname === '/data/import') return importData(body.package, body.mode || 'merge');
 }
 
+// v0.11.0 manual WebDAV sync. The protocol lives in src/platform/webdavSync.js
+// and is shared with the modular mobile data layer; this runtime layer only
+// supplies its own SQLite helpers, export and package validation.
+const webdavRoutes = createSyncRoutes({
+  store: {
+    getRow: () => one('webdav_config', 'id = 1'),
+    insertRow: (data) => insert('webdav_config', data),
+    updateRow: (id, data) => update('webdav_config', id, data),
+  },
+  exportPackage: exportData,
+  assertPackage: (raw) => assertPackage(raw),
+  supportedSchemaVersions: [SCHEMA_VERSION, '0.6.0'],
+  generateUuid: uuid,
+  now,
+  protocol: createWebdavProtocol(),
+});
+
 export async function mobileRequest(path, options = {}) {
   const method = (options.method || 'GET').toUpperCase();
   const body = options.body ? JSON.parse(options.body) : {};
   const url = new URL(path, 'https://riji.local');
   const pathname = url.pathname;
+  const syncValue = await webdavRoutes.syncRequest(method, pathname, body);
+  if (syncValue !== undefined) return syncValue;
   const handlers = [projectsRequest, todosRequest, schedulesRequest, timeBlocksRequest, logsRequest, timerRequest];
   for (const handler of handlers) {
     const value = await handler(method, pathname, url.searchParams, body);
@@ -911,4 +946,27 @@ export async function mobileRequest(path, options = {}) {
   if (pathname.startsWith('/zju/')) throw new Error('安卓体验版暂不支持 ZJU 集成');
   if (pathname.startsWith('/recurrence-rules/')) throw new Error('安卓体验版暂不支持重复规则编辑');
   throw new Error(`安卓本地数据层尚未实现：${method} ${pathname}`);
+}
+
+function assertTestRuntime() {
+  if (typeof process === 'undefined' || process?.env?.NODE_ENV !== 'test') {
+    throw new Error('The Android runtime database test hook is only available with NODE_ENV=test');
+  }
+}
+
+/**
+ * Install a SQLite-compatible connection for tests and apply this layer's
+ * schema. Production never calls this hook, so the real request modules keep
+ * using the Capacitor SQLite plugin.
+ */
+export async function __installDatabaseForTests(db) {
+  assertTestRuntime();
+  await db.open();
+  await db.execute(schema);
+  databaseOverride = db;
+}
+
+export function __resetDatabaseForTests() {
+  assertTestRuntime();
+  databaseOverride = null;
 }

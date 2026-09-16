@@ -3,6 +3,7 @@ import { scheduleRequest } from './schedules.js';
 import { recurrenceRequest } from './recurrence.js';
 import { logRequest, templateRequest, timerRequest } from './support.js';
 import { portabilityRequest } from './portability.js';
+import { syncRequest } from './sync.js';
 import { mobileError, validationError } from './domain.js';
 import { zjuRequest } from './zju.js';
 const COLLECTION_PATHS = new Set([
@@ -50,6 +51,8 @@ export async function mobileRequest(path, options = {}) {
   if (templateValue !== undefined) return templateValue;
   const portabilityValue = await portabilityRequest(method, pathname, body);
   if (portabilityValue !== undefined) return portabilityValue;
+  const syncValue = await syncRequest(method, pathname, body);
+  if (syncValue !== undefined) return syncValue;
   const zjuValue = await zjuRequest(method, pathname, url.searchParams, body);
   if (zjuValue !== undefined) return zjuValue;
   if (method === 'GET' && pathname === '/health/') {

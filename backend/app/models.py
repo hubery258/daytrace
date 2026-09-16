@@ -313,6 +313,38 @@ class ZjuGradeSnapshot(Base):
     created_at = Column(DateTime, default=datetime.now, nullable=False)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
 
+class WebDavConfig(Base):
+    """Local WebDAV sync configuration and status (v0.11.0).
+
+    The WebDAV password is deliberately absent from this table. Secrets stay in
+    the client's platform secure storage and, for the current backend process,
+    in memory only, so no password can reach the database, the JSON data
+    package or a log line.
+    """
+
+    __tablename__ = "webdav_configs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String(36), default=new_uuid, unique=True, nullable=False, index=True)
+    name = Column(String(100), default="WebDAV", nullable=False)
+    base_url = Column(String(2048), default="", nullable=False)
+    username = Column(String(200), default="", nullable=False)
+    remote_directory = Column(String(300), default="daytrace", nullable=False)
+    remote_filename = Column(String(200), default="daytrace-latest.json", nullable=False)
+    remember_password = Column(Boolean, default=False, nullable=False)
+    allow_insecure_http = Column(Boolean, default=False, nullable=False)
+    last_sync_at = Column(DateTime, nullable=True)
+    last_success_at = Column(DateTime, nullable=True)
+    last_download_at = Column(DateTime, nullable=True)
+    last_status = Column(String(20), default="idle", nullable=False)
+    last_error = Column(Text, default="", nullable=False)
+    last_error_code = Column(String(50), default="", nullable=False)
+    last_remote_etag = Column(String(300), nullable=True)
+    last_remote_modified_at = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+
 class ImportBatch(Base):
     __tablename__ = "import_batches"
 

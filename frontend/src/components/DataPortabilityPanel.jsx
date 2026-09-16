@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { dataApi } from '../api/client';
+import { takeDownloadedPackage, subscribeDownloadedPackage } from '../sync/downloadBridge';
 
 const entityLabels = {
   projects: '项目', todos: '待办', schedules: '计划日程', time_block_categories: '时间块属性', time_blocks: '实际时间块', daily_logs: '每日总结',
@@ -11,7 +12,7 @@ const entityLabels = {
 
 function fileName(prefix = 'backup') {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  return `riji-${prefix}-${stamp}.json`;
+  return `daytrace-${prefix}-${stamp}.json`;
 }
 
 async function savePackage(pack, prefix = 'backup', shareAfterSave = true, verifyWrite = false) {
@@ -65,6 +66,32 @@ export default function DataPortabilityPanel() {
   const [busy, setBusy] = useState(false);
 
   const clearFeedback = () => { setMessage(''); setError(''); };
+
+  const previewPackage = async (pack) => {
+    const nextPreview = await dataApi.previewImport(pack, mode);
+    setPendingPackage(pack); setPreview(nextPreview);
+  };
+
+  // WebDAV downloads are handed to this existing preview + confirm flow so a
+  // download never writes the local database on its own.
+  useEffect(() => {
+    const unsubscribe = subscribeDownloadedPackage((incoming) => {
+      takeDownloadedPackage();
+      clearFeedback();
+      setBusy(true);
+      (async () => {
+        try {
+          await previewPackage(incoming.package);
+          setMessage('已载入 WebDAV 下载的远端数据包，请在下方预览并确认合并导入。取消不会修改本机数据。');
+        } catch (err) {
+          setError(err.message || '无法预览远端数据包');
+        } finally {
+          setBusy(false);
+        }
+      })();
+    });
+    return unsubscribe;
+  }, [mode]);
 
   const handleExport = async () => {
     clearFeedback(); setBusy(true);
