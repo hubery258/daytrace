@@ -1,12 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-/**
- * Minimal preload bridge for the v0.11.0 WebDAV password.
- *
- * Only the safeStorage-backed secret channel is exposed; no filesystem, shell
- * or arbitrary IPC access is handed to the renderer. The password never leaves
- * this process pair except as ciphertext on disk.
- */
+/** Desktop identity plus the legacy v0.11.0 migration channel. */
 contextBridge.exposeInMainWorld('rijiDesktop', {
   platform: process.platform,
   secure: {

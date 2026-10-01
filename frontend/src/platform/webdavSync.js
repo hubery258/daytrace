@@ -1,5 +1,5 @@
 /**
- * Shared Android WebDAV implementation for the v0.11.0 manual sync contract.
+ * Shared Android WebDAV implementation for the v0.11.x manual sync contract.
  *
  * Android never runs Python/FastAPI, so the device talks to the user's own
  * WebDAV server directly through the Capacitor native HTTP plugin (RijiHttp).
@@ -7,10 +7,9 @@
  * the two local data layers only provide storage, export and package validation
  * through `createSyncRoutes`.
  *
- * Password handling: a remembered password lives in Android Keystore storage
- * owned by the platform password store (`src/sync/passwordStore.js`); this
- * module only keeps a process-memory copy, so a password never reaches the
- * database, the data package or a log line.
+ * Password handling: a remembered password lives in the local SQLite config
+ * row. Session-only passwords stay in this module's process memory. The config
+ * row is outside the portable JSON package and never appears in responses.
  */
 
 import { ApiError } from '../api/errors.js';
@@ -380,9 +379,10 @@ export function createWebdavProtocol({ requestImpl = request } = {}) {
     return { body: payload, info: { ...info, content_length: info.content_length || payload.length } };
   }
 
-  async function upload(target, payload, expectedEtag = null) {
+  async function upload(target, payload, { expectedEtag = null, createOnly = false } = {}) {
     const headers = { 'Content-Type': 'application/json; charset=utf-8' };
     if (expectedEtag) headers['If-Match'] = expectedEtag;
+    if (createOnly) headers['If-None-Match'] = '*';
     const response = await requestImpl(target, 'PUT', target.fileUrl, { headers, body: payload });
     if (![200, 201, 204].includes(response.status)) throw statusError(response.status);
     const info = fileInfo(target, response, 'put');
@@ -440,6 +440,7 @@ export function createSyncRoutes({
       uuid: generateUuid(),
       base_url: '',
       username: '',
+      password: '',
       remote_directory: DEFAULT_REMOTE_DIRECTORY,
       remote_filename: DEFAULT_REMOTE_FILENAME,
       remember_password: false,
@@ -454,6 +455,7 @@ export function createSyncRoutes({
   }
 
   function configPayload(row) {
+    const hasPassword = Boolean(sessionPassword || (row.remember_password && row.password));
     return {
       base_url: row.base_url || '',
       username: row.username || '',
@@ -461,13 +463,17 @@ export function createSyncRoutes({
       remote_filename: row.remote_filename || DEFAULT_REMOTE_FILENAME,
       remember_password: Boolean(row.remember_password),
       allow_insecure_http: Boolean(row.allow_insecure_http),
-      has_password: Boolean(sessionPassword),
+      has_password: hasPassword,
       last_sync_at: row.last_sync_at || null,
       last_success_at: row.last_success_at || null,
       last_download_at: row.last_download_at || null,
       last_error: row.last_error || '',
       last_error_code: row.last_error_code || '',
     };
+  }
+
+  function storedPassword(row) {
+    return sessionPassword || (row.remember_password ? row.password || '' : '');
   }
 
   function describeRemoteDocument(raw) {
@@ -518,8 +524,9 @@ export function createSyncRoutes({
   }
 
   function requireTarget(config) {
-    if (!sessionPassword) throw syncError('SYNC_PASSWORD_REQUIRED');
-    return buildTarget(config, sessionPassword);
+    const password = storedPassword(config);
+    if (!password) throw syncError('SYNC_PASSWORD_REQUIRED');
+    return buildTarget(config, password);
   }
 
   async function syncRequest(method, pathname, body) {
@@ -539,13 +546,16 @@ export function createSyncRoutes({
         remote_filename: body.remote_filename ? String(body.remote_filename).trim() : row.remote_filename,
         remember_password: Boolean(body.remember_password),
         allow_insecure_http: allowInsecureHttp,
+        password: '',
       };
-      buildTarget(next, body.password || sessionPassword || ''); // validate before persisting
-      const password = body.password || '';
+      const password = String(body.password || '') || (next.remember_password ? storedPassword(row) : '');
+      buildTarget(next, password); // validate before persisting
       if (password) {
         sessionPassword = password;
+        next.password = next.remember_password ? password : '';
       } else if (!next.remember_password) {
         sessionPassword = null;
+        next.password = '';
       } else if (!sessionPassword) {
         throw syncError('SYNC_PASSWORD_REQUIRED');
       }
@@ -559,11 +569,11 @@ export function createSyncRoutes({
     }
 
     if (method === 'POST' && pathname === '/sync/webdav/test') {
-      const password = body.password || sessionPassword || '';
+      const row = await getOrCreateConfigRow();
+      const password = body.password || storedPassword(row);
       if (!password) throw syncError('SYNC_PASSWORD_REQUIRED');
       // Enter the busy guard first so a duplicate tap can never start a second task.
       return withBusy(async () => {
-        const row = await getOrCreateConfigRow();
         const draft = {
           base_url: body.base_url || row.base_url,
           username: body.username || row.username,
@@ -650,17 +660,18 @@ export function createSyncRoutes({
           if (payload.length > MAX_PACKAGE_BYTES) throw syncError('WEBDAV_INVALID_PACKAGE', '本机数据包过大，已拒绝上传');
           const directoryCreated = await protocol.ensureDirectory(target);
           const current = await protocol.stat(target);
+          if (expectedExists === null) throw syncError('WEBDAV_CONFLICT');
           if (current.exists) {
-            if (expectedExists === false) throw syncError('WEBDAV_CONFLICT');
-            if (expectedEtag !== null) {
-              if ((current.etag ?? null) !== expectedEtag) throw syncError('WEBDAV_CONFLICT');
-            } else if (current.etag) {
+            if (expectedExists === false || expectedEtag === null || !current.etag || current.etag !== expectedEtag) {
               throw syncError('WEBDAV_CONFLICT');
             }
-          } else if (expectedExists === true) {
+          } else if (expectedExists === true || expectedEtag !== null) {
             throw syncError('WEBDAV_CONFLICT');
           }
-          const info = await protocol.upload(target, payload, current.exists ? expectedEtag : null);
+          const info = await protocol.upload(target, payload, {
+            expectedEtag: current.exists ? expectedEtag : null,
+            createOnly: !current.exists,
+          });
           const stamped = await stampResult({ success: true, info });
           return {
             ok: true,
@@ -720,15 +731,16 @@ export function createSyncRoutes({
 
     if (method === 'GET' && pathname === '/sync/webdav/status') {
       const row = await getOrCreateConfigRow();
+      const password = storedPassword(row);
       let remotePath = '';
       try {
-        remotePath = buildTarget(row, sessionPassword || 'session').displayPath;
+        remotePath = buildTarget(row, password || 'session').displayPath;
       } catch {
         remotePath = '';
       }
       return {
-        configured: Boolean(row.base_url && row.username && sessionPassword),
-        has_password: Boolean(sessionPassword),
+        configured: Boolean(row.base_url && row.username && password),
+        has_password: Boolean(password),
         busy,
         remote_path: remotePath,
         last_sync_at: row.last_sync_at || null,

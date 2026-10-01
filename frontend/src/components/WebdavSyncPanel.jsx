@@ -194,7 +194,7 @@ export default function WebdavSyncPanel() {
       const saved = await syncAdapter.saveConfig({ ...form, allow_insecure_http: usesPlainHttp() });
       setConfig(saved);
       setForm(previous => applyConfigToForm(saved, previous));
-      setMessage('WebDAV 配置已保存。密码只保存在本机安全存储，不会写入 JSON 数据包。');
+      setMessage('WebDAV 配置已保存。密码只保存在本机数据库，不会写入 JSON 数据包。');
       await refresh();
     } catch (rawError) {
       reportError(rawError);
@@ -279,7 +279,7 @@ export default function WebdavSyncPanel() {
       <div className="card-header">连接配置</div>
       <p className="webdav-intro">
         使用你自己的 WebDAV 服务器保存和获取日迹数据文件。同步不经过日迹开发者的服务器，
-        密码只保存在本机安全存储中，不会写入导出的 JSON 数据包。
+        密码只保存在本机数据库，不会写入导出的 JSON 数据包；取消“记住密码”后仅保留当前会话。
       </p>
 
       <form className="webdav-form" onSubmit={event => { event.preventDefault(); handleSave(); }}>
@@ -390,11 +390,11 @@ export default function WebdavSyncPanel() {
       <div className="card-header webdav-section-title">手动操作</div>
       {!configured && <p className="field-hint">请先保存 WebDAV 配置，然后才能上传或下载。</p>}
       <div className="webdav-actions">
-        <button className="btn btn-secondary" disabled={!configured || syncBusy} onClick={handleUploadClick}>上传本机数据</button>
-        <button className="btn btn-secondary" disabled={!configured || syncBusy} onClick={handleDownloadClick}>下载远端数据</button>
+        <button className="btn btn-secondary" disabled={!configured || syncBusy || testState.state === 'failed'} onClick={handleUploadClick}>上传本机数据</button>
+        <button className="btn btn-secondary" disabled={!configured || syncBusy || testState.state === 'failed'} onClick={handleDownloadClick}>下载远端数据</button>
       </div>
       <p className="field-hint">
-        v0.11.0 只有手动上传和手动下载。上传前会展示本机与远端信息并等待确认；下载只进入现有导入预览，不会自动合并。
+        v0.11.x 只有手动上传和手动下载。上传前会展示本机与远端信息并等待确认；下载只进入现有导入预览，不会自动合并。
       </p>
 
       {uploadResult && (

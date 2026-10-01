@@ -661,11 +661,11 @@ class ZjuGradeOut(BaseModel):
 # ============ WebDAV manual sync (v0.11.0) ============
 
 class WebDavConfigIn(BaseModel):
-    """Non-secret configuration plus a write-only password."""
+    """Local configuration plus a write-only password."""
 
     base_url: Optional[str] = None
     username: Optional[str] = None
-    password: Optional[str] = None
+    password: Optional[str] = Field(default=None, repr=False)
     remember_password: bool = False
     remote_directory: Optional[str] = None
     remote_filename: Optional[str] = None
@@ -675,7 +675,7 @@ class WebDavConfigIn(BaseModel):
 class WebDavTestRequest(BaseModel):
     base_url: Optional[str] = None
     username: Optional[str] = None
-    password: Optional[str] = None
+    password: Optional[str] = Field(default=None, repr=False)
     remote_directory: Optional[str] = None
     remote_filename: Optional[str] = None
     allow_insecure_http: Optional[bool] = None

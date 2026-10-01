@@ -29,6 +29,8 @@ export class FakeWebDavServer {
     this.propfindSupported = true;
     this.writeForbidden = false;
     this.quotaExceeded = false;
+    this.includeEtag = true;
+    this.beforePut = null;
     this.requests = [];
   }
 
@@ -59,7 +61,8 @@ export class FakeWebDavServer {
     const props = isCollection
       ? '<d:resourcetype><d:collection/></d:resourcetype><d:getlastmodified>Mon, 15 Sep 2026 08:00:00 GMT</d:getlastmodified>'
       : `<d:resourcetype/><d:getcontentlength>${body.length}</d:getcontentlength>`
-        + `<d:getlastmodified>Mon, 15 Sep 2026 09:00:00 GMT</d:getlastmodified><d:getetag>${etagFor(body)}</d:getetag>`;
+        + `<d:getlastmodified>Mon, 15 Sep 2026 09:00:00 GMT</d:getlastmodified>`
+        + (this.includeEtag ? `<d:getetag>${etagFor(body)}</d:getetag>` : '');
     return '<?xml version="1.0" encoding="utf-8"?><d:multistatus xmlns:d="DAV:"><d:response>'
       + `<d:href>${path}</d:href><d:propstat><d:prop>${props}</d:prop>`
       + '<d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>';
@@ -90,8 +93,16 @@ export class FakeWebDavServer {
       if (this.writeForbidden) return { status: 403, headers: {}, body: '' };
       if (this.quotaExceeded) return { status: 507, headers: {}, body: '' };
       if (!this.directoryExists(this.parent(path))) return { status: 409, headers: {}, body: '' };
+      if (this.beforePut) {
+        const callback = this.beforePut;
+        this.beforePut = null;
+        callback(path);
+      }
       const current = this.files.get(path);
       if (headers['If-Match'] !== undefined && (current === undefined || etagFor(current) !== headers['If-Match'])) {
+        return { status: 412, headers: {}, body: '' };
+      }
+      if (headers['If-None-Match'] === '*' && current !== undefined) {
         return { status: 412, headers: {}, body: '' };
       }
       const etag = this.store(path, body);
@@ -112,7 +123,7 @@ export class FakeWebDavServer {
       return {
         status: 200,
         headers: {
-          ETag: etagFor(content),
+          ...(this.includeEtag ? { ETag: etagFor(content) } : {}),
           'Last-Modified': 'Mon, 15 Sep 2026 09:00:00 GMT',
           'Content-Length': String(content.length),
         },

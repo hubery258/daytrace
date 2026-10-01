@@ -1,5 +1,5 @@
 /**
- * Cross-platform secret storage for the WebDAV password (v0.11.0).
+ * Legacy v0.11.0 WebDAV password storage used only for one-time migration.
  *
  * Password handling rules:
  * - The password never enters the JSON data package, a log line or an error
@@ -79,20 +79,35 @@ function desktopBridge() {
   return bridge && typeof bridge.isAvailable === 'function' && bridge.isAvailable() === true ? bridge : null;
 }
 
-async function importAesKey(rawKey) {
-  const subtle = globalThis.crypto?.subtle;
+async function importAesKey(rawKey, subtle = globalThis.crypto?.subtle) {
   if (!subtle) throw new Error('当前环境不支持 WebCrypto，无法加密保存密码');
   return subtle.importKey('raw', rawKey, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+}
+
+function isStoredAesKey(value) {
+  return Boolean(value && typeof value === 'object'
+    && value.type === 'secret'
+    && value.algorithm?.name === 'AES-GCM'
+    && value.extractable === false);
 }
 
 export async function createWebSecretStore({ storage = globalThis.localStorage, keyStorage, subtle = globalThis.crypto?.subtle, cryptoRef = globalThis.crypto } = {}) {
   const keys = keyStorage || createIndexedDbKeyStorage();
   const loadKey = async () => {
     const stored = await keys.load();
-    if (stored) return importAesKey(stored instanceof Uint8Array ? stored : new Uint8Array(stored));
-    const raw = cryptoRef.getRandomValues(new Uint8Array(32));
-    await keys.save(raw);
-    return importAesKey(raw);
+    if (isStoredAesKey(stored)) return stored;
+    if (stored) {
+      // Migrate the extractable raw key format written by earlier builds.
+      const legacyKey = await importAesKey(stored instanceof Uint8Array ? stored : new Uint8Array(stored), subtle);
+      await keys.save(legacyKey);
+      return legacyKey;
+    }
+    if (!subtle || typeof subtle.generateKey !== 'function') {
+      throw new Error('当前环境不支持 WebCrypto，无法加密保存密码');
+    }
+    const key = await subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    await keys.save(key);
+    return key;
   };
   const remove = async () => { storage.removeItem(WEBDAV_SECRET_KEY); };
   return {

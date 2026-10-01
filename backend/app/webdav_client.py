@@ -31,7 +31,7 @@ APP_ID = "riji"
 DEFAULT_REMOTE_DIRECTORY = "daytrace"
 DEFAULT_REMOTE_FILENAME = "daytrace-latest.json"
 PROBE_FILENAME = ".daytrace-write-probe.json"
-USER_AGENT = "daytrace/0.11.0 (+local-webdav-sync)"
+USER_AGENT = "daytrace/0.11.1 (+local-webdav-sync)"
 DEFAULT_TIMEOUT_SECONDS = 30.0
 XML_NAMESPACE = "DAV:"
 PROPFIND_BODY = (
@@ -418,10 +418,13 @@ class WebDavClient:
         url: str | None = None,
         content_type: str = "application/json; charset=utf-8",
         if_match: str | None = None,
+        if_none_match: str | None = None,
     ) -> WebDavResponse:
         headers = {"Content-Type": content_type}
         if if_match:
             headers["If-Match"] = if_match
+        if if_none_match:
+            headers["If-None-Match"] = if_none_match
         return self.raw(target, "PUT", url or target.file_url, headers=headers, body=payload)
 
     def delete(self, target: WebDavTarget, url: str) -> WebDavResponse:
@@ -597,9 +600,21 @@ class WebDavClient:
         )
         return response.body, info
 
-    def upload(self, target: WebDavTarget, payload: bytes, *, expected_etag: str | None = None) -> RemoteFileInfo:
+    def upload(
+        self,
+        target: WebDavTarget,
+        payload: bytes,
+        *,
+        expected_etag: str | None = None,
+        create_only: bool = False,
+    ) -> RemoteFileInfo:
         """PUT the payload. The caller ensures the collection exists first."""
-        response = self.put(target, payload, if_match=expected_etag)
+        response = self.put(
+            target,
+            payload,
+            if_match=expected_etag,
+            if_none_match="*" if create_only else None,
+        )
         if response.status in (412, 423):
             raise error_for_status(response.status)
         if response.status not in (200, 201, 204):

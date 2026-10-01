@@ -71,6 +71,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_schedules_uuid ON schedules(uuid);
 CREATE TABLE IF NOT EXISTS webdav_config (
   id INTEGER PRIMARY KEY CHECK (id = 1), uuid TEXT NOT NULL,
   base_url TEXT NOT NULL DEFAULT '', username TEXT NOT NULL DEFAULT '',
+  password TEXT NOT NULL DEFAULT '',
   remote_directory TEXT NOT NULL DEFAULT 'daytrace',
   remote_filename TEXT NOT NULL DEFAULT 'daytrace-latest.json',
   remember_password INTEGER NOT NULL DEFAULT 0,
@@ -167,6 +168,10 @@ async function getDatabase() {
       const timerColumns = await db.query('PRAGMA table_info(timer_sessions)');
       if (!(timerColumns.values || []).some(column => column.name === 'active_intervals')) {
         await db.execute("ALTER TABLE timer_sessions ADD COLUMN active_intervals TEXT NOT NULL DEFAULT '[]'");
+      }
+      const webdavColumns = await db.query('PRAGMA table_info(webdav_config)');
+      if (!(webdavColumns.values || []).some(column => column.name === 'password')) {
+        await db.execute("ALTER TABLE webdav_config ADD COLUMN password TEXT NOT NULL DEFAULT ''");
       }
       const categoryCount = await db.query('SELECT COUNT(*) AS count FROM time_block_categories');
       if (!Number(categoryCount.values?.[0]?.count)) {

@@ -37,8 +37,8 @@ test('migrations are ordered, versioned, and keep identity claim tables', async 
   const migrations = (await connection.query('SELECT version, name FROM mobile_schema_migrations ORDER BY version')).values;
   const version = (await connection.query('PRAGMA user_version')).values[0].user_version;
   const claimTable = (await connection.query("SELECT name FROM sqlite_master WHERE type='table' AND name='recurrence_instance_claims'")).values;
-  assert.deepEqual(migrations.map((item) => item.version), [1, 2, 3, 4, 5, 6]);
-  assert.equal(version, 6);
+  assert.deepEqual(migrations.map((item) => item.version), [1, 2, 3, 4, 5, 6, 7]);
+  assert.equal(version, 7);
   assert.equal(claimTable.length, 1);
 });
 

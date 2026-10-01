@@ -47,8 +47,8 @@ from .webdav_client import (
 MAX_PACKAGE_BYTES = 64 * 1024 * 1024
 MAX_ERROR_LENGTH = 300
 
-#: Passwords for the current backend process only. Never persisted, never
-#: logged, never exported. Clearing these is enough to forget a password.
+#: Session-only passwords live here. Remembered passwords live in the local
+#: WebDavConfig row, which is outside the portable data package.
 _SESSION_PASSWORDS: dict[str, str] = {}
 #: Configs whose password is intentionally session-only (remember_password off).
 _SESSION_ONLY: set[str] = set()
@@ -106,7 +106,7 @@ async def get_or_create_config(db: AsyncSession) -> models.WebDavConfig:
 
 
 def has_session_password(config: models.WebDavConfig) -> bool:
-    return bool(_SESSION_PASSWORDS.get(config.uuid))
+    return bool(_SESSION_PASSWORDS.get(config.uuid) or (config.remember_password and config.password))
 
 
 def is_configured(config: models.WebDavConfig) -> bool:
@@ -148,7 +148,7 @@ async def save_config(db: AsyncSession, payload: Any) -> dict[str, Any]:
     build_target(
         base_url=payload.base_url if payload.base_url is not None else config.base_url,
         username=payload.username if payload.username is not None else config.username,
-        password=password or _SESSION_PASSWORDS.get(config.uuid, ""),
+        password=password or _SESSION_PASSWORDS.get(config.uuid, "") or (config.password if config.remember_password else ""),
         remote_directory=payload.remote_directory or config.remote_directory or DEFAULT_REMOTE_DIRECTORY,
         remote_filename=payload.remote_filename or config.remote_filename or DEFAULT_REMOTE_FILENAME,
         allow_insecure_http=bool(allow_insecure),
@@ -168,14 +168,20 @@ async def save_config(db: AsyncSession, payload: Any) -> dict[str, Any]:
     if password:
         _SESSION_PASSWORDS[config.uuid] = password
         if config.remember_password:
+            config.password = password
             _SESSION_ONLY.discard(config.uuid)
         else:
+            config.password = ""
             _SESSION_ONLY.add(config.uuid)
     elif not config.remember_password:
-        # remember_password=false always forgets the persisted secret.
+        # remember_password=false keeps no password in the local database.
+        config.password = ""
         _SESSION_PASSWORDS.pop(config.uuid, None)
         _SESSION_ONLY.discard(config.uuid)
-    elif not _SESSION_PASSWORDS.get(config.uuid):
+    elif config.password:
+        _SESSION_PASSWORDS[config.uuid] = config.password
+        _SESSION_ONLY.discard(config.uuid)
+    else:
         raise WebDavError("SYNC_PASSWORD_REQUIRED")
 
     await db.commit()
@@ -184,6 +190,8 @@ async def save_config(db: AsyncSession, payload: Any) -> dict[str, Any]:
 
 
 def forget_password(config: models.WebDavConfig) -> None:
+    config.password = ""
+    config.remember_password = False
     _SESSION_PASSWORDS.pop(config.uuid, None)
     _SESSION_ONLY.discard(config.uuid)
 
@@ -194,7 +202,7 @@ def forget_password(config: models.WebDavConfig) -> None:
 
 
 def _require_password(config: models.WebDavConfig) -> str:
-    password = _SESSION_PASSWORDS.get(config.uuid)
+    password = _SESSION_PASSWORDS.get(config.uuid) or (config.password if config.remember_password else "")
     if not password:
         raise WebDavError("SYNC_PASSWORD_REQUIRED")
     return password
@@ -216,7 +224,7 @@ def _draft_target(config: models.WebDavConfig, draft: Any) -> WebDavTarget:
     allow_insecure = getattr(draft, "allow_insecure_http", None)
     if allow_insecure is None:
         allow_insecure = bool(config.allow_insecure_http)
-    password = getattr(draft, "password", None) or _SESSION_PASSWORDS.get(config.uuid, "")
+    password = getattr(draft, "password", None) or _SESSION_PASSWORDS.get(config.uuid, "") or (config.password if config.remember_password else "")
     if not password:
         raise WebDavError("SYNC_PASSWORD_REQUIRED")
     return build_target(
@@ -396,21 +404,21 @@ async def upload_latest(
         try:
             created = await asyncio.to_thread(client.ensure_directory, target)
             current = await asyncio.to_thread(client.stat, target)
+            if expected_remote_exists is None:
+                raise WebDavError("WEBDAV_CONFLICT")
             if current.exists:
-                if expected_remote_exists is False:
+                if expected_remote_exists is False or expected_remote_etag is None:
                     raise WebDavError("WEBDAV_CONFLICT")
-                if expected_remote_etag is not None:
-                    if (current.etag or None) != expected_remote_etag:
-                        raise WebDavError("WEBDAV_CONFLICT")
-                elif current.etag is not None:
+                if current.etag is None or current.etag != expected_remote_etag:
                     raise WebDavError("WEBDAV_CONFLICT")
-            elif expected_remote_exists:
+            elif expected_remote_exists or expected_remote_etag is not None:
                 raise WebDavError("WEBDAV_CONFLICT")
             info = await asyncio.to_thread(
                 client.upload,
                 target,
                 payload,
                 expected_etag=expected_remote_etag if current.exists else None,
+                create_only=not current.exists,
             )
         except WebDavError as error:
             await _record_failure(db, config, error)

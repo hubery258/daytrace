@@ -1,16 +1,16 @@
 /**
- * Unified WebDAV SyncAdapter (v0.11.0).
+ * Unified WebDAV SyncAdapter (v0.11.1).
  *
  * The settings UI only talks to this adapter. Platform differences stay behind
  * it:
  *
  * | platform            | network path                        | password storage          |
  * | ------------------- | ----------------------------------- | ------------------------- |
- * | Web + local FastAPI | local backend proxies WebDAV        | encrypted browser storage |
- * | Windows Electron    | FastAPI sidecar proxies WebDAV      | Electron safeStorage      |
- * | Android             | Capacitor native HTTP (RijiHttp)    | Android Keystore          |
+ * | Web + local FastAPI | local backend proxies WebDAV        | local SQLite configuration |
+ * | Windows Electron    | FastAPI sidecar proxies WebDAV      | local SQLite configuration |
+ * | Android             | Capacitor native HTTP (RijiHttp)    | local SQLite configuration |
  *
- * v0.11.0 is manual only: every remote mutation goes through an explicit user
+ * v0.11.x is manual only: every remote mutation goes through an explicit user
  * confirmation, downloads never write the local database and no merge algorithm
  * is added here.
  */
@@ -19,12 +19,11 @@ import { syncApi } from '../api/clientCore.js';
 import { createPasswordStore } from './passwordStore.js';
 
 export function createSyncAdapter({ api = syncApi, passwordStore = null } = {}) {
-  let storePromise = null;
-  const getStore = async () => {
-    if (!storePromise) storePromise = Promise.resolve(passwordStore || createPasswordStore());
-    return storePromise;
+  let legacyStorePromise = null;
+  const getLegacyStore = async () => {
+    if (!legacyStorePromise) legacyStorePromise = Promise.resolve(passwordStore || createPasswordStore());
+    return legacyStorePromise;
   };
-
   const call = (method, ...args) => api[method](...args);
 
   return {
@@ -33,49 +32,48 @@ export function createSyncAdapter({ api = syncApi, passwordStore = null } = {}) 
     },
 
     async saveConfig(draft) {
-      const store = await getStore();
-      const remember = Boolean(draft.remember_password);
-      const password = typeof draft.password === 'string' ? draft.password : '';
-      if (remember && password) {
-        // Optional durability: v0.11.1 automatic sync will depend on it.
-        await store.set(password);
-      } else if (!remember) {
-        await store.remove();
-      }
       return call('saveConfig', {
         base_url: draft.base_url,
         username: draft.username,
-        password,
-        remember_password: remember,
+        password: typeof draft.password === 'string' ? draft.password : '',
+        remember_password: Boolean(draft.remember_password),
         remote_directory: draft.remote_directory,
         remote_filename: draft.remote_filename,
         allow_insecure_http: Boolean(draft.allow_insecure_http),
       });
     },
 
-    /** Re-seed the backend session with a remembered password after a reload. */
+    /** Migrate a v0.11.0 platform-stored password into the local config row. */
     async restoreRememberedPassword() {
-      const store = await getStore();
       const config = await call('getConfig');
-      if (config.has_password) return { restored: false, config };
-      if (!config.remember_password || !config.base_url) return { restored: false, config };
-      const password = await store.get();
-      if (!password) return { restored: false, config };
-      const saved = await call('saveConfig', {
-        base_url: config.base_url,
-        username: config.username,
-        password,
-        remember_password: true,
-        remote_directory: config.remote_directory,
-        remote_filename: config.remote_filename,
-        allow_insecure_http: Boolean(config.allow_insecure_http),
-      });
-      return { restored: true, config: saved };
+      if (config.has_password || !config.remember_password || !config.base_url) return { restored: false, config };
+      try {
+        const store = await getLegacyStore();
+        const password = await store.get();
+        if (!password) return { restored: false, config };
+        const saved = await call('saveConfig', {
+          base_url: config.base_url,
+          username: config.username,
+          password,
+          remember_password: true,
+          remote_directory: config.remote_directory,
+          remote_filename: config.remote_filename,
+          allow_insecure_http: Boolean(config.allow_insecure_http),
+        });
+        try { await store.remove(); } catch { /* legacy cleanup is best effort */ }
+        return { restored: true, config: saved };
+      } catch {
+        return { restored: false, config };
+      }
     },
 
     async forgetPassword() {
-      const store = await getStore();
-      await store.remove();
+      const saved = await call('saveConfig', {
+        password: '',
+        remember_password: false,
+      });
+      try { await (await getLegacyStore()).remove(); } catch { /* legacy cleanup is best effort */ }
+      return saved;
     },
 
     async testConnection(draft) {

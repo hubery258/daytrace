@@ -67,8 +67,8 @@ export default function DataPortabilityPanel() {
 
   const clearFeedback = () => { setMessage(''); setError(''); };
 
-  const previewPackage = async (pack) => {
-    const nextPreview = await dataApi.previewImport(pack, mode);
+  const previewPackage = async (pack, importMode = mode) => {
+    const nextPreview = await dataApi.previewImport(pack, importMode);
     setPendingPackage(pack); setPreview(nextPreview);
   };
 
@@ -81,7 +81,8 @@ export default function DataPortabilityPanel() {
       setBusy(true);
       (async () => {
         try {
-          await previewPackage(incoming.package);
+          setMode('merge');
+          await previewPackage(incoming.package, 'merge');
           setMessage('已载入 WebDAV 下载的远端数据包，请在下方预览并确认合并导入。取消不会修改本机数据。');
         } catch (err) {
           setError(err.message || '无法预览远端数据包');

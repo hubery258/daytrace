@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from app import models, schemas, webdav_sync
-from app.data_portability import export_package
+from app.data_portability import export_package, import_package
 from app.database import Base
 from app.routers import sync_webdav
 from app.webdav_client import (
@@ -51,6 +51,8 @@ class FakeWebDavState:
         self.quota_exceeded = False
         self.requests: list[tuple[str, str]] = []
         self.uploaded: list[tuple[str, bytes]] = []
+        self.include_etag = True
+        self.before_put = None
 
     def directory_exists(self, path: str) -> bool:
         if path in self.directories:
@@ -124,7 +126,7 @@ class FakeWebDavHandler(BaseHTTPRequestHandler):
                 "<d:resourcetype/>"
                 f"<d:getcontentlength>{len(body)}</d:getcontentlength>"
                 "<d:getlastmodified>Mon, 15 Sep 2026 09:00:00 GMT</d:getlastmodified>"
-                f"<d:getetag>{etag_for(body)}</d:getetag>"
+                + (f"<d:getetag>{etag_for(body)}</d:getetag>" if state.include_etag else "")
             )
         return (
             '<?xml version="1.0" encoding="utf-8"?>'
@@ -186,9 +188,17 @@ class FakeWebDavHandler(BaseHTTPRequestHandler):
         if not self.state.directory_exists(self.state.parent_of(path)):
             self.respond(409)
             return
+        if self.state.before_put is not None:
+            callback = self.state.before_put
+            self.state.before_put = None
+            callback(path)
         if_match = self.headers.get("If-Match")
+        if_none_match = self.headers.get("If-None-Match")
         current = self.state.files.get(path)
         if if_match is not None and (current is None or etag_for(current) != if_match):
+            self.respond(412)
+            return
+        if if_none_match == "*" and current is not None:
             self.respond(412)
             return
         etag = self.state.store(path, body)
@@ -509,28 +519,45 @@ class WebDavServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(payload["remember_password"])
         serialized = json.dumps(payload, ensure_ascii=False)
         self.assertNotIn(FAKE_PASSWORD, serialized)
+        config_request = schemas.WebDavConfigIn(password=FAKE_PASSWORD)
+        test_request = schemas.WebDavTestRequest(password=FAKE_PASSWORD)
+        self.assertNotIn(FAKE_PASSWORD, repr(config_request))
+        self.assertNotIn(FAKE_PASSWORD, repr(test_request))
+        config = await webdav_sync.get_or_create_config(self.db)
+        self.assertEqual(config.password, FAKE_PASSWORD)
+        self.assertNotIn(FAKE_PASSWORD, repr(config))
 
     async def test_remember_password_off_forgets_the_secret(self):
         await self.save_config(remember_password=True)
         self.assertTrue(webdav_sync.has_session_password(await webdav_sync.get_or_create_config(self.db)))
         await self.save_config(remember_password=False, password="")
-        self.assertFalse(webdav_sync.has_session_password(await webdav_sync.get_or_create_config(self.db)))
+        config = await webdav_sync.get_or_create_config(self.db)
+        self.assertFalse(webdav_sync.has_session_password(config))
+        self.assertEqual(config.password, "")
         with self.assertRaises(WebDavError) as captured:
             await webdav_sync.preflight_upload(self.db)
         self.assertEqual(captured.exception.code, "SYNC_PASSWORD_REQUIRED")
 
-    async def test_remember_password_on_without_any_secret_is_rejected(self):
+    async def test_remember_password_on_uses_the_local_password_after_session_reset(self):
         await self.save_config(remember_password=True)
         webdav_sync.reset_session_secrets()
-        with self.assertRaises(WebDavError) as captured:
-            await self.save_config(remember_password=True, password="")
-        self.assertEqual(captured.exception.code, "SYNC_PASSWORD_REQUIRED")
+        payload = await self.save_config(remember_password=True, password="")
+        self.assertTrue(payload["has_password"])
 
     async def test_empty_password_keeps_the_cached_secret(self):
         await self.save_config(remember_password=True)
         payload = await self.save_config(remember_password=True, password="")
         self.assertTrue(payload["has_password"])
         self.assertTrue(payload["remember_password"])
+        config = await webdav_sync.get_or_create_config(self.db)
+        self.assertEqual(config.password, FAKE_PASSWORD)
+
+    async def test_remembered_password_survives_process_session_reset(self):
+        await self.save_config(remember_password=True)
+        webdav_sync.reset_session_secrets()
+        payload = webdav_sync.config_payload(await webdav_sync.get_or_create_config(self.db))
+        self.assertTrue(payload["has_password"])
+        await webdav_sync.preflight_upload(self.db)
 
     async def test_non_ascii_remote_directory_round_trips(self):
         payload = await self.save_config(remote_directory="日迹同步")
@@ -544,7 +571,7 @@ class WebDavServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(empty["local"]["schema_version"], "0.10.0")
         self.assertEqual(empty["local"]["entity_counts"]["todos"], 1)
 
-        await webdav_sync.upload_latest(self.db, confirmed=True, expected_remote_etag=None)
+        await webdav_sync.upload_latest(self.db, confirmed=True, expected_remote_etag=None, expected_remote_exists=False)
         filled = await webdav_sync.preflight_upload(self.db)
         self.assertTrue(filled["remote"]["exists"])
         self.assertEqual(filled["remote"]["schema_version"], "0.10.0")
@@ -568,7 +595,7 @@ class WebDavServiceTests(unittest.IsolatedAsyncioTestCase):
             await webdav_sync.upload_latest(self.db, confirmed=False, expected_remote_etag=None)
         self.assertEqual(captured.exception.code, "SYNC_CONFIRMATION_REQUIRED")
 
-        result = await webdav_sync.upload_latest(self.db, confirmed=True, expected_remote_etag=None)
+        result = await webdav_sync.upload_latest(self.db, confirmed=True, expected_remote_etag=None, expected_remote_exists=False)
         self.assertTrue(result["ok"])
         self.assertTrue(result["path"].endswith("/daytrace/daytrace-latest.json"))
         self.assertIsNotNone(result["etag"])
@@ -582,7 +609,7 @@ class WebDavServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_upload_content_excludes_secrets(self):
         await self.seed_local_data()
         await self.save_config()
-        await webdav_sync.upload_latest(self.db, confirmed=True, expected_remote_etag=None)
+        await webdav_sync.upload_latest(self.db, confirmed=True, expected_remote_etag=None, expected_remote_exists=False)
         body = self.server.state.files[FAKE_ROOT + "/daytrace/daytrace-latest.json"].decode()
         self.assertNotIn("zju-secret-never-upload", body)
         self.assertNotIn(FAKE_PASSWORD, body)
@@ -599,19 +626,60 @@ class WebDavServiceTests(unittest.IsolatedAsyncioTestCase):
         self.server.state.directories.add(FAKE_ROOT + "/daytrace")
         self.server.state.store(FAKE_ROOT + "/daytrace/daytrace-latest.json", b'{"app":"riji"}')
         with self.assertRaises(WebDavError) as captured:
-            await webdav_sync.upload_latest(self.db, confirmed=True, expected_remote_etag=None)
+            await webdav_sync.upload_latest(self.db, confirmed=True, expected_remote_etag=None, expected_remote_exists=False)
         self.assertEqual(captured.exception.code, "WEBDAV_CONFLICT")
         self.assertEqual(self.server.state.files[FAKE_ROOT + "/daytrace/daytrace-latest.json"], b'{"app":"riji"}')
         self.assertEqual((await webdav_sync.get_status(self.db))["last_error_code"], "WEBDAV_CONFLICT")
 
+    async def test_upload_refuses_existing_file_without_etag(self):
+        await self.save_config()
+        path = FAKE_ROOT + "/daytrace/daytrace-latest.json"
+        self.server.state.directories.add(FAKE_ROOT + "/daytrace")
+        self.server.state.store(path, b'{"app":"riji","keep":true}')
+        self.server.state.include_etag = False
+        with self.assertRaises(WebDavError) as captured:
+            await webdav_sync.upload_latest(
+                self.db, confirmed=True, expected_remote_etag=None, expected_remote_exists=True,
+            )
+        self.assertEqual(captured.exception.code, "WEBDAV_CONFLICT")
+        self.assertEqual(self.server.state.files[path], b'{"app":"riji","keep":true}')
+
+    async def test_upload_create_only_condition_catches_race_after_stat(self):
+        await self.save_config()
+        path = FAKE_ROOT + "/daytrace/daytrace-latest.json"
+        other_device_data = b'{"app":"riji","created_by":"other-device"}'
+        self.server.state.before_put = lambda _path: self.server.state.store(path, other_device_data)
+        with self.assertRaises(WebDavError) as captured:
+            await webdav_sync.upload_latest(
+                self.db, confirmed=True, expected_remote_etag=None, expected_remote_exists=False,
+            )
+        self.assertEqual(captured.exception.code, "WEBDAV_CONFLICT")
+        self.assertEqual(self.server.state.files[path], other_device_data)
+
+    async def test_upload_if_match_condition_catches_change_after_stat(self):
+        await self.save_config()
+        path = FAKE_ROOT + "/daytrace/daytrace-latest.json"
+        original = b'{"app":"riji","version":1}'
+        other_device_data = b'{"app":"riji","version":2}'
+        self.server.state.directories.add(FAKE_ROOT + "/daytrace")
+        self.server.state.store(path, original)
+        original_etag = etag_for(original)
+        self.server.state.before_put = lambda _path: self.server.state.store(path, other_device_data)
+        with self.assertRaises(WebDavError) as captured:
+            await webdav_sync.upload_latest(
+                self.db, confirmed=True, expected_remote_etag=original_etag, expected_remote_exists=True,
+            )
+        self.assertEqual(captured.exception.code, "WEBDAV_CONFLICT")
+        self.assertEqual(self.server.state.files[path], other_device_data)
+
     async def test_upload_conflicts_on_changed_etag(self):
         await self.save_config()
-        await webdav_sync.upload_latest(self.db, confirmed=True, expected_remote_etag=None)
+        await webdav_sync.upload_latest(self.db, confirmed=True, expected_remote_etag=None, expected_remote_exists=False)
         stale = (await webdav_sync.get_status(self.db))["last_remote_etag"]
         path = FAKE_ROOT + "/daytrace/daytrace-latest.json"
         self.server.state.store(path, b'{"app":"riji","changed":true}')
         with self.assertRaises(WebDavError) as captured:
-            await webdav_sync.upload_latest(self.db, confirmed=True, expected_remote_etag=stale)
+            await webdav_sync.upload_latest(self.db, confirmed=True, expected_remote_etag=stale, expected_remote_exists=True)
         self.assertEqual(captured.exception.code, "WEBDAV_CONFLICT")
         self.assertEqual(self.server.state.files[path], b'{"app":"riji","changed":true}')
 
@@ -632,7 +700,7 @@ class WebDavServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_download_returns_package_without_touching_local_data(self):
         await self.seed_local_data()
         await self.save_config()
-        uploaded = await webdav_sync.upload_latest(self.db, confirmed=True, expected_remote_etag=None)
+        uploaded = await webdav_sync.upload_latest(self.db, confirmed=True, expected_remote_etag=None, expected_remote_exists=False)
 
         remote_package = await self.export_other_device_package(["远端待办 A", "远端待办 B"])
         self.server.state.store(
@@ -727,11 +795,19 @@ class WebDavServiceTests(unittest.IsolatedAsyncioTestCase):
         await self.seed_local_data()
         await self.save_config()
         expected = await export_package(self.db)
-        await webdav_sync.upload_latest(self.db, confirmed=True, expected_remote_etag=None)
+        await webdav_sync.upload_latest(self.db, confirmed=True, expected_remote_etag=None, expected_remote_exists=False)
         uploaded = json.loads(self.server.state.files[FAKE_ROOT + "/daytrace/daytrace-latest.json"])
         self.assertEqual(uploaded["entities"].keys(), expected["entities"].keys())
         self.assertEqual(len(uploaded["entities"]["todos"]), len(expected["entities"]["todos"]))
         self.assertEqual(uploaded["app"], expected["app"])
+
+    async def test_portable_import_leaves_local_webdav_password_untouched(self):
+        await self.save_config(remember_password=True)
+        package = await export_package(self.db)
+        await import_package(self.db, package, mode="replace")
+        config = await webdav_sync.get_or_create_config(self.db)
+        self.assertEqual(config.password, FAKE_PASSWORD)
+        self.assertTrue(config.remember_password)
 
 
 if __name__ == "__main__":

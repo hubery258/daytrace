@@ -70,16 +70,16 @@ afterEach(async () => {
   await connection.close();
 });
 
-test('migration 6 adds a single-row webdav config table', async () => {
+test('migration 7 adds local WebDAV credential storage', async () => {
   const migrations = (await connection.query('SELECT version FROM mobile_schema_migrations ORDER BY version')).values;
-  assert.deepEqual(migrations.map((item) => item.version), [1, 2, 3, 4, 5, 6]);
+  assert.deepEqual(migrations.map((item) => item.version), [1, 2, 3, 4, 5, 6, 7]);
   const version = (await connection.query('PRAGMA user_version')).values[0].user_version;
-  assert.equal(version, 6);
+  assert.equal(version, 7);
   const table = (await connection.query("SELECT name FROM sqlite_master WHERE type='table' AND name='webdav_config'")).values;
   assert.equal(table.length, 1);
 });
 
-test('android config endpoints never expose the password', async () => {
+test('android config endpoints hide the password while SQLite persists it locally', async () => {
   const initial = await call('/sync/webdav/config');
   assert.deepEqual(initial, {
     base_url: '', username: '', remote_directory: 'daytrace', remote_filename: 'daytrace-latest.json',
@@ -94,8 +94,17 @@ test('android config endpoints never expose the password', async () => {
 
   const stored = (await connection.query('SELECT * FROM webdav_config')).values;
   assert.equal(stored.length, 1);
-  assert.equal(Object.keys(stored[0]).includes('password'), false);
-  assert.equal(JSON.stringify(stored[0]).includes(PASSWORD), false);
+  assert.equal(Object.keys(stored[0]).includes('password'), true);
+  assert.equal(stored[0].password, PASSWORD);
+
+  __resetWebdavSyncStateForTests();
+  const afterRestart = await call('/sync/webdav/config');
+  assert.equal(afterRestart.has_password, true);
+  const status = await call('/sync/webdav/status');
+  assert.equal(status.has_password, true);
+  assert.equal(status.configured, true);
+  const tested = await call('/sync/webdav/test', 'POST', {});
+  assert.equal(tested.ok, true, JSON.stringify(tested));
 });
 
 test('android config validation rejects unsafe input', async () => {
@@ -130,6 +139,22 @@ test('unchecking remember password forgets the session secret', async () => {
     call('/sync/webdav/upload/preflight', 'POST', {}),
     (error) => error.code === 'SYNC_PASSWORD_REQUIRED',
   );
+});
+
+test('portable import leaves the local WebDAV credential untouched', async () => {
+  await call('/sync/webdav/config', 'PUT', baseConfig());
+  const pack = {
+    app: 'riji', schema_version: '0.8.0', exported_at: '2026-09-15T08:50:00.000Z',
+    entities: {
+      projects: [], recurrence_rules: [], recurrence_exceptions: [], todos: [],
+      time_block_categories: [], time_blocks: [], schedules: [], daily_logs: [],
+      log_templates: [], timer_sessions: [],
+    },
+  };
+  await call('/data/import', 'POST', { package: pack, mode: 'replace' });
+  const row = (await connection.query('SELECT password, remember_password FROM webdav_config')).values[0];
+  assert.equal(row.password, PASSWORD);
+  assert.equal(row.remember_password, 1);
 });
 
 test('test connection reports checks and creates the remote directory', async () => {

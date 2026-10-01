@@ -8,19 +8,13 @@ let mainWindow = null;
 let sidecar = null;
 let quitting = false;
 
-/**
- * WebDAV password storage for the desktop build.
- *
- * safeStorage encrypts with the OS keychain (DPAPI on Windows). Only ciphertext
- * is written to the user data directory, and the value is never logged.
- */
+/** Legacy v0.11.0 migration store; new WebDAV saves use the sidecar SQLite row. */
 const SECRETS_FILE = () => path.join(app.getPath('userData'), 'desktop-secrets.json');
 const SECRET_KEY_PATTERN = /^[A-Za-z0-9_.:-]{1,128}$/;
 
 function readSecrets() {
   try {
-    const raw = fs.readFileSync(SECRETS_FILE(), 'utf8');
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(fs.readFileSync(SECRETS_FILE(), 'utf8'));
     return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
     return {};
@@ -48,11 +42,7 @@ function registerSecretHandlers() {
   ipcMain.handle('riji-secure:get', (_event, key) => {
     const stored = readSecrets()[requireSecretKey(key)];
     if (typeof stored !== 'string' || !stored) return null;
-    try {
-      return safeStorage.decryptString(Buffer.from(stored, 'base64'));
-    } catch {
-      return null;
-    }
+    try { return safeStorage.decryptString(Buffer.from(stored, 'base64')); } catch { return null; }
   });
   ipcMain.handle('riji-secure:remove', (_event, key) => {
     const secrets = readSecrets();

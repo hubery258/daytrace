@@ -8,7 +8,7 @@
 export const DEFAULT_REMOTE_DIRECTORY = 'daytrace';
 export const DEFAULT_REMOTE_FILENAME = 'daytrace-latest.json';
 export const WEBDAV_INSECURE_WARNING = '当前服务器地址未使用 HTTPS。WebDAV 密码会以明文经过网络，请确认你信任该服务器后再继续。';
-export const WEBDAV_REMEMBER_HINT = 'Windows 和 Android 使用系统安全存储；Web 端使用加密后的浏览器本地存储，安全性低于系统钥匙串。关闭记住密码后，关闭页面需要重新输入。';
+export const WEBDAV_REMEMBER_HINT = '勾选后密码保存在本机数据库，不会进入导出的 JSON 数据包；取消后密码只保留在当前同步进程内存，进程结束后需重新输入。复制或分享数据库文件时，其中的密码也会被包含。';
 export const WEBDAV_UPLOAD_WARNING = '上传会用本机数据覆盖远端 daytrace-latest.json。该操作不合并远端数据。如果远端文件更新时间更晚，请先下载并确认。';
 export const WEBDAV_DOWNLOAD_NOTICE = '下载后会先进入导入预览，不会直接覆盖本机数据。具体合并规则沿用现有 JSON 合并逻辑。';
 export const WEBDAV_AUTO_SYNC_TEASER = '自动同步将在 v0.11.1 提供：应用运行期间按设定间隔自动上传；应用关闭后不继续后台同步。';

@@ -249,6 +249,7 @@ const MIGRATIONS = [
         CREATE TABLE IF NOT EXISTS webdav_config (
           id INTEGER PRIMARY KEY CHECK (id = 1), uuid TEXT NOT NULL,
           base_url TEXT NOT NULL DEFAULT '', username TEXT NOT NULL DEFAULT '',
+          password TEXT NOT NULL DEFAULT '',
           remote_directory TEXT NOT NULL DEFAULT 'daytrace',
           remote_filename TEXT NOT NULL DEFAULT 'daytrace-latest.json',
           remember_password INTEGER NOT NULL DEFAULT 0,
@@ -259,6 +260,13 @@ const MIGRATIONS = [
           last_remote_modified_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
         );
       `, false);
+    },
+  },
+  {
+    version: 7,
+    name: 'v0.11.1 local WebDAV credential storage',
+    up: async (db) => {
+      await ensureColumn(db, 'webdav_config', 'password', "password TEXT NOT NULL DEFAULT ''");
     },
   },
 ];

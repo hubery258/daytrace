@@ -12,7 +12,7 @@ from sqlalchemy import text
 from .database import async_engine, Base
 from .routers import data_portability, logs, projects, recurrence, schedules, sync_webdav, time_blocks, timer, todos, zju
 
-SQLITE_SCHEMA_VERSION = 10
+SQLITE_SCHEMA_VERSION = 11
 
 class SPAStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
@@ -103,6 +103,10 @@ async def ensure_sqlite_schema_compat(conn):
             "created_at": "created_at DATETIME",
             "updated_at": "updated_at DATETIME",
         },
+    )
+    await add_missing_columns(
+        "webdav_configs",
+        {"password": "password TEXT DEFAULT ''"},
     )
     await add_missing_columns(
         "import_batches",
@@ -219,7 +223,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="日迹 API",
     description="个人效率助手 - 待办 & 日程 & 项目 & AI 分析",
-    version="0.11.0",
+    version="0.11.1",
     lifespan=lifespan,
 )
 

@@ -247,13 +247,7 @@ test('sync adapter drives the API contract and remembers the password explicitly
     download: async () => ({ remote: REMOTE_FILE, package: { app: 'riji', schema_version: '0.10.0' }, summary: { entity_counts: {} } }),
     status: async () => ({ configured: true, busy: false }),
   };
-  const secrets = new Map();
-  const passwordStore = {
-    async set(value) { secrets.set(WEBDAV_SECRET_KEY, value); },
-    async get() { return secrets.get(WEBDAV_SECRET_KEY) ?? null; },
-    async remove() { secrets.delete(WEBDAV_SECRET_KEY); },
-  };
-  const adapter = createSyncAdapter({ api, passwordStore });
+  const adapter = createSyncAdapter({ api });
 
   const config = await adapter.getConfig();
   assert.equal(config.username, 'alice');
@@ -262,7 +256,7 @@ test('sync adapter drives the API contract and remembers the password explicitly
     ...emptyWebdavForm({ base_url: 'https://dav.example.com/dav', username: 'alice', password: 'app-password', remember_password: true }),
   });
   assert.equal(saved.has_password, true);
-  assert.equal(secrets.get(WEBDAV_SECRET_KEY), 'app-password');
+  assert.equal(calls[0][1].password, 'app-password');
   assert.deepEqual(calls[0][1].allow_insecure_http, false);
 
   const tested = await adapter.testConnection({ ...emptyWebdavForm({ base_url: 'https://dav.example.com/dav', username: 'alice', password: 'app-password' }) });
@@ -287,16 +281,57 @@ test('sync adapter drives the API contract and remembers the password explicitly
   assert.equal(downloaded.package.app, 'riji');
 
   await adapter.saveConfig({ ...emptyWebdavForm({ base_url: 'https://dav.example.com/dav', username: 'alice', remember_password: false }) });
-  assert.equal(secrets.has(WEBDAV_SECRET_KEY), false, 'unchecking remember must drop the stored secret');
+  assert.equal(calls.at(-1)[1].remember_password, false);
 });
 
-test('sync adapter restores a remembered password after a backend restart', async () => {
-  const secrets = new Map([[WEBDAV_SECRET_KEY, 'remembered-password']]);
-  const passwordStore = {
-    async set(value) { secrets.set(WEBDAV_SECRET_KEY, value); },
-    async get() { return secrets.get(WEBDAV_SECRET_KEY) ?? null; },
-    async remove() { secrets.delete(WEBDAV_SECRET_KEY); },
+test('session-only WebDAV config is saved without a persistent password', async () => {
+  const calls = [];
+  const adapter = createSyncAdapter({
+    api: {
+      getConfig: async () => ({ has_password: false }),
+      saveConfig: async (data) => { calls.push(data); return { ...data, has_password: true, remember_password: data.remember_password }; },
+    },
+  });
+  const saved = await adapter.saveConfig({
+    ...emptyWebdavForm({ base_url: 'https://dav.example.com/dav', username: 'alice', password: 'session-password', remember_password: false }),
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].remember_password, false);
+  assert.equal(calls[0].password, 'session-password');
+  assert.equal(saved.password_storage_warning, undefined);
+});
+
+test('disabling remembered password clears the local password field', async () => {
+  const calls = [];
+  const adapter = createSyncAdapter({
+    api: {
+      getConfig: async () => ({ has_password: true, remember_password: true }),
+      saveConfig: async (data) => { calls.push(data); return { ...data, has_password: false, remember_password: false }; },
+    },
+  });
+  const saved = await adapter.saveConfig({
+    ...emptyWebdavForm({ base_url: 'https://dav.example.com/dav', username: 'alice', password: '', remember_password: false }),
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].remember_password, false);
+  assert.equal(calls[0].password, '');
+  assert.equal(saved.password_storage_warning, undefined);
+});
+
+test('sync adapter trusts the database-backed config after a restart', async () => {
+  const api = {
+    getConfig: async () => ({
+      base_url: 'https://dav.example.com/dav', username: 'alice', has_password: true,
+      remember_password: true, remote_directory: 'daytrace', remote_filename: 'daytrace-latest.json',
+    }),
   };
+  const adapter = createSyncAdapter({ api });
+  const result = await adapter.restoreRememberedPassword();
+  assert.equal(result.restored, false);
+  assert.equal(result.config.has_password, true);
+});
+
+test('sync adapter migrates a legacy platform password into the local config row', async () => {
   const saved = [];
   const api = {
     getConfig: async () => ({
@@ -305,41 +340,58 @@ test('sync adapter restores a remembered password after a backend restart', asyn
     }),
     saveConfig: async (data) => { saved.push(data); return { ...data, has_password: true }; },
   };
-  const adapter = createSyncAdapter({ api, passwordStore });
+  let removed = false;
+  const adapter = createSyncAdapter({
+    api,
+    passwordStore: {
+      async get() { return 'legacy-password'; },
+      async remove() { removed = true; },
+    },
+  });
   const result = await adapter.restoreRememberedPassword();
   assert.equal(result.restored, true);
-  assert.equal(saved[0].password, 'remembered-password');
-
-  const alreadySeeded = createSyncAdapter({
-    api: { getConfig: async () => ({ has_password: true, remember_password: true, base_url: 'https://dav.example.com' }) },
-    passwordStore,
-  });
-  assert.equal((await alreadySeeded.restoreRememberedPassword()).restored, false);
-
-  const nothingRemembered = createSyncAdapter({
-    api: { getConfig: async () => ({ has_password: false, remember_password: false, base_url: 'https://dav.example.com' }) },
-    passwordStore,
-  });
-  assert.equal((await nothingRemembered.restoreRememberedPassword()).restored, false);
-
-  const nothingStored = createSyncAdapter({
-    api: { getConfig: async () => ({ has_password: false, remember_password: true, base_url: 'https://dav.example.com' }) },
-    passwordStore: { async get() { return null; }, async set() {}, async remove() {} },
-  });
-  assert.equal((await nothingStored.restoreRememberedPassword()).restored, false);
+  assert.equal(saved[0].password, 'legacy-password');
+  assert.equal(removed, true);
 });
 
-test('web password storage encrypts the secret and never stores plaintext', async () => {
+test('web password storage encrypts the secret with a non-extractable key', async () => {
   const storage = new MemoryStorage();
-  const store = await createWebSecretStore({ storage, keyStorage: createMemoryKeyStorage() });
+  const keyStorage = createMemoryKeyStorage();
+  const store = await createWebSecretStore({ storage, keyStorage });
   await store.set('app-password-never-log');
   const raw = storage.getItem(WEBDAV_SECRET_KEY);
   assert.match(raw, /"v":1/);
   assert.equal(raw.includes('app-password-never-log'), false);
+  const key = await keyStorage.load();
+  assert.equal(key.extractable, false);
+  assert.equal(key.algorithm.name, 'AES-GCM');
   assert.equal(await store.get(), 'app-password-never-log');
   await store.remove();
   assert.equal(await store.get(), null);
   assert.equal(storage.getItem(WEBDAV_SECRET_KEY), null);
+});
+
+test('web password storage migrates the legacy raw key and keeps the saved password readable', async () => {
+  const { webcrypto } = await import('node:crypto');
+  const storage = new MemoryStorage();
+  const keyStorage = createMemoryKeyStorage();
+  const rawKey = new Uint8Array(32).fill(7);
+  const legacyKey = await webcrypto.subtle.importKey('raw', rawKey, { name: 'AES-GCM' }, true, ['encrypt', 'decrypt']);
+  const iv = webcrypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await webcrypto.subtle.encrypt(
+    { name: 'AES-GCM', iv }, legacyKey, new TextEncoder().encode('legacy-password'),
+  );
+  storage.setItem(WEBDAV_SECRET_KEY, JSON.stringify({
+    v: 1,
+    iv: Buffer.from(iv).toString('base64'),
+    data: Buffer.from(ciphertext).toString('base64'),
+  }));
+  await keyStorage.save(rawKey);
+  const store = await createWebSecretStore({ storage, keyStorage });
+  assert.equal(await store.get(), 'legacy-password');
+  const migratedKey = await keyStorage.load();
+  assert.equal(migratedKey.extractable, false);
+  assert.equal(await store.get(), 'legacy-password');
 });
 
 test('web password storage survives a corrupted blob with a null result', async () => {

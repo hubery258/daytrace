@@ -16,6 +16,14 @@ from sqlalchemy import (
 from .database import Base
 
 
+class SecretColumn(Column):
+    """Column marker for values that must stay out of diagnostics."""
+
+    def __init__(self, *args, repr=False, **kwargs):
+        self.secret_repr = repr
+        super().__init__(*args, **kwargs)
+
+
 def beijing_now() -> datetime:
     return datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None)
 
@@ -314,13 +322,7 @@ class ZjuGradeSnapshot(Base):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
 
 class WebDavConfig(Base):
-    """Local WebDAV sync configuration and status (v0.11.0).
-
-    The WebDAV password is deliberately absent from this table. Secrets stay in
-    the client's platform secure storage and, for the current backend process,
-    in memory only, so no password can reach the database, the JSON data
-    package or a log line.
-    """
+    """Local WebDAV configuration; excluded from portable data packages."""
 
     __tablename__ = "webdav_configs"
 
@@ -329,6 +331,7 @@ class WebDavConfig(Base):
     name = Column(String(100), default="WebDAV", nullable=False)
     base_url = Column(String(2048), default="", nullable=False)
     username = Column(String(200), default="", nullable=False)
+    password = SecretColumn(Text, default="", nullable=False, repr=False)
     remote_directory = Column(String(300), default="daytrace", nullable=False)
     remote_filename = Column(String(200), default="daytrace-latest.json", nullable=False)
     remember_password = Column(Boolean, default=False, nullable=False)
@@ -343,6 +346,12 @@ class WebDavConfig(Base):
     last_remote_modified_at = Column(String(100), nullable=True)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+    def __repr__(self) -> str:
+        return (
+            f"WebDavConfig(uuid={self.uuid!r}, base_url={self.base_url!r}, "
+            f"username={self.username!r}, remember_password={self.remember_password!r})"
+        )
 
 
 class ImportBatch(Base):

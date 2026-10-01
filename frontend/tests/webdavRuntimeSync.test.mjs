@@ -102,13 +102,21 @@ test('the shipped schema carries a single webdav config row', async () => {
   assert.equal((await connection.query('SELECT COUNT(*) AS count FROM webdav_config')).values[0].count, 1);
 });
 
-test('the runtime layer saves config without storing the password', async () => {
+test('the runtime layer stores the password locally without exposing it', async () => {
   const saved = await call('/sync/webdav/config', 'PUT', baseConfig());
   assert.equal(saved.has_password, true);
   assert.equal(JSON.stringify(saved).includes(FAKE_PASSWORD), false);
   const row = (await connection.query('SELECT * FROM webdav_config')).values[0];
-  assert.equal(Object.keys(row).includes('password'), false);
-  assert.equal(JSON.stringify(row).includes(FAKE_PASSWORD), false);
+  assert.equal(Object.keys(row).includes('password'), true);
+  assert.equal(row.password, FAKE_PASSWORD);
+});
+
+test('portable import leaves the local WebDAV credential untouched', async () => {
+  await call('/sync/webdav/config', 'PUT', baseConfig());
+  await call('/data/import', 'POST', { package: validPackage('来自远端'), mode: 'replace' });
+  const row = (await connection.query('SELECT password, remember_password FROM webdav_config')).values[0];
+  assert.equal(row.password, FAKE_PASSWORD);
+  assert.equal(row.remember_password, 1);
 });
 
 test('the runtime layer uploads v0.10 time-block data and downloads it again', async () => {
@@ -144,6 +152,48 @@ test('the runtime layer uploads v0.10 time-block data and downloads it again', a
   assert.equal(downloaded.package.schema_version, '0.10.0');
   assert.equal(downloaded.package.entities.time_blocks.length, 1);
   assert.equal(downloaded.summary.entity_counts.time_blocks, 1);
+});
+
+test('the runtime layer refuses an existing remote file without an ETag', async () => {
+  await call('/sync/webdav/config', 'PUT', baseConfig());
+  server.directories.add(`${FAKE_ROOT}/daytrace`);
+  const original = JSON.stringify(validPackage('保留远端'));
+  server.store(FAKE_REMOTE_PATH, original);
+  server.includeEtag = false;
+  await assert.rejects(
+    call('/sync/webdav/upload', 'POST', { confirmed: true, expected_remote_etag: null, expected_remote_exists: true }),
+    (error) => error.code === 'WEBDAV_CONFLICT',
+  );
+  assert.equal(server.files.get(FAKE_REMOTE_PATH), original);
+});
+
+test('the runtime layer uses create-only PUT to catch a file created after stat', async () => {
+  await call('/sync/webdav/config', 'PUT', baseConfig());
+  const otherDevice = JSON.stringify(validPackage('另一台设备'));
+  server.beforePut = (path) => server.store(path, otherDevice);
+  await assert.rejects(
+    call('/sync/webdav/upload', 'POST', { confirmed: true, expected_remote_etag: null, expected_remote_exists: false }),
+    (error) => error.code === 'WEBDAV_CONFLICT',
+  );
+  assert.equal(server.files.get(FAKE_REMOTE_PATH), otherDevice);
+});
+
+test('the runtime layer uses If-Match to catch a remote change after stat', async () => {
+  await call('/sync/webdav/config', 'PUT', baseConfig());
+  server.directories.add(`${FAKE_ROOT}/daytrace`);
+  const original = JSON.stringify(validPackage('原始远端'));
+  const otherDevice = JSON.stringify(validPackage('另一台设备'));
+  server.store(FAKE_REMOTE_PATH, original);
+  server.beforePut = (path) => server.store(path, otherDevice);
+  await assert.rejects(
+    call('/sync/webdav/upload', 'POST', {
+      confirmed: true,
+      expected_remote_etag: etagFor(original),
+      expected_remote_exists: true,
+    }),
+    (error) => error.code === 'WEBDAV_CONFLICT',
+  );
+  assert.equal(server.files.get(FAKE_REMOTE_PATH), otherDevice);
 });
 
 test('the runtime layer refuses to overwrite a remotely changed file', async () => {
