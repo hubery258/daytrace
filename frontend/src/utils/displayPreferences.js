@@ -5,6 +5,7 @@ export const DEFAULT_DISPLAY_PREFERENCES = Object.freeze({
   timeFormat: '24h',
   actualDisplayMode: 'blocks',
   timeBlockGranularity: 15,
+  homeUpcomingScheduleCount: 1,
   pages: Object.freeze({
     home: true,
     schedule: true,
@@ -40,6 +41,7 @@ export function readDisplayPreferences() {
       timeFormat: stored.timeFormat === '12h' ? '12h' : '24h',
       actualDisplayMode: stored.actualDisplayMode === 'timeline' ? 'timeline' : 'blocks',
       timeBlockGranularity: stored.timeBlockGranularity === 30 ? 30 : 15,
+      homeUpcomingScheduleCount: normalizeUpcomingCount(stored.homeUpcomingScheduleCount),
       pages: mergeKnownFlags(DEFAULT_DISPLAY_PREFERENCES.pages, stored.pages),
       homeModules: mergeKnownFlags(DEFAULT_DISPLAY_PREFERENCES.homeModules, stored.homeModules),
     };
@@ -48,6 +50,7 @@ export function readDisplayPreferences() {
       timeFormat: DEFAULT_DISPLAY_PREFERENCES.timeFormat,
       actualDisplayMode: DEFAULT_DISPLAY_PREFERENCES.actualDisplayMode,
       timeBlockGranularity: DEFAULT_DISPLAY_PREFERENCES.timeBlockGranularity,
+      homeUpcomingScheduleCount: DEFAULT_DISPLAY_PREFERENCES.homeUpcomingScheduleCount,
       pages: { ...DEFAULT_DISPLAY_PREFERENCES.pages },
       homeModules: { ...DEFAULT_DISPLAY_PREFERENCES.homeModules },
     };
@@ -59,10 +62,15 @@ export function writeDisplayPreferences(preferences) {
     timeFormat: preferences.timeFormat === '12h' ? '12h' : '24h',
     actualDisplayMode: preferences.actualDisplayMode === 'timeline' ? 'timeline' : 'blocks',
     timeBlockGranularity: preferences.timeBlockGranularity === 30 ? 30 : 15,
+    homeUpcomingScheduleCount: normalizeUpcomingCount(preferences.homeUpcomingScheduleCount),
     pages: mergeKnownFlags(DEFAULT_DISPLAY_PREFERENCES.pages, preferences.pages),
     homeModules: mergeKnownFlags(DEFAULT_DISPLAY_PREFERENCES.homeModules, preferences.homeModules),
   };
   localStorage.setItem(DISPLAY_PREFERENCES_STORAGE_KEY, JSON.stringify(normalized));
   window.dispatchEvent(new CustomEvent(DISPLAY_PREFERENCES_EVENT, { detail: normalized }));
   return normalized;
+}
+
+export function normalizeUpcomingCount(value) {
+  return [0, 1, 2].includes(value) ? value : DEFAULT_DISPLAY_PREFERENCES.homeUpcomingScheduleCount;
 }

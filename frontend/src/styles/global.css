@@ -4015,3 +4015,92 @@ textarea:focus-visible {
   .sync-summary-row { flex-direction: column; gap: 2px; }
   .sync-summary-row dd { text-align: left; }
 }
+
+/* Plan references share the minute grid, without participating in editing. */
+.home-upcoming { position: relative; z-index: 1; margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.25); }
+.home-upcoming h2 { margin: 0 0 8px; font-size: .8rem; font-weight: 600; opacity: .8; }
+.home-upcoming-empty { margin: 0; font-size: .8rem; opacity: .8; }
+.home-upcoming-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 9px 12px;
+  margin-top: 6px;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 8px;
+  background: rgba(255,255,255,.1);
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.home-upcoming-item:hover { background: rgba(255,255,255,.18); }
+.home-upcoming-item strong { min-width: 0; overflow-wrap: anywhere; font-size: .9rem; }
+.home-upcoming-item > span { flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; text-align: right; font-size: .8rem; }
+.home-upcoming-item small { opacity: .85; font-size: .72rem; }
+.home-upcoming-setting { margin-top: 16px; }
+@media (max-width: 600px) {
+  .home-upcoming-item { flex-direction: column; align-items: stretch; gap: 5px; }
+  .home-upcoming-item > span { flex-direction: row; flex-wrap: wrap; gap: 5px 10px; text-align: left; }
+}
+
+.actual-block-panel { --time-gutter: 52px; }
+.actual-block-grid-head button {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.actual-block-grid.with-plans {
+  overflow: clip;
+}
+.with-plans .actual-block-highlight { z-index: 4; }
+.actual-block-plans {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--time-gutter) + 2px);
+  right: 2px;
+  pointer-events: none;
+}
+.actual-block-plans * { pointer-events: none; }
+.actual-block-plan { position: absolute; box-sizing: border-box; padding: 0 2px; }
+.actual-block-plan-bar {
+  position: absolute;
+  inset: 0 2px;
+  box-sizing: border-box;
+  min-height: 1px;
+  border: 1px dashed #91a9c4;
+  border-radius: 3px;
+  background: rgba(219, 233, 250, .3);
+}
+.actual-block-plan-label {
+  position: absolute;
+  width: 48%;
+  right: 3px;
+  box-sizing: border-box;
+  padding: 1px 3px;
+  overflow: hidden;
+  background: rgba(237, 243, 250, .94);
+  color: #516b88;
+  border-radius: 2px;
+}
+.actual-block-plan-label > div { display: flex; align-items: center; gap: 3px; min-width: 0; height: 14px; }
+.actual-block-plan-label span { flex: 0 0 auto; font-size: .57rem; color: #627e9e; }
+.actual-block-plan-label strong,
+.actual-block-plan-label small { display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.actual-block-plan-label strong { font-size: .69rem; line-height: 14px; }
+.actual-block-plan-label small { font-size: .59rem; line-height: 14px; }
+@media (max-width: 600px) {
+  .actual-block-panel { --time-gutter: 47px; }
+  .actual-block-plan { padding: 0 1px; }
+  .actual-block-plan-bar { inset-inline: 1px; }
+  .actual-block-plan-label { right: 2px; padding-inline: 1px; }
+  .actual-block-plan-label > div { gap: 2px; }
+  .actual-block-plan-label strong { font-size: .61rem; }
+}

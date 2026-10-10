@@ -136,6 +136,7 @@ export default function SettingsPage() {
       timeFormat: DEFAULT_DISPLAY_PREFERENCES.timeFormat,
       actualDisplayMode: DEFAULT_DISPLAY_PREFERENCES.actualDisplayMode,
       timeBlockGranularity: DEFAULT_DISPLAY_PREFERENCES.timeBlockGranularity,
+      homeUpcomingScheduleCount: DEFAULT_DISPLAY_PREFERENCES.homeUpcomingScheduleCount,
       pages: { ...DEFAULT_DISPLAY_PREFERENCES.pages },
       homeModules: { ...DEFAULT_DISPLAY_PREFERENCES.homeModules },
     };
@@ -187,6 +188,16 @@ export default function SettingsPage() {
               ))}
             </div>
             <button className="btn btn-quiet reset-display-button" onClick={resetDisplayPreferences}>恢复默认展示</button>
+            <div className="form-group home-upcoming-setting">
+              <label htmlFor="home-upcoming-count">“接下来”显示数量</label>
+              <select id="home-upcoming-count" value={displayPreferences.homeUpcomingScheduleCount}
+                onChange={event => updateActualPreference('homeUpcomingScheduleCount', Number(event.target.value))}>
+                <option value={0}>0 个（隐藏接下来）</option>
+                <option value={1}>1 个</option>
+                <option value={2}>2 个</option>
+              </select>
+              <p className="field-hint">按开始时间显示今天接下来的计划；选择 0 不影响“此刻”。</p>
+            </div>
           </div>
           <div className="settings-panel">
             <div className="settings-panel-title"><h3>时间格式</h3><p>控制 DDL 时间输入和日程时间轴的显示方式。</p></div>

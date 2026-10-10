@@ -1,4 +1,5 @@
 import { scheduleDisplayName } from '../utils/displayName';
+import { getScheduleSegment } from '../utils/scheduleLayout';
 import { useState, useEffect, useCallback } from 'react';
 import { projectApi, recurrenceApi, scheduleApi, timeBlockApi, todoApi } from '../api/client';
 import { callChatCompletion } from '../ai/aiClient';
@@ -71,23 +72,6 @@ function minutesToLocalValue(dateStr, minutes) {
 
 function addDaysToDateStr(dateStr, days) {
   return addDays(dateStr, days);
-}
-
-function getScheduleSegment(schedule, dateStr) {
-  const dayStart = new Date(`${dateStr}T00:00:00+08:00`).getTime();
-  const dayEnd = dayStart + 24 * 60 * 60 * 1000;
-  const scheduleStart = parseAsLocal(schedule.start_time).getTime();
-  const scheduleEnd = parseAsLocal(schedule.end_time).getTime();
-  if (scheduleStart >= dayEnd || scheduleEnd <= dayStart) return null;
-
-  const visibleStart = Math.max(scheduleStart, dayStart);
-  const visibleEnd = Math.min(scheduleEnd, dayEnd);
-  return {
-    startMinutes: (visibleStart - dayStart) / 60000,
-    durationMinutes: Math.max(1, (visibleEnd - visibleStart) / 60000),
-    startsBefore: scheduleStart < dayStart,
-    endsAfter: scheduleEnd > dayEnd,
-  };
 }
 
 function segmentTimeLabel(schedule, segment) {
@@ -689,7 +673,7 @@ export default function SchedulePage() {
                   </button>
                 ))}
               </div>
-              <ActualTimeBlocks date={dateStr} blocks={actualBlocks} categories={categories}
+              <ActualTimeBlocks date={dateStr} blocks={actualBlocks} plannedSchedules={plannedSchedules} categories={categories}
                 todos={todos} projects={projects} granularity={actualPreferences.timeBlockGranularity}
                 onChanged={loadSchedules} />
             </>

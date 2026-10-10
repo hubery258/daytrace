@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { todoApi, scheduleApi, recurrenceApi, projectApi } from '../api/client';
 import TodoModal from '../components/TodoModal';
@@ -7,6 +7,7 @@ import ContextMenu from '../components/ContextMenu';
 import { BEIJING_TIME_ZONE, parseAsLocal, formatTime, todayStr } from '../utils/time';
 import { DISPLAY_PREFERENCES_EVENT, readDisplayPreferences } from '../utils/displayPreferences';
 import { projectItemDisplayName } from '../utils/displayName';
+import { createHomeScheduleLoader, currentScheduleAt, homeScheduleRefreshDelay, upcomingSchedules, untilScheduleStart } from '../utils/homeSchedules';
 
 function addDays(dateStr, days) {
   const d = new Date(`${dateStr}T00:00:00`);
@@ -14,14 +15,19 @@ function addDays(dateStr, days) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function todayLabel() {
+function todayLabel(now) {
   return new Intl.DateTimeFormat('zh-CN', {
     month: 'long', day: 'numeric', weekday: 'long',
-  }).format(new Date());
+    timeZone: BEIJING_TIME_ZONE,
+  }).format(new Date(now));
 }
 
 export default function HomePage() {
-  const [currentSchedule, setCurrentSchedule] = useState(null);
+  const [queriedCurrent, setQueriedCurrent] = useState(null);
+  const [todaySchedules, setTodaySchedules] = useState([]);
+  const [now, setNow] = useState(Date.now);
+  const [scheduleLoader] = useState(() => createHomeScheduleLoader({ scheduleApi, recurrenceApi, projectApi }));
+  const mounted = useRef(true);
   const [waitingTodos, setWaitingTodos] = useState([]);
   const [focusingTodos, setFocusingTodos] = useState([]);
   const [ddlNearTodos, setDdlNearTodos] = useState([]);
@@ -32,50 +38,73 @@ export default function HomePage() {
   const [showTodoModal, setShowTodoModal] = useState(false);
   const [editTodo, setEditTodo] = useState(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [editSchedule, setEditSchedule] = useState(null);
   const [showTodoPicker, setShowTodoPicker] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
   const [completingIds, setCompletingIds] = useState(new Set());
+
+  const refreshPlans = useCallback(async () => {
+    const data = await scheduleLoader.refresh();
+    if (!mounted.current) return;
+    setQueriedCurrent(data.current);
+    setTodaySchedules(data.schedules);
+    setProjects(data.projects);
+    setNow(Date.now());
+  }, [scheduleLoader]);
 
   const loadData = useCallback(async () => {
     try {
       setLoadError('');
       const today = todayStr();
-      await Promise.all([
-        recurrenceApi.generate({ entity_type: 'todo', date_from: today, date_to: addDays(today, 7) }),
-        recurrenceApi.generate({ entity_type: 'schedule', date_from: today, date_to: today }),
-      ]);
-      const [current, waiting, focusing, ddlNear, todos, projectList] = await Promise.all([
-        scheduleApi.current(),
+      await recurrenceApi.generate({ entity_type: 'todo', date_from: today, date_to: addDays(today, 7) });
+      const [waiting, focusing, ddlNear, todos] = await Promise.all([
         todoApi.waitingReply(),
         todoApi.focusing(),
         todoApi.ddlNear(),
         todoApi.list({ is_completed: false }),
-        projectApi.list(),
+        refreshPlans(),
       ]);
-      setCurrentSchedule(current);
+      if (!mounted.current) return;
       setWaitingTodos(waiting);
       setFocusingTodos(focusing);
       setDdlNearTodos(ddlNear);
       setAllTodos(todos);
-      setProjects(projectList);
     } catch (err) {
       console.error('加载首页数据失败', err);
       setLoadError('首页数据暂时没有加载完整。你的本地数据没有变化，可以稍后重试。');
     }
-  }, []);
+  }, [refreshPlans]);
 
-  useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => {
-    const refreshCurrentPlan = () => scheduleApi.current().then(setCurrentSchedule)
-      .catch(error => console.error('刷新当前计划日程失败', error));
-    const interval = window.setInterval(refreshCurrentPlan, 60000);
-    const onVisible = () => { if (document.visibilityState === 'visible') refreshCurrentPlan(); };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => {
-      window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', onVisible);
+    mounted.current = true;
+    loadData();
+    return () => { mounted.current = false; };
+  }, [loadData]);
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      setNow(Date.now());
+      refreshPlans().catch(error => console.error('刷新首页计划日程失败', error));
     };
-  }, []);
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    window.addEventListener('pageshow', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+      window.removeEventListener('pageshow', onVisible);
+    };
+  }, [refreshPlans]);
+
+  useEffect(() => {
+    if (document.visibilityState !== 'visible') return undefined;
+    const timeout = window.setTimeout(() => {
+      if (document.visibilityState !== 'visible') return;
+      setNow(Date.now());
+      refreshPlans().catch(error => console.error('刷新首页计划日程失败', error));
+    }, homeScheduleRefreshDelay(todaySchedules, now));
+    return () => window.clearTimeout(timeout);
+  }, [todaySchedules, now, refreshPlans]);
 
 
   useEffect(() => {
@@ -169,18 +198,20 @@ export default function HomePage() {
   const availableTodos = allTodos.filter(t => t.status !== 'focusing' && !t.is_completed);
   const modules = displayPreferences.homeModules;
   const visibleProjects = projects.filter(project => project.status === 'active').slice(0, 3);
+  const currentSchedule = currentScheduleAt(todaySchedules, now, queriedCurrent);
+  const upcoming = upcomingSchedules(todaySchedules, now, displayPreferences.homeUpcomingScheduleCount);
 
   return (
     <div className="home-page">
       <header className="home-hero">
         <div>
-          <div className="eyebrow">今天 · {todayLabel()}</div>
+          <div className="eyebrow">今天 · {todayLabel(now)}</div>
           <h1>日子缓缓向前，走过的地方自会留下痕迹。</h1>
           <p>先照顾眼前最重要的事，晚些时候再回看计划与现实。</p>
         </div>
         <div className="home-actions">
           <button className="btn btn-primary" onClick={() => { setEditTodo(null); setShowTodoModal(true); }}>新建待办</button>
-          <button className="btn btn-secondary" onClick={() => setShowScheduleModal(true)}>安排日程</button>
+          <button className="btn btn-secondary" onClick={() => { setEditSchedule(null); setShowScheduleModal(true); }}>安排日程</button>
           <Link className="btn btn-quiet" to="/ai-create">AI 新建</Link>
         </div>
       </header>
@@ -195,7 +226,7 @@ export default function HomePage() {
               <div className="schedule-name">{projectItemDisplayName(currentSchedule, projects)}</div>
               <div className="schedule-time">
                 {formatTime(currentSchedule.start_time)}—{formatTime(currentSchedule.end_time)} · 剩余{' '}
-                {Math.max(0, Math.floor((parseAsLocal(currentSchedule.end_time) - new Date()) / 60000))} 分钟
+                {Math.max(0, Math.floor((parseAsLocal(currentSchedule.end_time) - now) / 60000))} 分钟
               </div>
               {currentSchedule.recurrence_rule_id && <div className="schedule-extra">重复日程</div>}
               {currentSchedule.linked_todo_ids?.length > 0 && (
@@ -206,6 +237,19 @@ export default function HomePage() {
             </>
           ) : (
             <div className="no-schedule"><strong>现在没有进行中的日程</strong><span>留白也是一天的一部分。</span></div>
+          )}
+          {displayPreferences.homeUpcomingScheduleCount > 0 && (
+            <div className="home-upcoming" aria-labelledby="home-upcoming-title">
+              <h2 id="home-upcoming-title">接下来</h2>
+              {upcoming.length === 0 ? <p className="home-upcoming-empty">今天没有尚未开始的计划</p> : upcoming.map(schedule => (
+                <button type="button" className="home-upcoming-item" key={schedule.id}
+                  onClick={() => { setEditSchedule(schedule); setShowScheduleModal(true); }}
+                  aria-label={'查看日程：' + projectItemDisplayName(schedule, projects)}>
+                  <strong title={projectItemDisplayName(schedule, projects)}>{projectItemDisplayName(schedule, projects)}</strong>
+                  <span><time dateTime={schedule.start_time}>{formatTime(schedule.start_time)}</time><small>{untilScheduleStart(schedule, now)}</small></span>
+                </button>
+              ))}
+            </div>
           )}
         </section>
       )}
@@ -274,8 +318,9 @@ export default function HomePage() {
 
       {showScheduleModal && (
         <ScheduleModal
-          onClose={() => setShowScheduleModal(false)}
-          onSaved={() => { setShowScheduleModal(false); loadData(); }}
+          schedule={editSchedule}
+          onClose={() => { setShowScheduleModal(false); setEditSchedule(null); }}
+          onSaved={() => { setShowScheduleModal(false); setEditSchedule(null); loadData(); }}
         />
       )}
 

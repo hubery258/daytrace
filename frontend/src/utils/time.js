@@ -1,4 +1,4 @@
-import { readDisplayPreferences } from './displayPreferences';
+import { readDisplayPreferences } from './displayPreferences.js';
 
 /**
  * 将 datetime-local 输入值转为后端可接收的 ISO 字符串。

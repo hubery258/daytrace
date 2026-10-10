@@ -1,4 +1,5 @@
-import { projectItemDisplayName } from '../utils/displayName';
+import { projectItemDisplayName, scheduleDisplayName } from '../utils/displayName';
+import { getScheduleSegment, plannedBlockLayout } from '../utils/scheduleLayout';
 import { useEffect, useRef, useState } from 'react';
 import { timeBlockApi } from '../api/client';
 import { groupTimeBlocks, minuteLabel } from '../utils/timeBlocks';
@@ -19,7 +20,7 @@ function inkForColor(color) {
   return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722 > 0.42 ? '#21312f' : '#fff';
 }
 
-export default function ActualTimeBlocks({ date, blocks, categories, todos, projects, granularity, onChanged }) {
+export default function ActualTimeBlocks({ date, blocks, plannedSchedules = [], categories, todos, projects, granularity, onChanged }) {
   const [selection, setSelection] = useState(null);
   const [editing, setEditing] = useState(false);
   const [showEarly, setShowEarly] = useState(false);
@@ -45,6 +46,10 @@ export default function ActualTimeBlocks({ date, blocks, categories, todos, proj
   const slots = Array.from({ length: (1440 - visibleStart) / granularity },
     (_, index) => visibleStart + index * granularity);
   const earlyGroups = groups.filter(item => item.start_minute < 360).length;
+  const earlyPlans = plannedSchedules.filter(schedule => schedule.is_planned &&
+    getScheduleSegment(schedule, date)?.startMinutes < 360).length;
+  const plans = plannedBlockLayout(plannedSchedules, date, visibleStart, HOUR_HEIGHT);
+  const hasPlans = plans.length > 0;
   const recordedMinutes = blocks.reduce((sum, item) => sum + item.end_minute - item.start_minute, 0);
   const selectedGroup = selection && groups.find(item =>
     item.start_minute === selection.start && item.end_minute === selection.end);
@@ -187,11 +192,11 @@ export default function ActualTimeBlocks({ date, blocks, categories, todos, proj
             <span>时间</span>
             <div><span>轻点选一格，拖动选一段</span>
               <button type="button" onClick={() => { setShowEarly(!showEarly); setSelection(null); setExtendFrom(null); }}>
-                {showEarly ? '收起凌晨' : '展开凌晨' + (earlyGroups ? ' · ' + earlyGroups : '')}
+                {showEarly ? '收起凌晨' : '展开凌晨' + (earlyGroups ? ' · ' + earlyGroups + ' 段实际' : '') + (earlyPlans ? ' · ' + earlyPlans + ' 项计划' : '')}
               </button>
             </div>
           </div>
-          <div className="actual-block-grid" style={{ height: (1440 - visibleStart) / 60 * HOUR_HEIGHT }} role="grid"
+          <div className={'actual-block-grid' + (hasPlans ? ' with-plans' : '')} style={{ height: (1440 - visibleStart) / 60 * HOUR_HEIGHT }} role="grid"
             aria-label={dateTitle + '实际时间网格'} onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove} onPointerUp={handlePointerUp}
             onPointerCancel={() => { drag.current = null; setSelection(null); }} onDoubleClick={() => openDetails()}>
@@ -199,6 +204,25 @@ export default function ActualTimeBlocks({ date, blocks, categories, todos, proj
               style={{ top: (minute - visibleStart) / 60 * HOUR_HEIGHT, height: granularity / 60 * HOUR_HEIGHT }}>
               {minute % 60 === 0 && <span>{minuteLabel(minute)}</span>}
             </div>)}
+            {hasPlans && <div className="actual-block-plans" aria-label="计划日程参考">
+              {plans.map(plan => {
+                const name = scheduleDisplayName(plan.schedule, projects);
+                const start = plan.segment.startMinutes;
+                const end = start + plan.segment.durationMinutes;
+                const time = minuteLabel(Math.floor(start)) + '–' + minuteLabel(Math.floor(end)) +
+                  (plan.segment.startsBefore || plan.segment.endsAfter ? ' · 跨天' : '');
+                return <div key={plan.schedule.id} className="actual-block-plan" role="note"
+                  aria-label={'计划：' + name + '，' + time} title={'计划 · ' + name + ' · ' + time}
+                  style={{ top: plan.top, height: plan.height,
+                    left: `${plan.column / plan.columnCount * 100}%`, width: `${100 / plan.columnCount}%` }}>
+                  <div className="actual-block-plan-bar" />
+                  <div className="actual-block-plan-label" style={{ top: plan.labelTop, height: plan.labelHeight }}>
+                    <div><span>计划</span><strong>{name}</strong></div>
+                    {plan.labelHeight >= 30 && <small>{time}</small>}
+                  </div>
+                </div>;
+              })}
+            </div>}
             {groups.filter(group => group.end_minute > visibleStart).map(group => {
               const category = categoryById.get(group.category_id);
               const todo = todoById.get(group.linked_todo_id);
