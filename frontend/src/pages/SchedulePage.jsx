@@ -1,3 +1,4 @@
+import { scheduleDisplayName } from '../utils/displayName';
 import { useState, useEffect, useCallback } from 'react';
 import { projectApi, recurrenceApi, scheduleApi, timeBlockApi, todoApi } from '../api/client';
 import { callChatCompletion } from '../ai/aiClient';
@@ -477,9 +478,9 @@ export default function SchedulePage() {
               setContextMenu({ x: e.clientX, y: e.clientY, schedule: s });
             }}
             style={{ ...getEventStyle(s, dateStr), borderLeftColor: projectColor(s), borderLeftWidth: 4 }}
-            title={[s.name, segment ? segmentTimeLabel(s, segment) : '', details].filter(Boolean).join('\n')}
+            title={[scheduleDisplayName(s, projects), segment ? segmentTimeLabel(s, segment) : '', details].filter(Boolean).join('\n')}
           >
-            <span className="event-title">{s.name}</span>
+            <span className="event-title">{scheduleDisplayName(s, projects)}</span>
             {density !== 'compact' && segment && <span className="event-time">{segmentTimeLabel(s, segment)}</span>}
             {density === 'detailed' && details && <span className="event-note">{details}</span>}
           </button>
@@ -551,10 +552,10 @@ export default function SchedulePage() {
                       type="button"
                       className={`week-time-event density-${density} ${schedule.is_planned ? 'planned' : 'actual'}`}
                       style={{ ...getWeekEventStyle(schedule, dayKey), borderLeftColor: projectColor(schedule) }}
-                      title={[schedule.name, segment ? segmentTimeLabel(schedule, segment) : '', details].filter(Boolean).join('\n')}
+                      title={[scheduleDisplayName(schedule, projects), segment ? segmentTimeLabel(schedule, segment) : '', details].filter(Boolean).join('\n')}
                       onClick={() => openSchedule(schedule, schedule.is_planned ? canEditPlanned : undefined)}
                     >
-                      <strong>{schedule.name}</strong>
+                      <strong>{scheduleDisplayName(schedule, projects)}</strong>
                       {density !== 'compact' && segment && <span>{segmentTimeLabel(schedule, segment)}</span>}
                       {density === 'detailed' && details && <small>{details}</small>}
                     </button>
@@ -604,11 +605,12 @@ export default function SchedulePage() {
                       key={schedule.id}
                       type="button"
                       className={`month-event ${schedule.is_planned ? 'planned' : 'actual'}`}
+                      title={scheduleDisplayName(schedule, projects)}
                       style={{ borderLeftColor: projectColor(schedule) }}
                       onClick={() => openSchedule(schedule, schedule.is_planned ? canEditPlanned : undefined)}
                     >
                       <span>{getScheduleSegment(schedule, dayKey)?.startsBefore ? '跨天续' : formatTime(schedule.start_time)}</span>
-                      <strong>{schedule.name}</strong>
+                      <strong>{scheduleDisplayName(schedule, projects)}</strong>
                     </button>
                   ))}
                   {items.length > 3 && <div className="month-more">+{items.length - 3} {T.more}</div>}
@@ -682,8 +684,8 @@ export default function SchedulePage() {
                 <button className="btn btn-sm btn-secondary" onClick={() => openCreateSchedule(true)}>新增计划</button>
                 <button className="btn btn-sm btn-quiet planned-day-ai" disabled={aiLoading} onClick={handleAiArrangeGaps}>{aiLoading ? 'AI 安排中…' : 'AI 补空档'}</button>
                 {plannedSchedules.length === 0 ? <span>暂无计划日程</span> : plannedSchedules.map(item => (
-                  <button key={item.id} className="planned-day-item" onClick={() => openSchedule(item, canEditPlanned)}>
-                    {formatTime(item.start_time)}–{formatTime(item.end_time)} · {item.name}
+                  <button key={item.id} className="planned-day-item" title={scheduleDisplayName(item, projects)} onClick={() => openSchedule(item, canEditPlanned)}>
+                    {formatTime(item.start_time)}–{formatTime(item.end_time)} · {scheduleDisplayName(item, projects)}
                   </button>
                 ))}
               </div>

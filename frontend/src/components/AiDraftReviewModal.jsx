@@ -1,3 +1,4 @@
+import { projectItemDisplayName } from '../utils/displayName';
 import { useMemo, useState } from 'react';
 import { scheduleApi, todoApi } from '../api/client';
 import { scheduleDraftToPayload, todoDraftToPayload } from '../ai/aiDraftParser';
@@ -14,7 +15,7 @@ function fromInputDateTime(value) {
 function DraftMeta({ draft, projects, todos }) {
   const project = draft.project_id ? projects.find(p => Number(p.id) === Number(draft.project_id)) : null;
   const linkedTodos = draft.linked_todo_ids?.length
-    ? draft.linked_todo_ids.map(id => todos.find(t => Number(t.id) === Number(id))?.name || `#${id}`).join('、')
+    ? draft.linked_todo_ids.map(id => projectItemDisplayName(todos.find(t => Number(t.id) === Number(id)), projects) || `#${id}`).join('、')
     : '';
 
   return (

@@ -1,3 +1,4 @@
+import { projectItemDisplayName } from '../utils/displayName';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { projectApi, timeBlockApi, timerApi, todoApi } from '../api/client';
 import { readDisplayPreferences } from '../utils/displayPreferences';
@@ -220,7 +221,7 @@ export default function TimerPage() {
               <label>关联待办</label>
               <select value={form.linked_todo_id} onChange={e => setForm(prev => ({ ...prev, linked_todo_id: e.target.value, project_id: e.target.value ? '' : prev.project_id }))}>
                 <option value="">不关联待办</option>
-                {todos.map(todo => <option key={todo.id} value={todo.id}>{todo.name}</option>)}
+                {todos.map(todo => <option key={todo.id} value={todo.id}>{projectItemDisplayName(todo, projects)}</option>)}
               </select>
             </div>
             <div className="form-group">

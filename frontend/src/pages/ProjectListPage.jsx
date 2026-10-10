@@ -1,3 +1,4 @@
+import { projectItemDisplayName } from '../utils/displayName';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { projectApi } from '../api/client';
@@ -86,7 +87,7 @@ export default function ProjectListPage() {
                 </div>
                 <span>{formatProgress(project)}</span>
               </div>
-              {project.next_todo && <div className="project-card-meta">下一步：{project.next_todo.name}</div>}
+              {project.next_todo && <div className="project-card-meta">下一步：{projectItemDisplayName({ ...project.next_todo, project_id: project.id }, projects)}</div>}
               {project.ddl_date && <div className="project-card-meta">DDL：{formatDate(project.ddl_date)}</div>}
             </Link>
           ))}

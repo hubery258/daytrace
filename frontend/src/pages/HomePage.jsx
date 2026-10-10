@@ -6,6 +6,7 @@ import ScheduleModal from '../components/ScheduleModal';
 import ContextMenu from '../components/ContextMenu';
 import { BEIJING_TIME_ZONE, parseAsLocal, formatTime, todayStr } from '../utils/time';
 import { DISPLAY_PREFERENCES_EVENT, readDisplayPreferences } from '../utils/displayPreferences';
+import { projectItemDisplayName } from '../utils/displayName';
 
 function addDays(dateStr, days) {
   const d = new Date(`${dateStr}T00:00:00`);
@@ -56,7 +57,7 @@ export default function HomePage() {
       setFocusingTodos(focusing);
       setDdlNearTodos(ddlNear);
       setAllTodos(todos);
-      setProjects(projectList.filter(project => project.status === 'active').slice(0, 3));
+      setProjects(projectList);
     } catch (err) {
       console.error('加载首页数据失败', err);
       setLoadError('首页数据暂时没有加载完整。你的本地数据没有变化，可以稍后重试。');
@@ -153,9 +154,9 @@ export default function HomePage() {
       <button
         className={`todo-circle ${completingIds.has(todo.id) ? 'completed' : ''}`}
         onClick={() => handleComplete(todo)}
-        aria-label={`完成待办：${todo.name}`}
+        aria-label={`完成待办：${projectItemDisplayName(todo, projects)}`}
       />
-      <span className="todo-name">{todo.name}</span>
+      <span className="todo-name" title={projectItemDisplayName(todo, projects)}>{projectItemDisplayName(todo, projects)}</span>
       {todo.recurrence_rule_id && <span className="todo-meta">重复</span>}
       {showDdlType && todo.is_hard_ddl_near && <span className="deadline-type hard">硬性</span>}
       {showDdlType && todo.is_soft_ddl_near && <span className="deadline-type soft">弹性</span>}
@@ -167,6 +168,7 @@ export default function HomePage() {
   const softNearTodos = ddlNearTodos.filter(t => t.is_soft_ddl_near);
   const availableTodos = allTodos.filter(t => t.status !== 'focusing' && !t.is_completed);
   const modules = displayPreferences.homeModules;
+  const visibleProjects = projects.filter(project => project.status === 'active').slice(0, 3);
 
   return (
     <div className="home-page">
@@ -190,7 +192,7 @@ export default function HomePage() {
           <div className="current-schedule-label" id="current-schedule-title"><span />此刻</div>
           {currentSchedule ? (
             <>
-              <div className="schedule-name">{currentSchedule.name}</div>
+              <div className="schedule-name">{projectItemDisplayName(currentSchedule, projects)}</div>
               <div className="schedule-time">
                 {formatTime(currentSchedule.start_time)}—{formatTime(currentSchedule.end_time)} · 剩余{' '}
                 {Math.max(0, Math.floor((parseAsLocal(currentSchedule.end_time) - new Date()) / 60000))} 分钟
@@ -198,7 +200,7 @@ export default function HomePage() {
               {currentSchedule.recurrence_rule_id && <div className="schedule-extra">重复日程</div>}
               {currentSchedule.linked_todo_ids?.length > 0 && (
                 <div className="schedule-extra">
-                  关联待办：{currentSchedule.linked_todo_ids.map(id => allTodos.find(t => t.id === id)?.name || `#${id}`).join('、')}
+                  关联待办：{currentSchedule.linked_todo_ids.map(id => projectItemDisplayName(allTodos.find(t => t.id === id), projects) || `#${id}`).join('、')}
                 </div>
               )}
             </>
@@ -239,10 +241,10 @@ export default function HomePage() {
           {modules.projects && (
             <section className="card home-section project-glance">
               <div className="card-header"><span><small>持续推进</small>项目</span><Link to="/projects">查看全部</Link></div>
-              {projects.length === 0 ? <div className="empty-state small">暂无进行中的项目。</div> : projects.map(project => (
+              {visibleProjects.length === 0 ? <div className="empty-state small">暂无进行中的项目。</div> : visibleProjects.map(project => (
                 <Link className="home-project-row" key={project.id} to={`/projects/${project.id}`}>
                   <i style={{ background: project.color || 'var(--primary)' }} />
-                  <span><strong>{project.name}</strong><small>{project.next_todo ? `下一步 · ${project.next_todo.name}` : '还没有下一步待办'}</small></span>
+                  <span><strong>{project.name}</strong><small>{project.next_todo ? `下一步 · ${projectItemDisplayName({ ...project.next_todo, project_id: project.id }, projects)}` : '还没有下一步待办'}</small></span>
                   <em>{Math.round((project.progress || 0) * 100)}%</em>
                 </Link>
               ))}
@@ -285,7 +287,7 @@ export default function HomePage() {
               <div className="empty-state">暂无可添加的任务。</div>
             ) : availableTodos.map(todo => (
               <div key={todo.id} className="todo-item" onClick={() => handleAddToFocusing(todo.id)}>
-                <span className="todo-name">{todo.name}</span>
+                <span className="todo-name" title={projectItemDisplayName(todo, projects)}>{projectItemDisplayName(todo, projects)}</span>
                 {todo.ddl_date && <span className="todo-meta">{parseAsLocal(todo.ddl_date).toLocaleDateString('zh-CN', { timeZone: BEIJING_TIME_ZONE })}</span>}
               </div>
             ))}

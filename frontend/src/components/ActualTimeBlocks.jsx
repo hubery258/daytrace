@@ -1,3 +1,4 @@
+import { projectItemDisplayName } from '../utils/displayName';
 import { useEffect, useRef, useState } from 'react';
 import { timeBlockApi } from '../api/client';
 import { groupTimeBlocks, minuteLabel } from '../utils/timeBlocks';
@@ -264,7 +265,7 @@ export default function ActualTimeBlocks({ date, blocks, categories, todos, proj
             <div className="form-group"><label>关联待办</label><select value={form.linked_todo_id}
               onChange={event => setForm(prev => ({ ...prev, linked_todo_id: event.target.value, manual_project_id: '' }))}>
               <option value="">不关联待办</option>
-              {todos.map(todo => <option key={todo.id} value={todo.id}>{todo.name}</option>)}
+              {todos.map(todo => <option key={todo.id} value={todo.id}>{projectItemDisplayName(todo, projects)}</option>)}
             </select></div>
             {selectedTodo ? <p>所属项目：{projectById.get(selectedTodo.project_id)?.name || '无项目'}（从待办推导）</p> :
               <div className="form-group"><label>关联项目</label><select value={form.manual_project_id}

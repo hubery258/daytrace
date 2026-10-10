@@ -144,6 +144,8 @@ body {
 
 .todo-name {
   flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-size: 0.95rem;
 }
 
@@ -179,6 +181,7 @@ body {
 }
 
 .current-schedule .schedule-name {
+  overflow-wrap: anywhere;
   font-size: 1.1rem;
   font-weight: 600;
 }
@@ -190,6 +193,7 @@ body {
 }
 
 .current-schedule .schedule-extra {
+  overflow-wrap: anywhere;
   margin-top: 8px;
   font-size: 0.85rem;
   opacity: 0.9;
@@ -308,6 +312,8 @@ body {
 .form-group select,
 .form-group textarea {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -868,6 +874,12 @@ body {
 .hint-line {
   color: var(--text-secondary);
   font-size: 0.82rem;
+}
+
+.project-card-meta,
+.daily-completed-item,
+.ai-draft-meta {
+  overflow-wrap: anywhere;
 }
 
 .detail-back {
@@ -3460,6 +3472,11 @@ textarea:focus-visible {
 .planned-day-list > .btn { min-height: 28px; padding: 3px 8px; }
 .planned-day-list .planned-day-ai { margin-left: auto; }
 .planned-day-item {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   border: 1px solid #d4e0dd;
   border-radius: 6px;
   padding: 5px 9px;

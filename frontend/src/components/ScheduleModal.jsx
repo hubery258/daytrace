@@ -1,3 +1,4 @@
+import { projectItemDisplayName } from '../utils/displayName';
 import { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { projectApi, recurrenceApi, scheduleApi, todoApi } from '../api/client';
@@ -171,7 +172,7 @@ export default function ScheduleModal({
             <label>关联待办</label>
             <select value={form.linked_todo_ids[0] || ''} onChange={e => handleLinkedTodo(e.target.value)}>
               <option value="">不关联待办</option>
-              {todos.map(todo => <option key={todo.id} value={todo.id}>{todo.name}</option>)}
+              {todos.map(todo => <option key={todo.id} value={todo.id}>{projectItemDisplayName(todo, projects)}</option>)}
             </select>
           </div>
 

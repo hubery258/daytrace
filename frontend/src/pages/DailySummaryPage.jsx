@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { projectItemDisplayName } from '../utils/displayName';
 import { logApi, projectApi, scheduleApi, templateApi, todoApi } from '../api/client';
 import { addDays, dateStrInBeijing, todayStr } from '../utils/time';
 import { callChatCompletion } from '../ai/aiClient';
@@ -162,7 +163,7 @@ export default function DailySummaryPage() {
           visibleCompletedIds.length === 0 ? <p className="hint-line">暂无完成的待办。</p> :
             visibleCompletedIds.map(id => {
               const todo = allTodos.find(item => Number(item.id) === id);
-              return <div key={id} className="daily-completed-item">{todo?.name || '待办 #' + id}</div>;
+              return <div key={id} className="daily-completed-item">{projectItemDisplayName(todo, projects) || '待办 #' + id}</div>;
             })}
       </section>
 

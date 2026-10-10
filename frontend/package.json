@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node --test src/ai/aiClient.test.js src/ai/aiDraftParser.test.js src/ai/aiPrompts.test.js src/utils/timeBlocks.test.js src/utils/timeStatistics.test.js tests/webdavSync.test.mjs tests/webdavMobileAdapter.test.mjs tests/webdavRuntimeSync.test.mjs",
+    "test": "node --test src/ai/aiClient.test.js src/ai/aiDraftParser.test.js src/ai/aiPrompts.test.js src/utils/displayName.test.js src/utils/timeBlocks.test.js src/utils/timeStatistics.test.js tests/webdavSync.test.mjs tests/webdavMobileAdapter.test.mjs tests/webdavRuntimeSync.test.mjs",
     "test:contract": "node --test tests/contractManifest.test.mjs",
     "test:mobile": "node --test tests/mobileAdapter.test.mjs tests/mobileDomain.test.mjs tests/mobileMigration.test.mjs tests/webdavMobileAdapter.test.mjs tests/webdavRuntimeSync.test.mjs",
     "test:platform": "node --test tests/platformAdapters.test.mjs",
