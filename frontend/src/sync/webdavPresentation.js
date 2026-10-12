@@ -11,7 +11,7 @@ export const WEBDAV_INSECURE_WARNING = '当前服务器地址未使用 HTTPS。W
 export const WEBDAV_REMEMBER_HINT = '勾选后密码保存在本机数据库，不会进入导出的 JSON 数据包；取消后密码只保留在当前同步进程内存，进程结束后需重新输入。复制或分享数据库文件时，其中的密码也会被包含。';
 export const WEBDAV_UPLOAD_WARNING = '上传会用本机数据覆盖远端 daytrace-latest.json。该操作不合并远端数据。如果远端文件更新时间更晚，请先下载并确认。';
 export const WEBDAV_DOWNLOAD_NOTICE = '下载后会先进入导入预览，不会直接覆盖本机数据。具体合并规则沿用现有 JSON 合并逻辑。';
-export const WEBDAV_AUTO_SYNC_TEASER = '自动同步将在 v0.11.1 提供：应用运行期间按设定间隔自动上传；应用关闭后不继续后台同步。';
+export const WEBDAV_AUTO_SYNC_TEASER = '当前采用手动汇总：下载后预览并合并，再上传合并结果，让另一设备导入。WebDAV 只负责传输，不自动同步或传播删除。';
 
 export const WEBDAV_ENTITY_LABELS = Object.freeze({
   projects: '项目',
@@ -42,6 +42,7 @@ export const SYNC_ERROR_MESSAGES = Object.freeze({
   SYNC_BUSY: '当前正在同步，请稍后重试。',
   SYNC_PASSWORD_REQUIRED: '请先填写 WebDAV 密码。',
   SYNC_CONFIRMATION_REQUIRED: '需要确认后才能上传。',
+  SYNC_LOCAL_DATA_INVALID: '本机数据未通过完整性校验，已停止上传。',
 });
 
 export function emptyWebdavForm(overrides = {}) {
@@ -227,7 +228,7 @@ export function buildDownloadSummaryView({ remote, package: dataPackage, summary
 export function describeSyncError(error) {
   if (!error) return { code: null, message: '', hint: '' };
   const code = error.code || null;
-  const message = SYNC_ERROR_MESSAGES[code] || error.message || '同步失败，请稍后重试。';
+  const message = (code === 'SYNC_LOCAL_DATA_INVALID' && error.message) || SYNC_ERROR_MESSAGES[code] || error.message || '同步失败，请稍后重试。';
   const hints = {
     WEBDAV_CONFLICT: '远端文件在预览后被修改。请重新点击上传，先读取最新的远端信息。',
     WEBDAV_AUTH_FAILED: '建议使用应用密码，不要直接使用主账号密码。',
@@ -235,6 +236,7 @@ export function describeSyncError(error) {
     WEBDAV_NOT_FOUND: '请确认远程目录已经存在，必要时先在 WebDAV 客户端中手动创建。',
     WEBDAV_QUOTA_EXCEEDED: '请清理远端空间或更换远程目录。',
     SYNC_BUSY: '当前正在同步，按钮会在结束后恢复。',
+    SYNC_LOCAL_DATA_INVALID: '若提示 schedules.linked_todo_ids，可在设置的“数据导入导出”点击“检查计划失效关联”，查看日期并确认修复，再重新上传。此次校验发生在上传前，远端文件未被覆盖。',
   };
   return { code, message, hint: hints[code] || '' };
 }

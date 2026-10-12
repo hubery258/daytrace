@@ -1,7 +1,7 @@
 ﻿from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import crud, models, schemas
@@ -44,8 +44,17 @@ async def pause_timer(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/resume", response_model=schemas.TimerOut)
-async def resume_timer(db: AsyncSession = Depends(get_db)):
-    timer = _ensure_active_timer(await crud.get_current_timer(db))
+async def resume_timer(db: AsyncSession = Depends(get_db), data: dict = Body(default={})):
+    current = await crud.get_current_timer(db)
+    if data.get('timer_id'):
+        if current:
+            raise HTTPException(409, '请先结束当前计时，再继续暂存记录')
+        timer = await db.get(models.TimerSession, data['timer_id'])
+        if not timer or not timer.is_parked:
+            raise HTTPException(422, '不是暂存的暂停计时')
+        timer.is_parked = False
+    else:
+        timer = _ensure_active_timer(current)
     if timer.status != models.TimerStatus.paused:
         raise HTTPException(status_code=400, detail="当前计时不在暂停状态")
     return await crud.resume_timer(db, timer)

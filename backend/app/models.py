@@ -186,6 +186,7 @@ class TimeBlock(Base):
     source = Column(String(20), default="manual", nullable=False)
     source_timer_id = Column(Integer, ForeignKey("timer_sessions.id"), nullable=True)
     coverage_seconds = Column(Integer, nullable=True)
+    origin_uuid = Column(String(36), nullable=True)
     created_at = Column(DateTime, default=beijing_now, nullable=False)
     updated_at = Column(DateTime, default=beijing_now, onupdate=beijing_now, nullable=False)
 
@@ -239,6 +240,7 @@ class TimerSession(Base):
     uuid = Column(String(36), default=new_uuid, unique=True, nullable=False, index=True)
     name = Column(String(200), nullable=False)
     status = Column(SAEnum(TimerStatus), default=TimerStatus.running, nullable=False)
+    is_parked = Column(Boolean, default=False, nullable=False)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
     linked_todo_id = Column(Integer, ForeignKey("todos.id"), nullable=True)
     started_at = Column(DateTime, nullable=False)

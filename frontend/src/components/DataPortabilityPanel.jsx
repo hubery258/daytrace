@@ -7,7 +7,7 @@ import { takeDownloadedPackage, subscribeDownloadedPackage } from '../sync/downl
 
 const entityLabels = {
   projects: '项目', todos: '待办', schedules: '计划日程', time_block_categories: '时间块属性', time_blocks: '实际时间块', daily_logs: '每日总结',
-  log_templates: '日志模板', timer_sessions: '计时会话', recurrence_rules: '重复规则',
+  log_templates: '日志模板', timer_sessions: '计时会话', recurrence_rules: '重复规则', recurrence_exceptions: '重复规则例外',
 };
 
 function fileName(prefix = 'backup') {
@@ -15,7 +15,7 @@ function fileName(prefix = 'backup') {
   return `daytrace-${prefix}-${stamp}.json`;
 }
 
-async function savePackage(pack, prefix = 'backup', shareAfterSave = true, verifyWrite = false) {
+async function savePackage(pack, prefix = 'backup', shareAfterSave = true) {
   const json = JSON.stringify(pack, null, 2);
   const name = fileName(prefix);
   if (Capacitor.isNativePlatform()) {
@@ -28,20 +28,6 @@ async function savePackage(pack, prefix = 'backup', shareAfterSave = true, verif
       encoding: Encoding.UTF8,
       recursive: true,
     });
-    if (verifyWrite) {
-      const readBack = await Filesystem.readFile({ path, directory, encoding: Encoding.UTF8 });
-      if (typeof readBack.data !== 'string' || readBack.data !== json) {
-        throw new Error('恢复前安全备份写入后校验失败');
-      }
-      try {
-        const verified = JSON.parse(readBack.data);
-        if (verified.schema_version !== pack.schema_version || verified.package_uuid !== pack.package_uuid) {
-          throw new Error('backup identity mismatch');
-        }
-      } catch {
-        throw new Error('恢复前安全备份不是可读取的完整 JSON 数据包');
-      }
-    }
     if (shareAfterSave) {
       await Share.share({ title: '导出日迹数据', text: '日迹 JSON 数据包', files: [saved.uri], dialogTitle: '保存或分享数据包' });
     }
@@ -64,12 +50,40 @@ export default function DataPortabilityPanel() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [choices, setChoices] = useState({});
+  const [scope, setScope] = useState('all');
+  const [linkPreview, setLinkPreview] = useState(null);
+
+  const checkLinks = async () => {
+    clearFeedback(); setBusy(true); setLinkPreview(null);
+    try { const result=await dataApi.checkScheduleLinks(); setLinkPreview(result); }
+    catch(err) {setError(err.message || '检查失败');}
+    finally {setBusy(false);}
+  };
+  const repairLinks = async () => {
+    clearFeedback(); setBusy(true);
+    try {
+      const result=await dataApi.repairScheduleLinks(linkPreview.token);
+      setLinkPreview(null); setPreview(null);
+      setMessage(`已修复 ${result.repaired} 条计划的失效关联。计划内容和有效关联均保留。修复前记录副本：${result.backup_path || '无需修复'}。现在可以重新上传。`);
+    } catch(err) {setLinkPreview(null);setError(err.message || '修复结果未确认，请重新检查');}
+    finally {setBusy(false);}
+  };
 
   const clearFeedback = () => { setMessage(''); setError(''); };
 
-  const previewPackage = async (pack, importMode = mode) => {
-    const nextPreview = await dataApi.previewImport(pack, importMode);
+  const previewPackage = async (pack, importMode = mode, nextChoices = {}) => {
+    const nextPreview = await dataApi.previewImport(pack, importMode, nextChoices);
+    setChoices(nextChoices);
     setPendingPackage(pack); setPreview(nextPreview);
+  };
+
+  const chooseConflicts = async (nextChoices) => {
+    if (!pendingPackage || busy) return;
+    setBusy(true); clearFeedback();
+    try { await previewPackage(pendingPackage, mode, nextChoices); }
+    catch (err) { setPreview(null); setError(err.message || '无法重新预览'); }
+    finally { setBusy(false); }
   };
 
   // WebDAV downloads are handed to this existing preview + confirm flow so a
@@ -113,36 +127,37 @@ export default function DataPortabilityPanel() {
     try {
       const pack = JSON.parse(await file.text());
       const nextPreview = await dataApi.previewImport(pack, mode);
+      setChoices({});
       setPendingPackage(pack); setPreview(nextPreview);
     } catch (err) { setError(err instanceof SyntaxError ? '文件不是有效 JSON。' : (err.message || '无法预览数据包')); }
     finally { setBusy(false); }
   };
 
   const handleImport = async () => {
-    if (!pendingPackage || !preview) return;
+    if (!pendingPackage || !preview || preview.unresolved) return;
     const updated = Object.values(preview.entities).reduce((sum, item) => sum + item.update, 0);
+    const created = Object.values(preview.entities).reduce((sum, item) => sum + item.create, 0);
     const confirmation = mode === 'replace'
-      ? `确认完整恢复？将新增 ${preview.total - updated} 条、覆盖 ${updated} 条，并删除 ${preview.delete_total || 0} 条本地数据。恢复前会先自动保存当前数据。`
-      : '确认合并导入？相同 UUID 的实体以数据包为准；导入时间块会覆盖同日期重叠的本地时间块，其余包外数据保留。';
+      ? `确认恢复备份？将新增 ${created} 条、变更 ${updated} 条，并删除 ${preview.delete_total || 0} 条本地数据。执行前会保存并校验本机副本。`
+      : '确认按当前预览和冲突选择合并设备数据？完成状态优先保留，时间块只处理选定冲突区间。执行前会保存并校验本机副本。';
     if (!window.confirm(confirmation)) return;
     clearFeedback(); setBusy(true);
     let importStarted = false;
     try {
       let safetyLocation = '';
-      if (mode === 'replace') {
-        try {
-          safetyLocation = await savePackage(await dataApi.export(), 'before-restore', false, true);
-        } catch (backupError) {
-          throw new Error(`恢复前安全备份写入或校验失败，未执行恢复：${backupError.message || '未知错误'}`);
-        }
-      }
       importStarted = true;
-      const result = await dataApi.import(pendingPackage, mode);
+      const result = await dataApi.import(pendingPackage, mode, choices, preview.token);
+      safetyLocation = result.backup_path;
       setMessage(mode === 'replace'
         ? `完整恢复完成：新增 ${result.created} 条，更新 ${result.updated} 条，删除 ${result.deleted} 条。恢复前备份：${safetyLocation}`
-        : `导入完成：新增 ${result.created} 条，更新 ${result.updated} 条。刷新页面后可查看全部数据。`);
+        : `合并完成：新增 ${result.created} 条，变更 ${result.updated} 条。操作前副本：${safetyLocation}。上传合并结果，再让另一设备导入，才能把结果带回另一设备。`);
       setPendingPackage(null); setPreview(null);
-    } catch (err) { setError(importStarted ? `导入失败，数据库已回滚且未删除本地数据：${err.message || '未知错误'}` : (err.message || '导入前检查失败')); }
+    } catch (err) {
+      setError(importStarted
+        ? `未能确认导入结果：${err.message || '未知错误'}。请重新读取本机数据并预览；响应丢失时，操作可能已经完成。`
+        : (err.message || '导入前检查失败'));
+      setPreview(null);
+    }
     finally { setBusy(false); }
   };
 
@@ -150,25 +165,42 @@ export default function DataPortabilityPanel() {
     <div className="card">
       <div className="card-header">数据导入导出</div>
       <p style={{ color: 'var(--text-secondary)', fontSize: '0.86rem', lineHeight: 1.6 }}>
-        JSON 数据包覆盖项目、待办、计划日程、实际时间块及属性、每日总结、日志模板、计时会话和重复规则。旧版实际日程会在导入时跳过。合并导入会覆盖同日期重叠的本地时间块，并保留其他包外数据；完整恢复会先在本机保存当前数据，再将核心数据替换为数据包内容。
+        合并设备数据会保留双方独有记录，不传播删除；任务任意一边完成即保留完成，其他差异由你确认。实际时间只处理冲突区间，计划日程按整条选择，日志正文可手动整理。恢复备份按备份还原，包括未完成状态。两种操作执行前都会保存并校验本机副本。
       </p>
+      <p className="notice" style={{fontSize:'0.86rem'}}>合并不传播“取消完成”：另一边仍已完成时，再次合并可能恢复完成。合并后上传结果，再让另一设备导入。</p>
       <div className="form-group" style={{ maxWidth: 420 }}>
         <label htmlFor="import-mode">导入模式</label>
         <select
           id="import-mode"
           value={mode}
           disabled={busy}
-          onChange={event => { setMode(event.target.value); setPendingPackage(null); setPreview(null); clearFeedback(); }}
+          onChange={async event => {
+            const nextMode = event.target.value;
+            setMode(nextMode); setPreview(null); clearFeedback();
+            if (!pendingPackage) return;
+            setBusy(true);
+            try { await previewPackage(pendingPackage, nextMode); }
+            catch (err) { setError(err.message || '无法重新预览数据包'); }
+            finally { setBusy(false); }
+          }}
         >
-          <option value="merge">合并导入（不删除本地数据）</option>
-          <option value="replace">完整恢复（删除数据包中不存在的数据）</option>
+          <option value="merge">合并设备数据</option>
+          <option value="replace">恢复备份（替换核心数据）</option>
         </select>
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         <button className="btn btn-secondary" disabled={busy} onClick={handleExport}>导出 JSON</button>
+        <button className="btn btn-secondary" disabled={busy} onClick={checkLinks}>检查计划失效关联</button>
         <button className="btn btn-secondary" disabled={busy} onClick={() => inputRef.current?.click()}>选择 JSON 导入</button>
+        {pendingPackage && <button className="btn btn-secondary" disabled={busy} onClick={()=>chooseConflicts(choices)}>重新预览</button>}
         <input ref={inputRef} type="file" accept="application/json,.json" onChange={handleFile} style={{ display: 'none' }} />
       </div>
+      {linkPreview && <div className="notice" style={{marginTop:12}}>
+        <strong>发现 {linkPreview.items.length} 条计划存在失效任务关联</strong>
+        {linkPreview.items.map(item=><p key={item.uuid}>{item.name} · {item.start_time.replace('T',' ')} 至 {item.end_time.replace('T',' ')} · 清除 {item.missing_ids.length} 个失效关联，保留 {item.remaining_ids.length} 个有效关联</p>)}
+        {!!linkPreview.items.length && <><p>确认后先保存并校验这些计划的修复前记录，再仅清除已不存在的任务关联。副本用于修复追溯，不是可导入的整库备份；不会删除计划、待办或实际时间记录。</p><button className="btn btn-primary" disabled={busy} onClick={repairLinks}>确认清除上述失效关联</button></>}
+        <button className="btn btn-secondary" disabled={busy} onClick={()=>setLinkPreview(null)}>关闭检查</button>
+      </div>}
       {preview && (
         <div style={{ marginTop: 14 }}>
           <div style={{ fontSize: '0.86rem', marginBottom: 8 }}>schema_version：{preview.schema_version}，共 {preview.total} 条</div>
@@ -176,12 +208,23 @@ export default function DataPortabilityPanel() {
             {Object.entries(preview.entities).map(([name, counts]) => (
               <div key={name} className="data-preview-item">
                 <strong>{entityLabels[name] || name}</strong>
-                <span>新增 {counts.create} · 更新 {counts.update}{mode === 'replace' ? ` · 删除 ${counts.delete}` : ''}</span>
+                <span>新增 {counts.create} · 变更 {counts.update} · 相同跳过 {counts.skip || 0} · 冲突 {counts.conflict || 0}{counts.delete ? ` · 移除/替换 ${counts.delete}` : ''}</span>
               </div>
             ))}
           </div>
+          {!!preview.effects?.length && <details style={{marginTop:12}}><summary>时间块影响（{preview.effects.length} 项）</summary>{preview.effects.map((effect,i)=><div key={i} style={{padding:6}}>{effect.kind==='split'?'拆分':effect.kind==='identity'?'同一记录版本选择':'重叠去重/选择'} · {effect.date || ''} {effect.start != null ? `${minuteText(effect.start)}–${minuteText(effect.end)}` : `${rangeText(effect.local)} → ${rangeText(effect.incoming)}`}</div>)}</details>}
+          {!!preview.conflicts?.length && <div style={{marginTop:16}}>
+            <label>当前冲突范围 <select value={scope} onChange={e=>setScope(e.target.value)} disabled={busy}><option value="all">全部冲突</option>{Object.keys(entityLabels).filter(n=>preview.conflicts.some(c=>c.entity===n)).map(n=><option key={n} value={n}>{entityLabels[n]}</option>)}</select></label>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',margin:'10px 0'}}>{['local','incoming'].map(side=><button key={side} className="btn btn-secondary" disabled={busy} onClick={()=>{
+              const next={...choices};
+              for (const c of preview.conflicts.filter(c=>!c.resolved && (scope==='all'||scope===c.entity) && !['rename','date','active_timer','links'].includes(c.kind))) next[c.id]={side};
+              chooseConflicts(next);
+            }}>剩余冲突全部{side==='local'?'保留本机':'使用导入'}</button>)}</div>
+            {preview.conflicts.filter(c=>scope==='all'||scope===c.entity).map(c=><ConflictCard key={c.id} conflict={c} busy={busy} onChoose={choice=>chooseConflicts({...choices,[c.id]:choice})} />)}
+          </div>}
+          {!!preview.unresolved && <div className="notice notice-error">还有 {preview.unresolved} 项冲突未解决，请逐项确认。改名、完成日期和活动计时需单独处理。</div>}
           {mode === 'replace' && <div className="notice notice-error" style={{ marginTop: 12 }}>完整恢复将删除共 {preview.delete_total || 0} 条包外数据。恢复前备份只会保存到本机。</div>}
-          <button className={mode === 'replace' ? 'btn btn-danger' : 'btn btn-primary'} disabled={busy} onClick={handleImport} style={{ marginTop: 12 }}>
+          <button className={mode === 'replace' ? 'btn btn-danger' : 'btn btn-primary'} disabled={busy || preview.unresolved > 0} onClick={handleImport} style={{ marginTop: 12 }}>
             {mode === 'replace' ? '确认完整恢复' : '确认合并导入'}
           </button>
         </div>
@@ -191,4 +234,30 @@ export default function DataPortabilityPanel() {
       {error && <div style={{ marginTop: 10, color: 'var(--danger)', lineHeight: 1.5 }}>{error}</div>}
     </div>
   );
+}
+
+function minuteText(value) { return value == null ? '' : `${String(Math.floor(value/60)).padStart(2,'0')}:${String(value%60).padStart(2,'0')}`; }
+function rangeText(ranges) { return (Array.isArray(ranges?.[0])?ranges:[ranges]).filter(Boolean).map(([date,start,end])=>`${date} ${minuteText(start)}–${minuteText(end)}`).join('；'); }
+const fieldLabels={name:'名称',notes:'备注',log_text:'日志正文',record:'完整记录',interval:'冲突区间',completed_at:'完成日期',ddl_date:'DDL',ddl_type:'DDL 类型',project_uuid:'所属项目',recurrence_rule_uuid:'重复规则',position:'排序',reminder_days:'提醒天数',category:'分类',status:'状态',waiting_reply_person:'等待答复人',recurrence_date:'重复日期',is_recurrence_exception:'重复例外',description:'说明',color:'颜色',archived_at:'归档时间',entity_type:'类型',template_json:'重复模板',frequency:'频率',start_date:'开始日期',end_date:'结束日期',weekdays:'星期',month_day:'每月日期',action:'例外操作',start_time:'开始时间',end_time:'结束时间',nature:'性质',relax_suggestion:'休息建议',location:'地点',is_planned:'计划',template_linked_todo_uuids:'重复计划关联任务',linked_todo_uuids:'关联任务',block_date:'记录日期',start_minute:'开始',end_minute:'结束',granularity:'粒度',category_uuid:'属性',source:'来源',coverage_seconds:'有效秒数',linked_todo_uuid:'关联任务',manual_project_uuid:'项目',source_timer_uuid:'来源计时',content:'正文',started_at:'开始时间',last_resumed_at:'上次继续',paused_at:'暂停时间',paused_seconds:'暂停秒数',active_intervals:'活动区间',ended_at:'结束时间',created_schedule_uuid:'关联日程',is_parked:'暂存暂停',is_completed:'已完成',log_date:'日志日期',completed_todo_uuids:'完成任务'};
+function showValue(value) {
+  if (value == null || value === '') return '（空白）';
+  if (typeof value==='boolean') return value?'是':'否';
+  if (Array.isArray(value)) return value.map(showValue).join('\n');
+  if (typeof value==='object') return Object.entries(value).filter(([k])=>!['uuid','origin_uuid','created_at','updated_at'].includes(k)).map(([k,v])=>`${fieldLabels[k]||k}：${showValue(v)}`).join('\n');
+  return String(value);
+}
+function ConflictCard({conflict:c,busy,onChoose}) {
+  const [text,setText]=useState(c.choice?.side==='edit'?c.choice.value:String(c.local??''));
+  const [links,setLinks]=useState(c.choice?.side==='links'?c.choice.value:[]);
+  return <div className="card" style={{padding:12,margin:'10px 0'}}>
+    <strong>{entityLabels[c.entity]} · {fieldLabels[c.field]||c.field} {c.resolved?'✓ 已选择':'· 待选择'}</strong>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:12,marginTop:8}}>{[['local','本机',c.local],['incoming','导入',c.incoming]].map(([side,label,value])=><div key={side}><strong>{label}</strong><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',fontFamily:'inherit',fontSize:'0.85rem'}}>{showValue(value)}</pre>{!['rename','date','active_timer','links'].includes(c.kind)&&<button className="btn btn-secondary" disabled={busy} onClick={()=>onChoose({side})}>{side==='local'?'保留本机':'使用导入'}</button>}</div>)}</div>
+    {c.kind==='links' && <div><p>旧包只有源设备的任务编号，请重新选择关联任务。也可以明确确认无关联。</p>{c.options.map(r=><label key={r.uuid} style={{display:'block'}}><input type="checkbox" checked={links.includes(r.uuid)} disabled={busy} onChange={e=>setLinks(e.target.checked?[...links,r.uuid]:links.filter(v=>v!==r.uuid))}/>{r.name}</label>)}<button className="btn btn-secondary" disabled={busy} onClick={()=>onChoose({side:'links',value:links})}>确认关联选择{links.length===0?'（无关联）':''}</button></div>}
+    {c.kind==='active_timer' && <><p>选择当前计时；其余记录保留为暂存暂停，可在计时页继续。</p>{c.options.map(r=><button key={r.uuid} className="btn btn-secondary" disabled={busy} onClick={()=>onChoose({side:'select',value:r.uuid,paused_at:new Date().toISOString()})}>{r.name}</button>)}</>}
+    {(['notes','log_text'].includes(c.field)||['rename','date'].includes(c.kind))&&<div style={{marginTop:10}}>
+      {c.field==='log_text'&&<button className="btn btn-secondary" disabled={busy} onClick={()=>setText(`${c.local}\n\n${c.incoming}`)}>把两份放入编辑框整理</button>}
+      <label>{c.kind==='rename'?'导入属性与本机同名，请设置唯一名称（保留两个身份）':c.kind==='date'?'指定完成日期':'手动整理后确认'}{c.kind==='date'?<input type="date" value={text} onChange={e=>setText(e.target.value)}/>:<textarea value={text} onChange={e=>setText(e.target.value)} rows={4}/>}</label>
+      <button className="btn btn-secondary" disabled={busy || (['rename','date'].includes(c.kind)&&!text.trim())} onClick={()=>onChoose({side:'edit',value:text})}>确认整理结果</button>
+    </div>}
+  </div>;
 }

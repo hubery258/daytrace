@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app import crud, models, schemas
 from app.data_portability import ENTITY_ORDER, export_package, import_package, preview_package
 from app.database import Base
+from portability_helpers import confirmed_import as import_package
 from app.zju_client import _parse_datetime
 
 
@@ -287,8 +288,8 @@ class DatabaseHardeningTests(unittest.IsolatedAsyncioTestCase):
         package = {'app': 'riji', 'schema_version': '0.6.0', 'entities': legacy_entities}
         async with self.sessions() as session:
             result = await import_package(session, package)
-            self.assertEqual(result['schema_version'], '0.8.0')
-            self.assertEqual(result['entities']['recurrence_exceptions'], {'created': 0, 'updated': 0})
+            self.assertEqual(result['schema_version'], '0.6.0')
+            self.assertEqual(result['entities']['recurrence_exceptions']['create'], 0)
 
     async def test_0_8_recurrence_exception_round_trip_remaps_rule_uuid(self):
         target_date = date(2099, 4, 1)

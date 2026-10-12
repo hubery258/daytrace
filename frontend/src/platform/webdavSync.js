@@ -40,6 +40,7 @@ export const SYNC_ERROR_MESSAGES = Object.freeze({
   SYNC_BUSY: '当前正在同步，请稍后重试',
   SYNC_PASSWORD_REQUIRED: '请先填写 WebDAV 密码',
   SYNC_CONFIRMATION_REQUIRED: '需要用户确认后才能上传',
+  SYNC_LOCAL_DATA_INVALID: '本机数据未通过完整性校验，已停止上传；请先修复关联后重试',
 });
 
 const STATUS_TO_CODE = new Map([
@@ -605,7 +606,10 @@ export function createSyncRoutes({
     if (method === 'POST' && pathname === '/sync/webdav/upload/preflight') {
       return withBusy(async () => {
         const row = await getOrCreateConfigRow();
-        const localPackage = await exportPackage();
+        const localPackage = await exportPackage().catch(error => {
+          if (error?.message?.includes('断裂关联')) throw syncError('SYNC_LOCAL_DATA_INVALID', error.message);
+          throw error;
+        });
         const target = requireTarget(row);
         let info;
         try {
@@ -651,7 +655,10 @@ export function createSyncRoutes({
       if (!body.confirmed) throw syncError('SYNC_CONFIRMATION_REQUIRED');
       return withBusy(async () => {
         const row = await getOrCreateConfigRow();
-        const localPackage = await exportPackage();
+        const localPackage = await exportPackage().catch(error => {
+          if (error?.message?.includes('断裂关联')) throw syncError('SYNC_LOCAL_DATA_INVALID', error.message);
+          throw error;
+        });
         const payload = JSON.stringify(localPackage);
         const target = requireTarget(row);
         const expectedEtag = body.expected_remote_etag ?? null;

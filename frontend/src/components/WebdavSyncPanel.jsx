@@ -412,8 +412,8 @@ export default function WebdavSyncPanel() {
       <div className="card-header webdav-section-title">同步状态</div>
       <SummaryRows rows={statusView.rows} />
 
-      <div className="notice webdav-teaser" aria-label="v0.11.1 预告">
-        <strong>v0.11.1 预告</strong>
+      <div className="notice webdav-teaser" aria-label="设备数据汇总说明">
+        <strong>设备数据汇总</strong>
         <p>{WEBDAV_AUTO_SYNC_TEASER}</p>
       </div>
 

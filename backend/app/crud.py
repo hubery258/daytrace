@@ -191,6 +191,7 @@ async def delete_project(db: AsyncSession, project_id: int) -> bool:
     await db.execute(update(models.Schedule).where(models.Schedule.project_id == project_id).values(project_id=None))
     await db.execute(update(models.RecurrenceRule).where(models.RecurrenceRule.project_id == project_id).values(project_id=None))
     await db.execute(update(models.TimerSession).where(models.TimerSession.project_id == project_id).values(project_id=None))
+    await db.execute(update(models.TimeBlock).where(models.TimeBlock.manual_project_id == project_id).values(manual_project_id=None))
     await db.delete(project)
     await db.commit()
     return True
@@ -376,6 +377,21 @@ async def complete_todo_and_log(
         await db.refresh(todo)
         return todo
 
+async def _clear_todo_references(db: AsyncSession, todo_id: int) -> None:
+    await db.execute(update(models.TimeBlock).where(models.TimeBlock.linked_todo_id == todo_id).values(linked_todo_id=None))
+    await db.execute(update(models.TimerSession).where(models.TimerSession.linked_todo_id == todo_id).values(linked_todo_id=None))
+    for model, field in ((models.Schedule, 'linked_todo_ids'), (models.DailyLog, 'completed_todo_ids')):
+        for row in (await db.execute(select(model))).scalars().all():
+            values = getattr(row, field) or []
+            if todo_id in values:
+                setattr(row, field, [value for value in values if value != todo_id])
+    for rule in (await db.execute(select(models.RecurrenceRule))).scalars().all():
+        template = dict(rule.template_json or {})
+        if todo_id in (template.get('linked_todo_ids') or []):
+            template['linked_todo_ids'] = [value for value in template['linked_todo_ids'] if value != todo_id]
+            rule.template_json = template
+
+
 async def delete_todo(db: AsyncSession, todo_id: int) -> bool:
     todo = await get_todo(db, todo_id)
     if not todo:
@@ -384,6 +400,7 @@ async def delete_todo(db: AsyncSession, todo_id: int) -> bool:
         await _ensure_deleted_recurrence_exception(
             db, todo.recurrence_rule_id, models.RecurrenceEntityType.todo, todo.recurrence_date
         )
+    await _clear_todo_references(db, todo_id)
     await db.delete(todo)
     await db.commit()
     return True
@@ -478,6 +495,7 @@ async def delete_schedule(db: AsyncSession, schedule_id: int) -> bool:
         await _ensure_deleted_recurrence_exception(
             db, schedule.recurrence_rule_id, models.RecurrenceEntityType.schedule, schedule.recurrence_date
         )
+    await db.execute(update(models.TimerSession).where(models.TimerSession.created_schedule_id == schedule_id).values(created_schedule_id=None))
     await db.delete(schedule)
     await db.commit()
     return True
@@ -491,6 +509,7 @@ async def get_current_timer(db: AsyncSession) -> Optional[models.TimerSession]:
     result = await db.execute(
         select(models.TimerSession)
         .where(models.TimerSession.status.in_(ACTIVE_TIMER_STATUSES))
+        .where(models.TimerSession.is_parked.is_(False))
         .order_by(models.TimerSession.created_at.desc())
         .limit(1)
     )
@@ -585,7 +604,7 @@ async def cancel_timer(db: AsyncSession, timer: models.TimerSession) -> models.T
 async def get_recent_timers(db: AsyncSession, limit: int = 10) -> List[models.TimerSession]:
     result = await db.execute(
         select(models.TimerSession)
-        .where(models.TimerSession.status.in_([models.TimerStatus.completed, models.TimerStatus.canceled]))
+        .where((models.TimerSession.status.in_([models.TimerStatus.completed, models.TimerStatus.canceled])) | models.TimerSession.is_parked.is_(True))
         .order_by(models.TimerSession.updated_at.desc())
         .limit(limit)
     )
@@ -755,6 +774,7 @@ async def delete_recurrence_rule(db: AsyncSession, rule_id: int, delete_future_i
                 models.Todo.is_completed == False,
             ))
             for todo in result.scalars().all():
+                await _clear_todo_references(db, todo.id)
                 await db.delete(todo)
         else:
             start = datetime.combine(today, datetime.min.time())
@@ -763,6 +783,7 @@ async def delete_recurrence_rule(db: AsyncSession, rule_id: int, delete_future_i
                 models.Schedule.start_time >= start,
             ))
             for schedule in result.scalars().all():
+                await db.execute(update(models.TimerSession).where(models.TimerSession.created_schedule_id == schedule.id).values(created_schedule_id=None))
                 await db.delete(schedule)
         await rebuild_recurrence_claims(db)
     await db.commit()

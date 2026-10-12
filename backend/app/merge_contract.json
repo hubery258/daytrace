@@ -1,0 +1,12 @@
+{
+  "projects": {"name":"", "description":"", "status":"active", "ddl_date":null, "color":null, "completed_at":null, "archived_at":null},
+  "recurrence_rules": {"entity_type":"todo", "template_json":{}, "frequency":"daily", "start_date":null, "end_date":null, "weekdays":null, "month_day":null, "status":"active", "project_uuid":null, "template_linked_todo_uuids":[]},
+  "recurrence_exceptions": {"entity_type":"todo", "recurrence_date":null, "action":"deleted", "recurrence_rule_uuid":null},
+  "todos": {"name":"", "position":null, "ddl_type":"none", "ddl_date":null, "reminder_days":null, "category":"任务", "status":"not_focusing", "waiting_reply_person":null, "notes":"", "is_completed":false, "completed_at":null, "recurrence_date":null, "is_recurrence_exception":false, "project_uuid":null, "recurrence_rule_uuid":null},
+  "time_block_categories": {"name":"", "color":"#347f88"},
+  "schedules": {"name":"", "start_time":null, "end_time":null, "category":"普通日程", "nature":"no_other_task", "relax_suggestion":null, "location":null, "notes":"", "is_planned":true, "recurrence_date":null, "is_recurrence_exception":false, "project_uuid":null, "recurrence_rule_uuid":null, "linked_todo_uuids":[]},
+  "daily_logs": {"log_date":null, "log_text":"", "completed_todo_uuids":[]},
+  "log_templates": {"name":"", "content":""},
+  "timer_sessions": {"name":"", "status":"running", "started_at":null, "last_resumed_at":null, "paused_at":null, "paused_seconds":0, "active_intervals":[], "ended_at":null, "notes":"", "project_uuid":null, "linked_todo_uuid":null, "created_schedule_uuid":null, "is_parked":false},
+  "time_blocks": {"block_date":null, "start_minute":0, "end_minute":15, "granularity":15, "category_uuid":null, "notes":"", "source":"manual", "coverage_seconds":null, "linked_todo_uuid":null, "manual_project_uuid":null, "source_timer_uuid":null, "origin_uuid":null}
+}

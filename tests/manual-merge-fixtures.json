@@ -1,0 +1,2417 @@
+[
+  {
+    "name": "completed-old-copy",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "is_completed": true,
+            "completed_at": "2026-10-10T09:00:00"
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "is_completed": false
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "choices": {}
+  },
+  {
+    "name": "reverse-completed",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "is_completed": false
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "is_completed": true,
+            "completed_at": "2026-10-10T09:00:00"
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "choices": {}
+  },
+  {
+    "name": "disjoint",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000004",
+            "block_date": "2026-10-11",
+            "start_minute": 540,
+            "end_minute": 570,
+            "granularity": 30,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002"
+          }
+        ]
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000005",
+            "block_date": "2026-10-11",
+            "start_minute": 840,
+            "end_minute": 870,
+            "granularity": 30,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002"
+          }
+        ]
+      }
+    },
+    "choices": {}
+  },
+  {
+    "name": "partial-overlap",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "name": "运动",
+            "color": "#4c9b67"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000004",
+            "block_date": "2026-10-11",
+            "start_minute": 540,
+            "end_minute": 570,
+            "granularity": 30,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002"
+          }
+        ]
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "name": "运动",
+            "color": "#4c9b67"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000005",
+            "block_date": "2026-10-11",
+            "start_minute": 555,
+            "end_minute": 570,
+            "granularity": 15,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "notes": "跑步"
+          }
+        ]
+      }
+    },
+    "choices": {
+      "time_blocks:2026-10-11:555:570": {
+        "side": "incoming"
+      }
+    }
+  },
+  {
+    "name": "move-identity",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000004",
+            "block_date": "2026-10-11",
+            "start_minute": 540,
+            "end_minute": 570,
+            "granularity": 30,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002"
+          }
+        ]
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000004",
+            "block_date": "2026-10-11",
+            "start_minute": 840,
+            "end_minute": 870,
+            "granularity": 30,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002"
+          }
+        ]
+      }
+    },
+    "choices": {
+      "time_blocks:123e4567-e89b-42d3-a456-000000000004:record": {
+        "side": "incoming"
+      }
+    }
+  },
+  {
+    "name": "task-fields",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "notes": "本机笔记"
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "新名称",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "notes": ""
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "choices": {
+      "todos:123e4567-e89b-42d3-a456-000000000001:name": {
+        "side": "incoming"
+      },
+      "todos:123e4567-e89b-42d3-a456-000000000001:notes": {
+        "side": "edit",
+        "value": "整理笔记"
+      }
+    }
+  },
+  {
+    "name": "log-edit",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000006",
+            "log_date": "2026-10-11",
+            "log_text": "本机"
+          }
+        ],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000007",
+            "log_date": "2026-10-11",
+            "log_text": "手机"
+          }
+        ],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "choices": {
+      "daily_logs:2026-10-11:log_text": {
+        "side": "edit",
+        "value": "整理结果"
+      }
+    }
+  },
+  {
+    "name": "category-rename",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "name": "学习",
+            "color": "#347f88"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "choices": {
+      "time_block_categories:123e4567-e89b-42d3-a456-000000000002:name": {
+        "side": "edit",
+        "value": "学习"
+      },
+      "time_block_categories:123e4567-e89b-42d3-a456-000000000003:name": {
+        "side": "edit",
+        "value": "手机学习"
+      }
+    }
+  },
+  {
+    "name": "restore-uncompleted",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "is_completed": true,
+            "completed_at": "2026-10-10T09:00:00"
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "is_completed": false
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "mode": "replace",
+    "choices": {}
+  },
+  {
+    "name": "earliest-completion",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "is_completed": true,
+            "completed_at": "2026-10-11T09:00:00"
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "is_completed": true,
+            "completed_at": "2026-10-10T09:00:00"
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "choices": {}
+  },
+  {
+    "name": "overlap-preserves-both-tails",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "name": "运动",
+            "color": "#4c9b67"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000008",
+            "block_date": "2026-10-11",
+            "start_minute": 540,
+            "end_minute": 555,
+            "granularity": 15,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "notes": "学习"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000009",
+            "block_date": "2026-10-11",
+            "start_minute": 555,
+            "end_minute": 570,
+            "granularity": 15,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "notes": "学习"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000010",
+            "block_date": "2026-10-11",
+            "start_minute": 570,
+            "end_minute": 585,
+            "granularity": 15,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "notes": "学习"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000011",
+            "block_date": "2026-10-11",
+            "start_minute": 585,
+            "end_minute": 600,
+            "granularity": 15,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "notes": "学习"
+          }
+        ]
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "name": "运动",
+            "color": "#4c9b67"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000012",
+            "block_date": "2026-10-11",
+            "start_minute": 570,
+            "end_minute": 585,
+            "granularity": 15,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "notes": "运动"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000013",
+            "block_date": "2026-10-11",
+            "start_minute": 585,
+            "end_minute": 600,
+            "granularity": 15,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "notes": "运动"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000014",
+            "block_date": "2026-10-11",
+            "start_minute": 600,
+            "end_minute": 615,
+            "granularity": 15,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "notes": "运动"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000015",
+            "block_date": "2026-10-11",
+            "start_minute": 615,
+            "end_minute": 630,
+            "granularity": 15,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "notes": "运动"
+          }
+        ]
+      }
+    },
+    "choices": {
+      "time_blocks:2026-10-11:570:585": {
+        "side": "incoming"
+      },
+      "time_blocks:2026-10-11:585:600": {
+        "side": "local"
+      }
+    }
+  },
+  {
+    "name": "identical-overlap-different-uuid",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000004",
+            "block_date": "2026-10-11",
+            "start_minute": 540,
+            "end_minute": 570,
+            "granularity": 30,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002"
+          }
+        ]
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000005",
+            "block_date": "2026-10-11",
+            "start_minute": 540,
+            "end_minute": 570,
+            "granularity": 30,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002"
+          }
+        ]
+      }
+    },
+    "choices": {}
+  },
+  {
+    "name": "modified-identity",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000004",
+            "block_date": "2026-10-11",
+            "start_minute": 540,
+            "end_minute": 570,
+            "granularity": 30,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002"
+          }
+        ]
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000004",
+            "block_date": "2026-10-11",
+            "start_minute": 540,
+            "end_minute": 570,
+            "granularity": 30,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "notes": "手机修改"
+          }
+        ]
+      }
+    },
+    "choices": {
+      "time_blocks:123e4567-e89b-42d3-a456-000000000004:record": {
+        "side": "incoming"
+      }
+    }
+  },
+  {
+    "name": "whole-schedule-overnight",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing"
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000016",
+            "name": "晚间复习",
+            "start_time": "2026-10-11T23:30:00",
+            "end_time": "2026-10-12T00:30:00",
+            "category": "普通日程",
+            "nature": "no_other_task",
+            "linked_todo_uuids": [
+              "123e4567-e89b-42d3-a456-000000000001"
+            ]
+          }
+        ],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing"
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000016",
+            "name": "提前复习",
+            "start_time": "2026-10-11T23:00:00",
+            "end_time": "2026-10-12T00:00:00",
+            "category": "普通日程",
+            "nature": "no_other_task",
+            "linked_todo_uuids": [
+              "123e4567-e89b-42d3-a456-000000000001"
+            ]
+          }
+        ],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "choices": {
+      "schedules:123e4567-e89b-42d3-a456-000000000016:record": {
+        "side": "incoming"
+      }
+    }
+  },
+  {
+    "name": "distinct-schedules-overlap",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing"
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000016",
+            "name": "晚间复习",
+            "start_time": "2026-10-11T23:30:00",
+            "end_time": "2026-10-12T00:30:00",
+            "category": "普通日程",
+            "nature": "no_other_task",
+            "linked_todo_uuids": [
+              "123e4567-e89b-42d3-a456-000000000001"
+            ]
+          }
+        ],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing"
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000017",
+            "name": "晚间复习",
+            "start_time": "2026-10-11T23:30:00",
+            "end_time": "2026-10-12T00:30:00",
+            "category": "普通日程",
+            "nature": "no_other_task",
+            "linked_todo_uuids": [
+              "123e4567-e89b-42d3-a456-000000000001"
+            ]
+          }
+        ],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "choices": {}
+  },
+  {
+    "name": "active-timers-park-other",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000018",
+            "name": "电脑计时",
+            "status": "running",
+            "started_at": "2026-10-11T09:00:00",
+            "last_resumed_at": "2026-10-11T09:00:00",
+            "active_intervals": []
+          }
+        ],
+        "time_blocks": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000019",
+            "name": "手机计时",
+            "status": "running",
+            "started_at": "2026-10-11T09:00:00",
+            "last_resumed_at": "2026-10-11T09:00:00",
+            "active_intervals": []
+          }
+        ],
+        "time_blocks": []
+      }
+    },
+    "choices": {
+      "timer_sessions:active:record": {
+        "side": "select",
+        "value": "123e4567-e89b-42d3-a456-000000000018",
+        "paused_at": "2026-10-11T10:00:00"
+      }
+    }
+  },
+  {
+    "name": "completion-missing-date",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "is_completed": true
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "choices": {
+      "todos:123e4567-e89b-42d3-a456-000000000001:completed_at": {
+        "side": "edit",
+        "value": "2026-10-11"
+      }
+    }
+  },
+  {
+    "name": "cross-day-blocks",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000004",
+            "block_date": "2026-10-11",
+            "start_minute": 1410,
+            "end_minute": 1440,
+            "granularity": 30,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002"
+          }
+        ]
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000005",
+            "block_date": "2026-10-12",
+            "start_minute": 0,
+            "end_minute": 30,
+            "granularity": 30,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002"
+          }
+        ]
+      }
+    },
+    "choices": {}
+  },
+  {
+    "name": "legacy-template-links",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "is_completed": false,
+            "completed_at": null
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000099",
+            "name": "每周计划",
+            "entity_type": "schedule",
+            "frequency": "weekly",
+            "start_date": "2026-10-10",
+            "weekdays": [
+              1
+            ],
+            "template_json": {
+              "name": "复习",
+              "start_time": "09:00",
+              "end_time": "10:00",
+              "linked_todo_ids": [
+                999
+              ]
+            }
+          }
+        ],
+        "recurrence_exceptions": [],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "is_completed": false,
+            "completed_at": null
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "choices": {
+      "recurrence_rules:123e4567-e89b-42d3-a456-000000000099:legacy-links": {
+        "side": "links",
+        "value": [
+          "123e4567-e89b-42d3-a456-000000000001"
+        ]
+      }
+    }
+  },
+  {
+    "name": "uuid-template-links",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "is_completed": false,
+            "completed_at": null
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000099",
+            "name": "每周计划",
+            "entity_type": "schedule",
+            "frequency": "weekly",
+            "start_date": "2026-10-10",
+            "weekdays": [
+              1
+            ],
+            "template_json": {
+              "name": "复习",
+              "start_time": "09:00",
+              "end_time": "10:00"
+            },
+            "template_linked_todo_uuids": [
+              "123e4567-e89b-42d3-a456-000000000001"
+            ]
+          }
+        ],
+        "recurrence_exceptions": [],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "is_completed": false,
+            "completed_at": null
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "choices": {}
+  },
+  {
+    "name": "split-moved-forward-local",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88",
+            "created_at": "2000-01-01T00:00:00",
+            "updated_at": "2000-01-01T00:00:00"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "name": "运动",
+            "color": "#4c9b67",
+            "created_at": "2000-01-01T00:00:00",
+            "updated_at": "2000-01-01T00:00:00"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "dded5e01-bb8e-5be9-a352-6cd845a29394",
+            "block_date": "2026-10-11",
+            "start_minute": 540,
+            "end_minute": 555,
+            "granularity": 15,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "notes": "",
+            "source": "manual",
+            "coverage_seconds": null,
+            "linked_todo_uuid": null,
+            "manual_project_uuid": null,
+            "source_timer_uuid": null,
+            "origin_uuid": "123e4567-e89b-42d3-a456-000000000004",
+            "created_at": "2000-01-01T00:00:00",
+            "updated_at": "2000-01-01T00:00:00"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000005",
+            "block_date": "2026-10-11",
+            "start_minute": 555,
+            "end_minute": 570,
+            "granularity": 15,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "notes": "跑步",
+            "source": "manual",
+            "coverage_seconds": null,
+            "linked_todo_uuid": null,
+            "manual_project_uuid": null,
+            "source_timer_uuid": null,
+            "origin_uuid": null,
+            "created_at": "2000-01-01T00:00:00",
+            "updated_at": "2000-01-01T00:00:00"
+          }
+        ]
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "name": "运动",
+            "color": "#4c9b67"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000004",
+            "block_date": "2026-10-11",
+            "start_minute": 840,
+            "end_minute": 870,
+            "granularity": 30,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002"
+          }
+        ]
+      }
+    },
+    "choices": {
+      "time_blocks:123e4567-e89b-42d3-a456-000000000004:fragments": {
+        "side": "local"
+      }
+    }
+  },
+  {
+    "name": "split-moved-forward-incoming",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88",
+            "created_at": "2000-01-01T00:00:00",
+            "updated_at": "2000-01-01T00:00:00"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "name": "运动",
+            "color": "#4c9b67",
+            "created_at": "2000-01-01T00:00:00",
+            "updated_at": "2000-01-01T00:00:00"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "dded5e01-bb8e-5be9-a352-6cd845a29394",
+            "block_date": "2026-10-11",
+            "start_minute": 540,
+            "end_minute": 555,
+            "granularity": 15,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "notes": "",
+            "source": "manual",
+            "coverage_seconds": null,
+            "linked_todo_uuid": null,
+            "manual_project_uuid": null,
+            "source_timer_uuid": null,
+            "origin_uuid": "123e4567-e89b-42d3-a456-000000000004",
+            "created_at": "2000-01-01T00:00:00",
+            "updated_at": "2000-01-01T00:00:00"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000005",
+            "block_date": "2026-10-11",
+            "start_minute": 555,
+            "end_minute": 570,
+            "granularity": 15,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "notes": "跑步",
+            "source": "manual",
+            "coverage_seconds": null,
+            "linked_todo_uuid": null,
+            "manual_project_uuid": null,
+            "source_timer_uuid": null,
+            "origin_uuid": null,
+            "created_at": "2000-01-01T00:00:00",
+            "updated_at": "2000-01-01T00:00:00"
+          }
+        ]
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "name": "运动",
+            "color": "#4c9b67"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000004",
+            "block_date": "2026-10-11",
+            "start_minute": 840,
+            "end_minute": 870,
+            "granularity": 30,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002"
+          }
+        ]
+      }
+    },
+    "choices": {
+      "time_blocks:123e4567-e89b-42d3-a456-000000000004:fragments": {
+        "side": "incoming"
+      }
+    }
+  },
+  {
+    "name": "split-moved-reverse-local",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "name": "运动",
+            "color": "#4c9b67"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000004",
+            "block_date": "2026-10-11",
+            "start_minute": 840,
+            "end_minute": 870,
+            "granularity": 30,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002"
+          }
+        ]
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88",
+            "created_at": "2000-01-01T00:00:00",
+            "updated_at": "2000-01-01T00:00:00"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "name": "运动",
+            "color": "#4c9b67",
+            "created_at": "2000-01-01T00:00:00",
+            "updated_at": "2000-01-01T00:00:00"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "dded5e01-bb8e-5be9-a352-6cd845a29394",
+            "block_date": "2026-10-11",
+            "start_minute": 540,
+            "end_minute": 555,
+            "granularity": 15,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "notes": "",
+            "source": "manual",
+            "coverage_seconds": null,
+            "linked_todo_uuid": null,
+            "manual_project_uuid": null,
+            "source_timer_uuid": null,
+            "origin_uuid": "123e4567-e89b-42d3-a456-000000000004",
+            "created_at": "2000-01-01T00:00:00",
+            "updated_at": "2000-01-01T00:00:00"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000005",
+            "block_date": "2026-10-11",
+            "start_minute": 555,
+            "end_minute": 570,
+            "granularity": 15,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "notes": "跑步",
+            "source": "manual",
+            "coverage_seconds": null,
+            "linked_todo_uuid": null,
+            "manual_project_uuid": null,
+            "source_timer_uuid": null,
+            "origin_uuid": null,
+            "created_at": "2000-01-01T00:00:00",
+            "updated_at": "2000-01-01T00:00:00"
+          }
+        ]
+      }
+    },
+    "choices": {
+      "time_blocks:123e4567-e89b-42d3-a456-000000000004:fragments": {
+        "side": "local"
+      }
+    }
+  },
+  {
+    "name": "split-moved-reverse-incoming",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "name": "运动",
+            "color": "#4c9b67"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000004",
+            "block_date": "2026-10-11",
+            "start_minute": 840,
+            "end_minute": 870,
+            "granularity": 30,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002"
+          }
+        ]
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [],
+        "recurrence_exceptions": [],
+        "todos": [],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88",
+            "created_at": "2000-01-01T00:00:00",
+            "updated_at": "2000-01-01T00:00:00"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "name": "运动",
+            "color": "#4c9b67",
+            "created_at": "2000-01-01T00:00:00",
+            "updated_at": "2000-01-01T00:00:00"
+          }
+        ],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": [
+          {
+            "uuid": "dded5e01-bb8e-5be9-a352-6cd845a29394",
+            "block_date": "2026-10-11",
+            "start_minute": 540,
+            "end_minute": 555,
+            "granularity": 15,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "notes": "",
+            "source": "manual",
+            "coverage_seconds": null,
+            "linked_todo_uuid": null,
+            "manual_project_uuid": null,
+            "source_timer_uuid": null,
+            "origin_uuid": "123e4567-e89b-42d3-a456-000000000004",
+            "created_at": "2000-01-01T00:00:00",
+            "updated_at": "2000-01-01T00:00:00"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000005",
+            "block_date": "2026-10-11",
+            "start_minute": 555,
+            "end_minute": 570,
+            "granularity": 15,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "notes": "跑步",
+            "source": "manual",
+            "coverage_seconds": null,
+            "linked_todo_uuid": null,
+            "manual_project_uuid": null,
+            "source_timer_uuid": null,
+            "origin_uuid": null,
+            "created_at": "2000-01-01T00:00:00",
+            "updated_at": "2000-01-01T00:00:00"
+          }
+        ]
+      }
+    },
+    "choices": {
+      "time_blocks:123e4567-e89b-42d3-a456-000000000004:fragments": {
+        "side": "incoming"
+      }
+    }
+  },
+  {
+    "name": "same-uuid-exception-date-change",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000099",
+            "name": "每周计划",
+            "entity_type": "schedule",
+            "frequency": "weekly",
+            "start_date": "2026-10-10",
+            "weekdays": [
+              1
+            ],
+            "template_json": {
+              "name": "复习",
+              "start_time": "09:00",
+              "end_time": "10:00"
+            },
+            "template_linked_todo_uuids": [
+              "123e4567-e89b-42d3-a456-000000000001"
+            ]
+          }
+        ],
+        "recurrence_exceptions": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000088",
+            "entity_type": "schedule",
+            "recurrence_date": "2026-10-10",
+            "action": "deleted",
+            "recurrence_rule_uuid": "123e4567-e89b-42d3-a456-000000000099"
+          }
+        ],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "is_completed": false,
+            "completed_at": null
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000099",
+            "name": "每周计划",
+            "entity_type": "schedule",
+            "frequency": "weekly",
+            "start_date": "2026-10-10",
+            "weekdays": [
+              1
+            ],
+            "template_json": {
+              "name": "复习",
+              "start_time": "09:00",
+              "end_time": "10:00"
+            },
+            "template_linked_todo_uuids": [
+              "123e4567-e89b-42d3-a456-000000000001"
+            ]
+          }
+        ],
+        "recurrence_exceptions": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000088",
+            "entity_type": "schedule",
+            "recurrence_date": "2026-10-11",
+            "action": "deleted",
+            "recurrence_rule_uuid": "123e4567-e89b-42d3-a456-000000000099"
+          }
+        ],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "is_completed": false,
+            "completed_at": null
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "choices": {
+      "recurrence_exceptions:123e4567-e89b-42d3-a456-000000000088:record": {
+        "side": "incoming"
+      }
+    }
+  },
+  {
+    "name": "same-date-exception-different-uuid",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000099",
+            "name": "每周计划",
+            "entity_type": "schedule",
+            "frequency": "weekly",
+            "start_date": "2026-10-10",
+            "weekdays": [
+              1
+            ],
+            "template_json": {
+              "name": "复习",
+              "start_time": "09:00",
+              "end_time": "10:00"
+            },
+            "template_linked_todo_uuids": [
+              "123e4567-e89b-42d3-a456-000000000001"
+            ]
+          }
+        ],
+        "recurrence_exceptions": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000088",
+            "entity_type": "schedule",
+            "recurrence_date": "2026-10-10",
+            "action": "deleted",
+            "recurrence_rule_uuid": "123e4567-e89b-42d3-a456-000000000099"
+          }
+        ],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "is_completed": false,
+            "completed_at": null
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000099",
+            "name": "每周计划",
+            "entity_type": "schedule",
+            "frequency": "weekly",
+            "start_date": "2026-10-10",
+            "weekdays": [
+              1
+            ],
+            "template_json": {
+              "name": "复习",
+              "start_time": "09:00",
+              "end_time": "10:00"
+            },
+            "template_linked_todo_uuids": [
+              "123e4567-e89b-42d3-a456-000000000001"
+            ]
+          }
+        ],
+        "recurrence_exceptions": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000087",
+            "entity_type": "schedule",
+            "recurrence_date": "2026-10-10",
+            "action": "deleted",
+            "recurrence_rule_uuid": "123e4567-e89b-42d3-a456-000000000099"
+          }
+        ],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "is_completed": false,
+            "completed_at": null
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "choices": {}
+  },
+  {
+    "name": "exception-date-swap",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000099",
+            "name": "每周计划",
+            "entity_type": "schedule",
+            "frequency": "weekly",
+            "start_date": "2026-10-10",
+            "weekdays": [
+              1
+            ],
+            "template_json": {
+              "name": "复习",
+              "start_time": "09:00",
+              "end_time": "10:00"
+            },
+            "template_linked_todo_uuids": [
+              "123e4567-e89b-42d3-a456-000000000001"
+            ]
+          }
+        ],
+        "recurrence_exceptions": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000088",
+            "entity_type": "schedule",
+            "recurrence_date": "2026-10-10",
+            "action": "deleted",
+            "recurrence_rule_uuid": "123e4567-e89b-42d3-a456-000000000099"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000086",
+            "entity_type": "schedule",
+            "recurrence_date": "2026-10-11",
+            "action": "deleted",
+            "recurrence_rule_uuid": "123e4567-e89b-42d3-a456-000000000099"
+          }
+        ],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "is_completed": false,
+            "completed_at": null
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000099",
+            "name": "每周计划",
+            "entity_type": "schedule",
+            "frequency": "weekly",
+            "start_date": "2026-10-10",
+            "weekdays": [
+              1
+            ],
+            "template_json": {
+              "name": "复习",
+              "start_time": "09:00",
+              "end_time": "10:00"
+            },
+            "template_linked_todo_uuids": [
+              "123e4567-e89b-42d3-a456-000000000001"
+            ]
+          }
+        ],
+        "recurrence_exceptions": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000088",
+            "entity_type": "schedule",
+            "recurrence_date": "2026-10-11",
+            "action": "deleted",
+            "recurrence_rule_uuid": "123e4567-e89b-42d3-a456-000000000099"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000086",
+            "entity_type": "schedule",
+            "recurrence_date": "2026-10-10",
+            "action": "deleted",
+            "recurrence_rule_uuid": "123e4567-e89b-42d3-a456-000000000099"
+          }
+        ],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "is_completed": false,
+            "completed_at": null
+          }
+        ],
+        "time_block_categories": [],
+        "schedules": [],
+        "daily_logs": [],
+        "log_templates": [],
+        "timer_sessions": [],
+        "time_blocks": []
+      }
+    },
+    "choices": {
+      "recurrence_exceptions:123e4567-e89b-42d3-a456-000000000088:record": {
+        "side": "incoming"
+      },
+      "recurrence_exceptions:123e4567-e89b-42d3-a456-000000000086:record": {
+        "side": "incoming"
+      }
+    }
+  },
+  {
+    "name": "complete-reference-graph",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000077",
+            "name": "关联项目"
+          }
+        ],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000099",
+            "name": "每周计划",
+            "entity_type": "schedule",
+            "frequency": "weekly",
+            "start_date": "2026-10-10",
+            "weekdays": [
+              1
+            ],
+            "template_json": {
+              "name": "复习",
+              "start_time": "09:00",
+              "end_time": "10:00"
+            },
+            "template_linked_todo_uuids": [
+              "123e4567-e89b-42d3-a456-000000000001"
+            ],
+            "project_uuid": "123e4567-e89b-42d3-a456-000000000077"
+          }
+        ],
+        "recurrence_exceptions": [],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "is_completed": true,
+            "completed_at": "2026-10-10T09:00:00",
+            "project_uuid": "123e4567-e89b-42d3-a456-000000000077"
+          }
+        ],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "name": "运动",
+            "color": "#4c9b67"
+          }
+        ],
+        "schedules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000016",
+            "name": "晚间复习",
+            "start_time": "2026-10-11T23:30:00",
+            "end_time": "2026-10-12T00:30:00",
+            "category": "普通日程",
+            "nature": "no_other_task",
+            "linked_todo_uuids": [
+              "123e4567-e89b-42d3-a456-000000000001"
+            ],
+            "project_uuid": "123e4567-e89b-42d3-a456-000000000077"
+          }
+        ],
+        "daily_logs": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000079",
+            "log_date": "2026-10-10",
+            "log_text": "正文保留",
+            "completed_todo_uuids": [
+              "123e4567-e89b-42d3-a456-000000000001"
+            ]
+          }
+        ],
+        "log_templates": [],
+        "timer_sessions": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000018",
+            "name": "电脑计时",
+            "status": "completed",
+            "started_at": "2026-10-11T09:00:00",
+            "last_resumed_at": "2026-10-11T09:00:00",
+            "active_intervals": [],
+            "ended_at": "2026-10-11T12:00:00",
+            "project_uuid": "123e4567-e89b-42d3-a456-000000000077",
+            "linked_todo_uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "created_schedule_uuid": "123e4567-e89b-42d3-a456-000000000016"
+          }
+        ],
+        "time_blocks": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000004",
+            "block_date": "2026-10-11",
+            "start_minute": 540,
+            "end_minute": 570,
+            "granularity": 30,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "linked_todo_uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "source_timer_uuid": "123e4567-e89b-42d3-a456-000000000018"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000078",
+            "block_date": "2026-10-11",
+            "start_minute": 900,
+            "end_minute": 930,
+            "granularity": 30,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "linked_todo_uuid": null,
+            "source_timer_uuid": "123e4567-e89b-42d3-a456-000000000018",
+            "manual_project_uuid": "123e4567-e89b-42d3-a456-000000000077"
+          }
+        ]
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "projects": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000077",
+            "name": "关联项目"
+          }
+        ],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000099",
+            "name": "每周计划",
+            "entity_type": "schedule",
+            "frequency": "weekly",
+            "start_date": "2026-10-10",
+            "weekdays": [
+              1
+            ],
+            "template_json": {
+              "name": "复习",
+              "start_time": "09:00",
+              "end_time": "10:00"
+            },
+            "template_linked_todo_uuids": [
+              "123e4567-e89b-42d3-a456-000000000001"
+            ],
+            "project_uuid": "123e4567-e89b-42d3-a456-000000000077"
+          }
+        ],
+        "recurrence_exceptions": [],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "name": "复习",
+            "ddl_type": "none",
+            "category": "任务",
+            "status": "not_focusing",
+            "is_completed": true,
+            "completed_at": "2026-10-10T09:00:00",
+            "project_uuid": "123e4567-e89b-42d3-a456-000000000077"
+          }
+        ],
+        "time_block_categories": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "name": "学习",
+            "color": "#347f88"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000003",
+            "name": "运动",
+            "color": "#4c9b67"
+          }
+        ],
+        "schedules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000016",
+            "name": "晚间复习",
+            "start_time": "2026-10-11T23:30:00",
+            "end_time": "2026-10-12T00:30:00",
+            "category": "普通日程",
+            "nature": "no_other_task",
+            "linked_todo_uuids": [
+              "123e4567-e89b-42d3-a456-000000000001"
+            ],
+            "project_uuid": "123e4567-e89b-42d3-a456-000000000077"
+          }
+        ],
+        "daily_logs": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000079",
+            "log_date": "2026-10-10",
+            "log_text": "正文保留",
+            "completed_todo_uuids": [
+              "123e4567-e89b-42d3-a456-000000000001"
+            ]
+          }
+        ],
+        "log_templates": [],
+        "timer_sessions": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000018",
+            "name": "电脑计时",
+            "status": "completed",
+            "started_at": "2026-10-11T09:00:00",
+            "last_resumed_at": "2026-10-11T09:00:00",
+            "active_intervals": [],
+            "ended_at": "2026-10-11T12:00:00",
+            "project_uuid": "123e4567-e89b-42d3-a456-000000000077",
+            "linked_todo_uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "created_schedule_uuid": "123e4567-e89b-42d3-a456-000000000016"
+          }
+        ],
+        "time_blocks": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000004",
+            "block_date": "2026-10-11",
+            "start_minute": 540,
+            "end_minute": 570,
+            "granularity": 30,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "linked_todo_uuid": "123e4567-e89b-42d3-a456-000000000001",
+            "source_timer_uuid": "123e4567-e89b-42d3-a456-000000000018"
+          },
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000078",
+            "block_date": "2026-10-11",
+            "start_minute": 900,
+            "end_minute": 930,
+            "granularity": 30,
+            "category_uuid": "123e4567-e89b-42d3-a456-000000000002",
+            "linked_todo_uuid": null,
+            "source_timer_uuid": "123e4567-e89b-42d3-a456-000000000018",
+            "manual_project_uuid": "123e4567-e89b-42d3-a456-000000000077"
+          }
+        ]
+      }
+    },
+    "choices": {}
+  }
+]

@@ -238,7 +238,8 @@ export default function TimerPage() {
         {recent.length === 0 ? <div className="empty-state small">暂无最近计时</div> : recent.map(item => (
           <div key={item.id} className="timer-recent-row">
             <strong>{item.name}</strong>
-            <span>{formatDuration(item.elapsed_seconds)} · {item.status === 'completed' ? '已结束' : '已取消'}</span>
+            <span>{formatDuration(item.elapsed_seconds)} · {item.is_parked ? '合并后暂存暂停' : item.status === 'completed' ? '已结束' : '已取消'}</span>
+            {item.is_parked && <button className="btn btn-sm btn-secondary" disabled={!!timer || actionBusy} onClick={()=>refreshAfterAction(()=>timerApi.resume(item.id))}>继续这条计时</button>}
             {item.status === 'completed' && <button className="btn btn-sm btn-secondary" onClick={() => setFinishTimer(item)}>折算时间块</button>}
           </div>
         ))}

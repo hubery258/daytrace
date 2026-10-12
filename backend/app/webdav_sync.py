@@ -343,11 +343,18 @@ async def test_connection(db: AsyncSession, draft: Any) -> dict[str, Any]:
         return result
 
 
+async def _export_for_upload(db: AsyncSession) -> dict[str, Any]:
+    try:
+        return await export_package(db)
+    except DataPackageError as error:
+        raise WebDavError("SYNC_LOCAL_DATA_INVALID", str(error)) from None
+
+
 async def preflight_upload(db: AsyncSession) -> dict[str, Any]:
     config = await get_or_create_config(db)
     target = _target(config, _require_password(config))
     client = WebDavClient()
-    package = await export_package(db)
+    package = await _export_for_upload(db)
     local = summarize_package(package)
     async with sync_guard():
         try:
@@ -398,7 +405,7 @@ async def upload_latest(
     config = await get_or_create_config(db)
     target = _target(config, _require_password(config))
     client = WebDavClient()
-    package = await export_package(db)
+    package = await _export_for_upload(db)
     payload = json.dumps(package, ensure_ascii=False, indent=2).encode("utf-8")
     async with sync_guard():
         try:

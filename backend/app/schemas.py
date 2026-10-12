@@ -411,6 +411,7 @@ class TimerOut(BaseModel):
     uuid: str
     name: str
     status: TimerStatus
+    is_parked: bool = False
     project_id: Optional[int] = None
     linked_todo_id: Optional[int] = None
     started_at: datetime

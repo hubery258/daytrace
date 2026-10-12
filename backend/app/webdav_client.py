@@ -58,6 +58,7 @@ ERROR_MESSAGES: dict[str, str] = {
     "SYNC_BUSY": "当前正在同步，请稍后重试",
     "SYNC_PASSWORD_REQUIRED": "请先填写 WebDAV 密码",
     "SYNC_CONFIRMATION_REQUIRED": "需要用户确认后才能上传",
+    "SYNC_LOCAL_DATA_INVALID": "本机数据未通过完整性校验，已停止上传；请先修复关联后重试",
 }
 
 #: HTTP status this local backend returns for each protocol error code.
@@ -73,6 +74,7 @@ ERROR_HTTP_STATUS: dict[str, int] = {
     "WEBDAV_CONFLICT": 409,
     "SYNC_BUSY": 409,
     "WEBDAV_INVALID_PACKAGE": 422,
+    "SYNC_LOCAL_DATA_INVALID": 422,
     "WEBDAV_UNSUPPORTED_SCHEMA": 422,
     "WEBDAV_TLS_ERROR": 502,
     "WEBDAV_NETWORK_ERROR": 502,

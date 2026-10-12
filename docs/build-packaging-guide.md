@@ -1,6 +1,6 @@
 # 日迹 Android 与 Windows 桌面体验版打包指南
 
-本文用于以后在 Windows 开发机上重新构建日迹 v0.11.0 的 Android debug APK 和 Windows Electron portable 体验版。
+本文用于以后在 Windows 开发机上重新构建日迹 v0.11.3 的 Android debug APK 和 Windows Electron portable 体验版。
 
 当前技术结构：
 
@@ -9,11 +9,11 @@
 - Android：Capacitor + Android WebView + `@capacitor-community/sqlite`。
 - 两端数据库相互独立，通过逻辑 JSON 数据包手动迁移数据。
 
-JSON 数据包 schema_version 为 0.10.0，包含时间块及属性；仍接受 0.6.0 旧包并跳过旧实际日程。WebDAV 同步文件为 daytrace-latest.json。
+JSON 数据包 schema_version 为 0.10.0，包含时间块及属性；仍接受 0.6.0、0.8.0 旧包并跳过旧实际日程。WebDAV 同步文件为 daytrace-latest.json。
 
 ## 产物命名
 
-- v0.11.0 起，新构建产物统一使用 daytrace-* 命名，例如 daytrace-desktop-0.11.0.exe、daytrace-android-0.11.0-debug.apk。
+- v0.11.0 起，新构建产物统一使用 daytrace-* 命名，例如 daytrace-desktop-0.11.3.exe、daytrace-android-0.11.3-debug.apk。
 - v0.10.x 及以前的 riji-* 产物只作为历史版本保留，不再用于新构建。
 - 新导出的 JSON 文件也统一使用 daytrace-*.json；WebDAV 同步文件使用 daytrace-latest.json。
 
@@ -122,7 +122,7 @@ Electron 下载不稳定时可指定镜像：
 5. 先在带时间戳的临时目录构建，成功后复制到稳定路径：
 
    ```text
-   release/desktop/daytrace-desktop-0.11.0.exe
+   release/desktop/daytrace-desktop-0.11.3.exe
    ```
 
 ### 2.3 运行与验证
@@ -130,7 +130,7 @@ Electron 下载不稳定时可指定镜像：
 直接双击：
 
 ```text
-release/desktop/daytrace-desktop-0.11.0.exe
+release/desktop/daytrace-desktop-0.11.3.exe
 ```
 
 至少检查：
@@ -254,7 +254,7 @@ cd D:\cs\task
 
    ```text
    frontend/android/app/build/outputs/apk/debug/app-debug.apk
-   release/android/daytrace-android-0.11.0-debug.apk
+   release/android/daytrace-android-0.11.3-debug.apk
    ```
 
 ### 3.4 安装到实体手机
@@ -265,7 +265,7 @@ cd D:\cs\task
 $adb = ".\.android-sdk\platform-tools\adb.exe"
 
 & $adb devices
-& $adb install -r ".\release\android\daytrace-android-0.11.0-debug.apk"
+& $adb install -r ".\release\android\daytrace-android-0.11.3-debug.apk"
 ```
 
 `adb devices` 应显示：
@@ -325,7 +325,7 @@ $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
 
 ```powershell
 & $adb uninstall com.riji.app
-& $adb install ".\release\android\daytrace-android-0.11.0-debug.apk"
+& $adb install ".\release\android\daytrace-android-0.11.3-debug.apk"
 ```
 
 **Gradle 内存、文件移动或缓存问题**
@@ -353,13 +353,14 @@ Android 本地 SQLite
 | 场景 | 当前状态 |
 | --- | --- |
 | Windows 电脑 A → Windows 电脑 B | 支持，通过 JSON 文件手动迁移 |
-| 浏览器/FastAPI 版 → Windows Electron 版 | 支持，只要数据包为 `schema_version: 0.6.0` |
+| 浏览器/FastAPI 版 → Windows Electron 版 | 支持，支持合法 `0.6.0` / `0.8.0` / `0.10.0` 数据包 |
 | Windows 桌面端 → Android | 支持，已完成往返验证 |
 | Android → Windows 桌面端 | 支持，已完成往返验证 |
 | Android 手机 A → Android 手机 B | 数据协议支持；通过文件分享/保存后导入，建议在实体手机上再做一次兼容性验证 |
 | 自动后台同步 | 不支持 |
 | 登录账号同步 | 不支持 |
-| 多端实时同步和冲突协商 | 不支持 |
+| 手动合并冲突选择 | 支持，按当前预览确认 |
+| 多端实时同步 | 不支持 |
 
 ### 当前“同步”的准确名称
 
@@ -367,7 +368,7 @@ Android 本地 SQLite
 
 - 数据导出/导入。
 - 手动迁移。
-- 手动备份与恢复的基础版本。
+- 手动设备汇总，以及备份恢复。
 
 它还不能叫真正的多端同步，因为系统没有：
 
@@ -375,7 +376,7 @@ Android 本地 SQLite
 - 云端同步服务。
 - 自动上传、拉取和增量同步。
 - 删除墓碑。
-- 多端并发修改后的完整冲突解决。
+- 自动识别字段修改历史。
 - 端到端加密和同步状态页面。
 
 ### JSON 当前覆盖范围
@@ -393,13 +394,16 @@ Android 本地 SQLite
 
 核心实体使用 UUID。关系字段在数据包内也使用 UUID，在目标设备写入 SQLite 时重新映射为该设备自己的整数 ID。
 
-合并规则：
+合并规则（v0.11.3）：
 
-- 相同 UUID：导入包内容优先。
-- 本地存在、但数据包里没有的实体：保留；同日期重叠的时间块由导入包覆盖。
-- 每日总结还会按日期识别旧数据冲突。
-- 导入前显示各实体的新增和更新数量。
-- Android 导入在一个外层事务中执行，失败时回滚。
+- 按 UUID 识别实体，日志按日期；文件缺少记录不代表删除。
+- 任务完成优先，其他字段逐项选择；恢复备份允许还原未完成状态。
+- 实际时间只处理冲突区间，保留双方非冲突部分；移动同一 UUID 不复制版本。
+- 计划、项目、属性、重复规则及例外、模板、计时记录按整条选择；日志正文可以人工整理。
+- 预览显示新增、变更、跳过、冲突及拆分影响，未解决冲突禁止执行。本地变化后必须重新预览。
+- 写入前保存并读回校验操作前 JSON 副本，事务统一写入；副本失败阻止操作。本机凭据保留。
+- WebDAV 只传输文件，保留 ETag 条件上传。汇总后上传结果，再由另一设备导入。
+- 两端均应升级到 v0.11.3；旧重复计划中的整数任务关联须在预览中重新选择，新包使用 UUID。
 
 默认不导出：
 
@@ -423,10 +427,11 @@ Android 本地 SQLite
 
 1. 设置 → 数据导入导出。
 2. 点击“选择 JSON 导入”。
-3. 查看 `schema_version` 及新增/更新数量。
-4. 确认文件来源和预览数量正确。
+3. 查看版本、新增、变更、相同跳过、冲突及时间拆分影响。
+4. 逐项解决冲突，确认文件来源和完整预览；本地数据变化后重新预览。
 5. 点击“确认合并导入”。
 6. 刷新页面并检查项目、待办、日程和今日总结。
+7. 将汇总结果导出或上传，再由另一设备导入。
 
 导入前仍建议先导出目标设备自己的备份。当前是体验版，不应把唯一一份重要数据只保存在一个设备中。
 
@@ -450,8 +455,8 @@ Android 本地 SQLite
 git branch --show-current
 git status --short
 
-Get-FileHash ".\release\android\daytrace-android-0.11.0-debug.apk" -Algorithm SHA256
-Get-FileHash ".\release\desktop\daytrace-desktop-0.11.0.exe" -Algorithm SHA256
+Get-FileHash ".\release\android\daytrace-android-0.11.3-debug.apk" -Algorithm SHA256
+Get-FileHash ".\release\desktop\daytrace-desktop-0.11.3.exe" -Algorithm SHA256
 ```
 
 记录：

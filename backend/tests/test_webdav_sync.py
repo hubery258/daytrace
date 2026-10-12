@@ -13,7 +13,7 @@ import ssl
 import threading
 import unittest
 import urllib.parse
-from datetime import date
+from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from fastapi import HTTPException
@@ -23,8 +23,9 @@ from sqlalchemy.pool import StaticPool
 
 from app import models, schemas, webdav_sync
 from app.data_portability import export_package, import_package
+from portability_helpers import confirmed_import as import_package
 from app.database import Base
-from app.routers import sync_webdav
+from app.routers import sync_webdav, data_portability
 from app.webdav_client import (
     ERROR_MESSAGES,
     WebDavClient,
@@ -742,6 +743,37 @@ class WebDavServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(captured.exception.status_code, 400)
         self.assertEqual(captured.exception.detail["code"], "SYNC_CONFIRMATION_REQUIRED")
         self.assertEqual(captured.exception.detail["message"], ERROR_MESSAGES["SYNC_CONFIRMATION_REQUIRED"])
+
+    async def test_dangling_schedule_links_block_export_and_upload_before_network(self):
+        await self.save_config()
+        schedule = models.Schedule(name="历史计划", start_time=datetime(2026, 9, 16, 9),
+                                   end_time=datetime(2026, 9, 16, 10), linked_todo_ids=[999])
+        self.db.add(schedule)
+        await self.db.commit()
+        for operation in (
+            lambda: sync_webdav.preflight(self.db),
+            lambda: sync_webdav.upload(schemas.WebDavUploadRequest(
+                confirmed=True, expected_remote_exists=False), self.db),
+            lambda: data_portability.export_data(self.db),
+        ):
+            with self.assertRaises(HTTPException) as captured:
+                await operation()
+            self.assertEqual(captured.exception.status_code, 422)
+            detail = captured.exception.detail
+            if isinstance(detail, dict):
+                self.assertEqual(detail["code"], "SYNC_LOCAL_DATA_INVALID")
+                detail = detail["message"]
+            self.assertIn("schedules.linked_todo_ids", detail)
+            self.assertNotIn(FAKE_PASSWORD, detail)
+        self.assertEqual(self.server.state.requests, [])
+        self.assertEqual(schedule.linked_todo_ids, [999])
+        # An explicit repair in this isolated database restores normal upload.
+        schedule.linked_todo_ids = []
+        await self.db.commit()
+        await sync_webdav.preflight(self.db)
+        result = await sync_webdav.upload(schemas.WebDavUploadRequest(
+            confirmed=True, expected_remote_exists=False), self.db)
+        self.assertTrue(result["ok"])
 
     async def test_router_config_response_hides_password(self):
         await self.save_config()
