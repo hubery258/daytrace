@@ -8,6 +8,7 @@ import re
 import uuid
 from datetime import datetime, date, timedelta, timezone
 from pathlib import Path
+from .merge_fields import POLICY, conflict_record, preserve_local_fields
 
 CONTRACT = json.loads(Path(__file__).with_name('merge_contract.json').read_text(encoding='utf-8'))
 ORDER = list(CONTRACT)
@@ -57,8 +58,9 @@ def exception_key(row):
     return (row['recurrence_rule_uuid'], row['entity_type'], row['recurrence_date'])
 
 
-def business(row):
-    return {k: v for k, v in row.items() if k not in ('uuid', 'created_at', 'updated_at', 'origin_uuid')}
+def business(row, entity=None, mode='merge'):
+    compared = conflict_record(entity, row) if entity and mode == 'merge' else row
+    return {k: v for k, v in compared.items() if k not in ('uuid', 'created_at', 'updated_at', 'origin_uuid')}
 
 
 def block_content(row):
@@ -203,7 +205,9 @@ def build_merge_plan(local_raw, incoming_raw, mode='merge', choices=None):
         resolved = choice.get('side') in ('local', 'incoming') or (choice.get('side') == 'edit' and field in ('notes', 'log_text', 'completed_at', 'name') and isinstance(choice.get('value'), str))
         if kind == 'links':
             resolved = choice.get('side') == 'links' and isinstance(choice.get('value'), list) and all(uuid_valid(v) for v in choice['value'])
-        conflicts.append({'id': key, 'entity': entity, 'field': field, 'kind': kind, 'local': copy.deepcopy(a), 'incoming': copy.deepcopy(b), 'resolved': resolved, 'choice': choice if resolved else None})
+        shown_a = conflict_record(entity, a) if field == 'record' else copy.deepcopy(a)
+        shown_b = conflict_record(entity, b) if field == 'record' else copy.deepcopy(b)
+        conflicts.append({'id': key, 'entity': entity, 'field': field, 'kind': kind, 'local': shown_a, 'incoming': shown_b, 'resolved': resolved, 'choice': choice if resolved else None})
         return copy.deepcopy(choice.get('value') if choice.get('side') in ('edit', 'links') and resolved else b if choice.get('side') == 'incoming' and resolved else a)
 
     for row in incoming['entities']['recurrence_rules']:
@@ -228,7 +232,7 @@ def build_merge_plan(local_raw, incoming_raw, mode='merge', choices=None):
                     output['entities'][name].append(added)
                     mapping[key] = added
                     continue
-                if business(old) == business(row):
+                if business(old, name) == business(row, name):
                     continue
                 if name == 'todos':
                     for field in (k for k in CONTRACT['todos'] if k not in ('is_completed', 'completed_at')):
@@ -242,7 +246,7 @@ def build_merge_plan(local_raw, incoming_raw, mode='merge', choices=None):
                         old['log_text'] = choose(f'{name}:{key}:log_text', name, 'log_text', old['log_text'], row['log_text'])
                     old['completed_todo_uuids'] = sorted(set(old['completed_todo_uuids'] + row['completed_todo_uuids']))
                 else:
-                    selected = choose(f'{name}:{key}:record', name, 'record', old, row, 'record')
+                    selected = preserve_local_fields(name, choose(f'{name}:{key}:record', name, 'record', old, row, 'record'), old)
                     selected['uuid'] = old['uuid']
                     old.update(selected)
 
@@ -384,6 +388,6 @@ def build_merge_plan(local_raw, incoming_raw, mode='merge', choices=None):
             old = before.get(identity(name, row))
             if old is None and name == 'recurrence_exceptions':
                 old = next((x for x in before.values() if exception_key(x) == exception_key(row)), None)
-            skipped += old is not None and business(old) == business(row)
-        summary[name] = {'total': len(incoming['entities'][name]), 'create': sum(k not in before for k in after), 'update': sum(k in before and business(r) != business(before[k]) for k, r in after.items()), 'skip': skipped, 'delete': sum(k not in after for k in before), 'conflict': sum(c['entity'] == name for c in conflicts)}
-    return {'app': 'riji', 'schema_version': incoming_raw['schema_version'], 'mode': mode, 'token': digest({'local': local, 'incoming': incoming, 'mode': mode, 'choices': choices, 'raw': incoming_raw}), 'conflicts': conflicts, 'effects': effects, 'entities': summary, 'total': sum(r['total'] for r in summary.values()), 'delete_total': sum(r['delete'] for r in summary.values()), 'unresolved': sum(not c['resolved'] for c in conflicts), 'package': output}
+            skipped += old is not None and business(old, name, mode) == business(row, name, mode)
+        summary[name] = {'total': len(incoming['entities'][name]), 'create': sum(k not in before for k in after), 'update': sum(k in before and business(r, name, mode) != business(before[k], name, mode) for k, r in after.items()), 'skip': skipped, 'delete': sum(k not in after for k in before), 'conflict': sum(c['entity'] == name for c in conflicts)}
+    return {'app': 'riji', 'schema_version': incoming_raw['schema_version'], 'mode': mode, 'token': digest({'local': local, 'incoming': incoming, 'mode': mode, 'choices': choices, 'raw': incoming_raw, 'field_policy': POLICY}), 'conflicts': conflicts, 'effects': effects, 'entities': summary, 'total': sum(r['total'] for r in summary.values()), 'delete_total': sum(r['delete'] for r in summary.values()), 'unresolved': sum(not c['resolved'] for c in conflicts), 'package': output}

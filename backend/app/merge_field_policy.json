@@ -1,0 +1,12 @@
+[
+  {
+    "entity": "schedules",
+    "fields": ["category", "nature", "relax_suggestion"]
+  },
+  {
+    "entity": "recurrence_rules",
+    "when": {"entity_type": "schedule"},
+    "container": "template_json",
+    "fields": ["category", "nature", "relax_suggestion"]
+  }
+]

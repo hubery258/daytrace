@@ -12,10 +12,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app import models
 from app.database import Base
 from app.data_portability import export_package
-from app.merge_plan import build_merge_plan, normalize_package
+from app.merge_plan import build_merge_plan, normalize_package, digest
 from app.routers.data_portability import ImportRequest, preview_import, commit_import
 
 FIXTURES = json.loads((Path(__file__).parents[2] / 'tests/manual-merge-fixtures.json').read_text(encoding='utf-8'))
+FIXTURES += json.loads((Path(__file__).parents[2] / 'tests/legacy-schedule-merge-fixtures.json').read_text(encoding='utf-8'))
 
 
 class ManualMergeTests(unittest.IsolatedAsyncioTestCase):
@@ -42,10 +43,28 @@ class ManualMergeTests(unittest.IsolatedAsyncioTestCase):
             for fixture in FIXTURES:
                 with self.subTest(fixture=fixture['name']):
                     await self.apply(db, fixture['local'], 'replace')
+                    if 'expected' in fixture:
+                        preview = await preview_import(ImportRequest(package=fixture['incoming'], mode=fixture.get('mode', 'merge')), db)
+                        self.assertEqual(preview['unresolved'], fixture['unresolved_before'])
+                        for conflict in preview['conflicts']:
+                            for row in (conflict['local'], conflict['incoming']):
+                                legacy = row if conflict['entity'] == 'schedules' else row['template_json'] if conflict['entity'] == 'recurrence_rules' and row['entity_type'] == 'schedule' else None
+                                if legacy is not None:
+                                    for field in ('category', 'nature', 'relax_suggestion'):
+                                        self.assertNotIn(field, legacy)
                     await self.apply(db, fixture['incoming'], fixture.get('mode', 'merge'), fixture['choices'])
                     first = await export_package(db)
                     expected = build_merge_plan(fixture['local'], fixture['incoming'], fixture.get('mode', 'merge'), fixture['choices'])
                     self.assertEqual(normalize_package(first), normalize_package(expected['package']))
+                    if 'expected' in fixture:
+                        for entity, rows in fixture['expected']['rows'].items():
+                            for row in rows:
+                                actual = next(r for r in first['entities'][entity] if r['uuid'] == row['uuid'])
+                                for key, value in row.items():
+                                    self.assertEqual(actual[key], value, f'{entity}.{key}')
+                        for entity, summary in fixture['expected']['summary'].items():
+                            for key, value in summary.items():
+                                self.assertEqual(expected['entities'][entity][key], value, f'{entity}.{key}')
                     choices = dict(fixture['choices'])
                     preview = await preview_import(ImportRequest(package=fixture['incoming'], mode=fixture.get('mode', 'merge'), choices=choices), db)
                     for conflict in preview['conflicts']:
@@ -140,6 +159,20 @@ class ManualMergeTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaisesRegex(HTTPException, '重新预览'):
                     await commit_import(ImportRequest(**args, preview_token=token), db)
                 self.assertEqual((await export_package(db))['entities'], before)
+
+    async def test_token_rejects_preview_from_before_field_policy_change(self):
+        fixture = next(f for f in FIXTURES if f['name'] == 'legacy-schedule-only-differences')
+        async with self.sessions() as db:
+            await self.apply(db, fixture['local'], 'replace')
+            local = await export_package(db)
+            old_token = digest({'local': normalize_package(local), 'incoming': normalize_package(fixture['incoming']), 'mode': 'merge', 'choices': {}, 'raw': fixture['incoming']})
+            preview = await preview_import(ImportRequest(package=fixture['incoming']), db)
+            self.assertEqual(preview['unresolved'], 0)
+            self.assertNotEqual(preview['token'], old_token)
+            with self.assertRaisesRegex(HTTPException, '重新预览'):
+                await commit_import(ImportRequest(package=fixture['incoming'], preview_token=old_token), db)
+            self.assertEqual((await export_package(db))['entities'], local['entities'])
+            await self.apply(db, fixture['incoming'])
 
     async def test_local_dangling_refs_are_not_silently_discarded(self):
         fixture = next(f for f in FIXTURES if f['name'] == 'whole-schedule-overnight')

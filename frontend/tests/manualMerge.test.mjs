@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import {readFile,writeFile,mkdtemp,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {buildMergePlan} from '../src/data/mergePlan.js';
+import {buildMergePlan,digest,normalizePackage} from '../src/data/mergePlan.js';
 import {mobileRequest,__installDatabaseForTests,__resetDatabaseForTests} from '../src/data/mobileDatabase.js';
 import {createSqlJsConnection} from './helpers/sqlJsDatabase.mjs';
 
 const fixtures=JSON.parse(await readFile(new URL('../../tests/manual-merge-fixtures.json',import.meta.url),'utf8'));
+fixtures.push(...JSON.parse(await readFile(new URL('../../tests/legacy-schedule-merge-fixtures.json',import.meta.url),'utf8')));
 let db,backupDir;
 process.env.NODE_ENV='test';
 const request=(path,body)=>mobileRequest(path,body?{method:'POST',body:JSON.stringify(body)}:{});
@@ -27,10 +28,28 @@ afterEach(async()=>{__resetDatabaseForTests();await db.close();await rm(backupDi
 
 for (const fixture of fixtures) test(`Android actual preview/write/reimport: ${fixture.name}`,async()=>{
   await apply(fixture.local,'replace');
+  if (fixture.expected) {
+    const preview=await request('/data/import/preview',{package:fixture.incoming,mode:fixture.mode||'merge'});
+    assert.equal(preview.unresolved,fixture.unresolved_before);
+    for (const c of preview.conflicts) for (const row of [c.local,c.incoming]) {
+      const legacy=c.entity==='schedules'?row:c.entity==='recurrence_rules' && row.entity_type==='schedule'?row.template_json:null;
+      if (legacy) for (const key of ['category','nature','relax_suggestion']) assert.equal(Object.hasOwn(legacy,key),false);
+    }
+  }
   await apply(fixture.incoming,fixture.mode||'merge',fixture.choices);
   const first=await request('/data/export');
   const expected=await buildMergePlan(fixture.local,fixture.incoming,fixture.mode||'merge',fixture.choices);
   assert.equal(expected.unresolved,0);
+  if (fixture.expected) {
+    for (const [entity,rows] of Object.entries(fixture.expected.rows)) for (const row of rows) {
+      const actual=first.entities[entity].find(r=>r.uuid===row.uuid);
+      for (const [key,value] of Object.entries(row)) assert.deepEqual(actual[key],value,`${entity}.${key}`);
+    }
+    const preview=await request('/data/import/preview',{package:fixture.incoming,mode:fixture.mode||'merge',choices:fixture.choices});
+    // Check first-import counts against the plan from the original inputs, not repeat-import counts.
+    for (const [entity,summary] of Object.entries(fixture.expected.summary)) for (const [key,value] of Object.entries(summary)) assert.equal(expected.entities[entity][key],value,`${entity}.${key}`);
+    assert.equal(preview.unresolved,0);
+  }
   // Ignore export timestamp and compare normalized portable records including associations.
   const actualPlan=await buildMergePlan(first,expected.package,'replace');
   assert.equal(Object.values(actualPlan.entities).reduce((s,r)=>s+r.create+r.update+r.delete,0),0);
@@ -149,6 +168,19 @@ test('preview token binds the exact packet, choices and mode',async()=>{
     await assert.rejects(request('/data/import',{...body,preview_token:preview.token}),/重新预览/);
     assert.deepEqual((await request('/data/export')).entities,before);
   }
+});
+
+test('a preview from before the field policy change cannot execute under new rules',async()=>{
+  const f=fixtures.find(r=>r.name==='legacy-schedule-only-differences');await apply(f.local,'replace');
+  const local=await request('/data/export');
+  const oldToken=await digest({local:normalizePackage(local),incoming:normalizePackage(f.incoming),mode:'merge',choices:{},raw:f.incoming});
+  const before=local.entities;
+  const preview=await request('/data/import/preview',{package:f.incoming});
+  assert.equal(preview.unresolved,0);
+  assert.notEqual(preview.token,oldToken);
+  await assert.rejects(request('/data/import',{package:f.incoming,preview_token:oldToken}),/重新预览/);
+  assert.deepEqual((await request('/data/export')).entities,before);
+  await apply(f.incoming);
 });
 
 test('dangling local scalar and list references block export, preview and stale execution without writes',async()=>{

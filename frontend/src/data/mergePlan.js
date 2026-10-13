@@ -1,4 +1,5 @@
 import contract from '../../../backend/app/merge_contract.json' with { type: 'json' };
+import { mergeFieldPolicy, conflictRecord, preserveLocalFields } from './mergeFields.js';
 
 export const mergeOrder = Object.keys(contract);
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -107,7 +108,10 @@ function identity(name,r) {
   return r.uuid;
 }
 function exceptionKey(r) { return `${r.recurrence_rule_uuid}:${r.entity_type}:${r.recurrence_date}`; }
-function business(r) { return Object.fromEntries(Object.entries(r).filter(([k]) => !['uuid','created_at','updated_at','origin_uuid'].includes(k))); }
+function business(r, entity, mode='merge') {
+  const compared = entity && mode === 'merge' ? conflictRecord(entity, r) : r;
+  return Object.fromEntries(Object.entries(compared).filter(([k]) => !['uuid','created_at','updated_at','origin_uuid'].includes(k)));
+}
 function blockContent(r) { return Object.fromEntries(Object.entries(business(r)).filter(([k]) => !['block_date','start_minute','end_minute','granularity','coverage_seconds'].includes(k))); }
 function validateReferences(pack) {
   const maps = Object.fromEntries(mergeOrder.map(n => [n,new Set(pack.entities[n].map(r=>r.uuid))]));
@@ -129,7 +133,7 @@ export async function buildMergePlan(localRaw, incomingRaw, mode='merge', choice
     let resolved = choice?.side === 'local' || choice?.side === 'incoming';
     if (choice?.side === 'edit' && ['notes','log_text','completed_at','name'].includes(field) && typeof choice.value === 'string') resolved = true;
     if (kind==='links') resolved=choice?.side==='links' && Array.isArray(choice.value) && choice.value.every(uuidValid);
-    conflicts.push({id,entity,field,kind,local:clone(a),incoming:clone(b),resolved,choice:resolved?choice:null});
+    conflicts.push({id,entity,field,kind,local:field==='record'?conflictRecord(entity,a):clone(a),incoming:field==='record'?conflictRecord(entity,b):clone(b),resolved,choice:resolved?choice:null});
     if (!resolved) return clone(a);
     return clone(['edit','links'].includes(choice.side) ? choice.value : choice.side === 'incoming' ? b : a);
   }
@@ -148,7 +152,7 @@ export async function buildMergePlan(localRaw, incomingRaw, mode='merge', choice
     for (const r of incoming.entities[name]) {
       const key = identity(name,r), old = map.get(key) || (name==='recurrence_exceptions'?output.entities[name].find(x=>exceptionKey(x)===exceptionKey(r)):null);
       if (!old) { const added=clone(r); output.entities[name].push(added); map.set(key,added); continue; }
-      if (equal(business(old),business(r))) continue;
+      if (equal(business(old,name),business(r,name))) continue;
       if (name === 'todos') {
         for (const field of Object.keys(contract.todos).filter(k=>!['is_completed','completed_at'].includes(k))) if (!equal(old[field],r[field])) old[field] = choose(`${name}:${old.uuid}:${field}`,name,field,old[field],r[field]);
         const times = [old,r].filter(t=>t.is_completed && t.completed_at).map(t=>t.completed_at).sort();
@@ -158,7 +162,7 @@ export async function buildMergePlan(localRaw, incomingRaw, mode='merge', choice
         if (old.log_text !== r.log_text) old.log_text = choose(`${name}:${key}:log_text`,name,'log_text',old.log_text,r.log_text);
         old.completed_todo_uuids = [...new Set([...old.completed_todo_uuids,...r.completed_todo_uuids])].sort();
       } else {
-        const selected = choose(`${name}:${key}:record`,name,'record',old,r,'record');
+        const selected = preserveLocalFields(name,choose(`${name}:${key}:record`,name,'record',old,r,'record'),old);
         Object.assign(old,selected,{uuid:old.uuid});
       }
     }
@@ -280,11 +284,11 @@ export async function buildMergePlan(localRaw, incomingRaw, mode='merge', choice
   for (const name of mergeOrder) {
     const before=new Map(local.entities[name].map(r=>[identity(name,r),r])),after=new Map(output.entities[name].map(r=>[identity(name,r),r]));
     let create=0,update=0,skip=0;
-    for (const r of after.values()) { const old=before.get(identity(name,r)); if (!old) create++; else if (!equal(business(old),business(r))) update++; }
-    for (const r of incoming.entities[name]) { const old=before.get(identity(name,r)) || (name==='recurrence_exceptions'?[...before.values()].find(x=>exceptionKey(x)===exceptionKey(r)):null); if (old && equal(business(old),business(r))) skip++; }
+    for (const r of after.values()) { const old=before.get(identity(name,r)); if (!old) create++; else if (!equal(business(old,name,mode),business(r,name,mode))) update++; }
+    for (const r of incoming.entities[name]) { const old=before.get(identity(name,r)) || (name==='recurrence_exceptions'?[...before.values()].find(x=>exceptionKey(x)===exceptionKey(r)):null); if (old && equal(business(old,name,mode),business(r,name,mode))) skip++; }
     const deleted=[...before.keys()].filter(k=>!after.has(k)).length;
     summary[name]={total:incoming.entities[name].length,create,update,skip,delete:deleted,conflict:conflicts.filter(c=>c.entity===name).length};
   }
-  const token=await digest({local,incoming,mode,choices,raw:incomingRaw});
+  const token=await digest({local,incoming,mode,choices,raw:incomingRaw,field_policy:mergeFieldPolicy});
   return {app:'riji',schema_version:incomingRaw.schema_version,mode,token,conflicts,effects,entities:summary,total:Object.values(summary).reduce((s,r)=>s+r.total,0),delete_total:Object.values(summary).reduce((s,r)=>s+r.delete,0),unresolved:conflicts.filter(c=>!c.resolved).length,package:output};
 }
