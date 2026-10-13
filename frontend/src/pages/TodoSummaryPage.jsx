@@ -73,9 +73,9 @@ export default function TodoSummaryPage() {
     <div className="todo-summary-page">
       <header className="page-hero page-hero-compact">
         <div>
-          <div className="eyebrow">收拢琐事，留出余地</div>
+          <div className="eyebrow">任务清单</div>
           <h1>待办</h1>
-          <p>按分类整理仍需推进的事项，普通状态不再占用注意力。</p>
+          <p>按分类查看未完成待办。</p>
         </div>
         <button className="btn btn-primary" onClick={() => { setEditTodo(null); setShowTodoModal(true); }}>
           新建待办

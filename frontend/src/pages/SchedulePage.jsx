@@ -222,7 +222,7 @@ export default function SchedulePage() {
       setWeekSchedules([...week, ...groupsAsEvents(groupTimeBlocks(weekBlocks), categoryData, todoData, projectData)]);
       setMonthSchedules([...month, ...groupsAsEvents(groupTimeBlocks(monthBlocks), categoryData, todoData, projectData)]);
     } catch (err) {
-      setAiError(err.message || 'AI schedule arrangement failed.');
+      setAiError(err.message || '日程加载失败。');
       setAiDiagnostics(null);
     }
   }, [currentDate]);
@@ -336,7 +336,7 @@ export default function SchedulePage() {
       setShowAiReview(scheduleDrafts.length > 0);
       setAiError(diagnostics.errors.join('\n'));
     } catch (err) {
-      setAiError(err.message || 'AI schedule arrangement failed.');
+      setAiError(err.message || 'AI 日程草稿生成失败。');
     } finally {
       setAiLoading(false);
     }
@@ -364,7 +364,7 @@ export default function SchedulePage() {
     if (!contextMenu) return;
     const schedule = contextMenu.schedule;
     if (schedule.recurrence_rule_id) {
-      const deleteAll = window.confirm('Recurring schedule. OK = delete all future planned instances and stop the rule. Cancel = delete only this instance.');
+      const deleteAll = window.confirm('这是重复计划。点击“确定”删除所有未来计划实例并停止规则；点击“取消”只删除当前实例。');
       if (deleteAll) await recurrenceApi.delete(schedule.recurrence_rule_id, true);
       else await scheduleApi.delete(schedule.id);
     } else {
@@ -614,9 +614,9 @@ export default function SchedulePage() {
     <div className={"schedule-page" + (viewMode === "day" && actualPreferences.actualDisplayMode === "blocks" ? " schedule-page-blocks" : "")}>
       <header className="page-hero page-hero-compact schedule-page-hero">
         <div>
-          <div className="eyebrow">让计划与现实，在同一天相遇</div>
+          <div className="eyebrow">计划与实际</div>
           <h1>日程</h1>
-          <p>并置原先的安排与真实发生的时间，留下一天完整的轮廓。</p>
+          <p>安排计划日程，记录实际时间。</p>
         </div>
       </header>
       <div className="schedule-toolbar">
@@ -710,7 +710,7 @@ export default function SchedulePage() {
       {aiError && !aiDiagnostics && <div className="ai-draft-error" style={{ whiteSpace: 'pre-wrap' }}>{aiError}</div>}
       <AiResponseDiagnostics diagnostics={aiDiagnostics} />
       {aiWarnings.length > 0 && <div className="ai-draft-warning">{aiWarnings.map((warning, index) => <div key={index}>{warning}</div>)}</div>}
-      {aiDrafts.length > 0 && !showAiReview && <div className="card"><button className="btn btn-primary" onClick={() => setShowAiReview(true)}>Open {aiDrafts.length} schedule drafts</button></div>}
+      {aiDrafts.length > 0 && !showAiReview && <div className="card"><button className="btn btn-primary" onClick={() => setShowAiReview(true)}>查看 {aiDrafts.length} 条日程草稿</button></div>}
 
       {showAiReview && (
         <AiDraftReviewModal

@@ -216,7 +216,7 @@ test('status view reports configured, failed and busy states', () => {
   assert.equal(busy.busy, true);
   assert.equal(busy.rows.some((row) => row.key === 'password'), false);
   assert.equal(syncStatusView({ configured: true, has_password: false, busy: false }, null)
-    .rows.find((row) => row.key === 'password').value, '未保存，需要重新输入密码');
+    .rows.find((row) => row.key === 'password').value, '未提供，请输入密码');
   assert.equal(formatBytes(0), '0 B');
   assert.equal(formatBytes(undefined), '未知');
 });

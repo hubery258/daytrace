@@ -97,7 +97,7 @@ export default function DataPortabilityPanel() {
         try {
           setMode('merge');
           await previewPackage(incoming.package, 'merge');
-          setMessage('已载入 WebDAV 下载的远端数据包，请在下方预览并确认合并导入。取消不会修改本机数据。');
+          setMessage('已载入远端数据，请在下方预览并确认合并。确认前不会修改本机数据。');
         } catch (err) {
           setError(err.message || '无法预览远端数据包');
         } finally {
@@ -113,7 +113,7 @@ export default function DataPortabilityPanel() {
     try {
       const pack = await dataApi.export();
       await savePackage(pack);
-      setMessage('数据包已生成。导出不包含 AI API Key、ZJU 密码、Cookie、Session 或 token。');
+      setMessage('数据包已生成，不含 AI Key、ZJU 密码、Cookie、Session、token 或 WebDAV 密码。');
     } catch (err) { setError(err.message || '导出失败'); }
     finally { setBusy(false); }
   };
@@ -149,8 +149,8 @@ export default function DataPortabilityPanel() {
       const result = await dataApi.import(pendingPackage, mode, choices, preview.token);
       safetyLocation = result.backup_path;
       setMessage(mode === 'replace'
-        ? `完整恢复完成：新增 ${result.created} 条，更新 ${result.updated} 条，删除 ${result.deleted} 条。恢复前备份：${safetyLocation}`
-        : `合并完成：新增 ${result.created} 条，变更 ${result.updated} 条。操作前副本：${safetyLocation}。上传合并结果，再让另一设备导入，才能把结果带回另一设备。`);
+        ? `核心数据恢复完成：新增 ${result.created} 条，更新 ${result.updated} 条，删除 ${result.deleted} 条。恢复前备份：${safetyLocation}`
+        : `合并完成：新增 ${result.created} 条，变更 ${result.updated} 条。操作前副本：${safetyLocation}。请将合并结果导入另一设备。`);
       setPendingPackage(null); setPreview(null);
     } catch (err) {
       setError(importStarted
@@ -165,9 +165,9 @@ export default function DataPortabilityPanel() {
     <div className="card">
       <div className="card-header">数据导入导出</div>
       <p style={{ color: 'var(--text-secondary)', fontSize: '0.86rem', lineHeight: 1.6 }}>
-        合并设备数据会保留双方独有记录，不传播删除；任务任意一边完成即保留完成，其他差异由你确认。实际时间只处理冲突区间，计划日程按整条选择，日志正文可手动整理。恢复备份按备份还原，包括未完成状态。两种操作执行前都会保存并校验本机副本。
+        合并保留双方独有记录和已完成状态；时间冲突按区间选择，计划整条选择，日志可整理。恢复替换核心数据（含完成状态），删除包外记录，保留本机设置与凭据。两种操作前均保存并校验本机副本。
       </p>
-      <p className="notice" style={{fontSize:'0.86rem'}}>合并不传播“取消完成”：另一边仍已完成时，再次合并可能恢复完成。合并后上传结果，再让另一设备导入。</p>
+      <p className="notice" style={{fontSize:'0.86rem'}}>合并不传播删除或“取消完成”；另一边仍已完成时，再合并可能恢复完成。结果需再导入另一设备。</p>
       <div className="form-group" style={{ maxWidth: 420 }}>
         <label htmlFor="import-mode">导入模式</label>
         <select
@@ -198,7 +198,7 @@ export default function DataPortabilityPanel() {
       {linkPreview && <div className="notice" style={{marginTop:12}}>
         <strong>发现 {linkPreview.items.length} 条计划存在失效任务关联</strong>
         {linkPreview.items.map(item=><p key={item.uuid}>{item.name} · {item.start_time.replace('T',' ')} 至 {item.end_time.replace('T',' ')} · 清除 {item.missing_ids.length} 个失效关联，保留 {item.remaining_ids.length} 个有效关联</p>)}
-        {!!linkPreview.items.length && <><p>确认后先保存并校验这些计划的修复前记录，再仅清除已不存在的任务关联。副本用于修复追溯，不是可导入的整库备份；不会删除计划、待办或实际时间记录。</p><button className="btn btn-primary" disabled={busy} onClick={repairLinks}>确认清除上述失效关联</button></>}
+        {!!linkPreview.items.length && <><p>先保存并校验修复前记录，再清除已不存在的任务关联；不删除计划、待办或实际时间，保留有效关联。副本仅用于追溯，不能作为整库备份导入。</p><button className="btn btn-primary" disabled={busy} onClick={repairLinks}>确认清除上述失效关联</button></>}
         <button className="btn btn-secondary" disabled={busy} onClick={()=>setLinkPreview(null)}>关闭检查</button>
       </div>}
       {preview && (
@@ -222,10 +222,10 @@ export default function DataPortabilityPanel() {
             }}>剩余冲突全部{side==='local'?'保留本机':'使用导入'}</button>)}</div>
             {preview.conflicts.filter(c=>scope==='all'||scope===c.entity).map(c=><ConflictCard key={c.id} conflict={c} busy={busy} onChoose={choice=>chooseConflicts({...choices,[c.id]:choice})} />)}
           </div>}
-          {!!preview.unresolved && <div className="notice notice-error">还有 {preview.unresolved} 项冲突未解决，请逐项确认。改名、完成日期和活动计时需单独处理。</div>}
-          {mode === 'replace' && <div className="notice notice-error" style={{ marginTop: 12 }}>完整恢复将删除共 {preview.delete_total || 0} 条包外数据。恢复前备份只会保存到本机。</div>}
+          {!!preview.unresolved && <div className="notice notice-error">还有 {preview.unresolved} 项冲突未解决。改名、完成日期、活动计时和旧包关联需单独确认。</div>}
+          {mode === 'replace' && <div className="notice notice-error" style={{ marginTop: 12 }}>恢复将删除 {preview.delete_total || 0} 条包外核心记录，保留本机设置与凭据。恢复前备份仅存本机。</div>}
           <button className={mode === 'replace' ? 'btn btn-danger' : 'btn btn-primary'} disabled={busy || preview.unresolved > 0} onClick={handleImport} style={{ marginTop: 12 }}>
-            {mode === 'replace' ? '确认完整恢复' : '确认合并导入'}
+            {mode === 'replace' ? '确认恢复核心数据' : '确认合并导入'}
           </button>
         </div>
       )}
@@ -256,7 +256,7 @@ function ConflictCard({conflict:c,busy,onChoose}) {
     {c.kind==='active_timer' && <><p>选择当前计时；其余记录保留为暂存暂停，可在计时页继续。</p>{c.options.map(r=><button key={r.uuid} className="btn btn-secondary" disabled={busy} onClick={()=>onChoose({side:'select',value:r.uuid,paused_at:new Date().toISOString()})}>{r.name}</button>)}</>}
     {(['notes','log_text'].includes(c.field)||['rename','date'].includes(c.kind))&&<div style={{marginTop:10}}>
       {c.field==='log_text'&&<button className="btn btn-secondary" disabled={busy} onClick={()=>setText(`${c.local}\n\n${c.incoming}`)}>把两份放入编辑框整理</button>}
-      <label>{c.kind==='rename'?'导入属性与本机同名，请设置唯一名称（保留两个身份）':c.kind==='date'?'指定完成日期':'手动整理后确认'}{c.kind==='date'?<input type="date" value={text} onChange={e=>setText(e.target.value)}/>:<textarea value={text} onChange={e=>setText(e.target.value)} rows={4}/>}</label>
+      <label>{c.kind==='rename'?'导入属性同名，请改名（保留两项属性）':c.kind==='date'?'指定完成日期':'手动整理后确认'}{c.kind==='date'?<input type="date" value={text} onChange={e=>setText(e.target.value)}/>:<textarea value={text} onChange={e=>setText(e.target.value)} rows={4}/>}</label>
       <button className="btn btn-secondary" disabled={busy || (['rename','date'].includes(c.kind)&&!text.trim())} onClick={()=>onChoose({side:'edit',value:text})}>确认整理结果</button>
     </div>}
   </div>;

@@ -312,9 +312,9 @@ export default function ZjuPage() {
     <div className="zju-page">
       <header className="page-hero page-hero-compact">
         <div>
-          <div className="eyebrow">校园安排，也回到自己的日常</div>
+          <div className="eyebrow">学习任务与课表</div>
           <h1>ZJU 集成</h1>
-          <p>只读获取并预览确认，再把学习任务、课表与成绩带回本地。</p>
+          <p>预览后导入任务或课表，查看成绩；不写回学校系统。</p>
         </div>
       </header>
 
@@ -330,7 +330,7 @@ export default function ZjuPage() {
             type="password"
             value={zjuPassword}
             onChange={e => setZjuPassword(e.target.value)}
-            placeholder={credentialState?.has_password ? '已保存，可留空使用本地保存密码' : '不勾选保存时仅用于本次操作'}
+            placeholder={credentialState?.has_password ? '已保存，留空沿用' : '不保存则仅用于本次操作'}
           />
         </div>
         <div className="form-group">
@@ -338,7 +338,7 @@ export default function ZjuPage() {
           <textarea
             value={pintiaCookie}
             onChange={e => setPintiaCookie(e.target.value)}
-            placeholder={credentialState?.has_pintia_cookie ? '已保存，可留空使用本地保存 Cookie' : '从 Pintia 登录态复制 Cookie；不勾选保存时仅用于本次预览'}
+            placeholder={credentialState?.has_pintia_cookie ? '已保存，留空沿用' : '粘贴 Pintia Cookie；不保存则仅用于本次预览'}
             style={{ minHeight: 72 }}
           />
         </div>
@@ -409,7 +409,7 @@ export default function ZjuPage() {
       </div>
 
       <div className="card">
-        <div className="card-header">ZJU 课表导入日迹计划日程</div>
+        <div className="card-header">ZJU 课表导入</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
           <div className="form-group">
             <label>学年</label>
@@ -429,8 +429,8 @@ export default function ZjuPage() {
 
         </div>
         <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 10 }}>
-          预览范围：<strong>{calendarLabel}</strong>。返回数据会再次按学年和学期校验，避免混入其他年级课程。
-          校历只会在点击“拉取并缓存校历”时访问 Celechron CDN；预览课表只使用本地缓存。
+          预览范围：<strong>{calendarLabel}</strong>，仅导入匹配的学年和学期。
+          请先“拉取并缓存校历”（访问 Celechron CDN）；预览课表使用本地校历缓存。
           当前缓存：{calendarState?.has_cache ? `已缓存（${calendarState.fetched_at ? formatDateTime(calendarState.fetched_at) : '时间未知'}）` : '未缓存'}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>

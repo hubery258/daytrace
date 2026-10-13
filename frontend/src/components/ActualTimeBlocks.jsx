@@ -244,13 +244,13 @@ export default function ActualTimeBlocks({ date, blocks, plannedSchedules = [], 
               top: (Math.max(selection.start, visibleStart) - visibleStart) / 60 * HOUR_HEIGHT,
               height: (selection.end - Math.max(selection.start, visibleStart)) / 60 * HOUR_HEIGHT,
             }} />}
-            {groups.length === 0 && <div className="actual-block-empty-hint">点选空白时间，再点右侧属性，就能记下一段实际时间。</div>}
+            {groups.length === 0 && <div className="actual-block-empty-hint">选中时间，再点属性记录。</div>}
           </div>
         </div>
         <aside className="actual-block-palette" aria-label="时间块属性与编辑">
           <div className="actual-block-palette-head">
             <strong>属性</strong>
-            <span>选时间 · 点颜色</span>
+            <span>点属性会替换选区记录</span>
           </div>
           <div className="actual-block-categories">
             {categories.map(category => <button type="button" key={category.id}

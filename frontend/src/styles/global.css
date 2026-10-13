@@ -97,6 +97,24 @@ body {
   color: var(--text-secondary);
 }
 
+.user-manual-summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.user-manual-summary::-webkit-details-marker {
+  display: none;
+}
+
+.user-manual-icon {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.user-manual[open] .user-manual-icon {
+  transform: rotate(90deg);
+}
+
 /* ===== Todo items ===== */
 .todo-item {
   display: flex;

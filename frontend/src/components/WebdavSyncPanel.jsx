@@ -262,7 +262,7 @@ export default function WebdavSyncPanel() {
       downloadedAt: downloadDialog.result.downloaded_at,
     });
     setDownloadDialog(null);
-    setMessage('已把远端数据包交给现有导入预览流程，请在 03 本地数据 中确认合并导入。下载没有直接修改本机数据库。');
+    setMessage('已下载，请在“本地数据”预览并确认合并。下载尚未修改本机数据。');
     if (typeof document !== 'undefined') {
       document.getElementById('local-data-section')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
     }
@@ -278,8 +278,7 @@ export default function WebdavSyncPanel() {
     <div className="card webdav-panel">
       <div className="card-header">连接配置</div>
       <p className="webdav-intro">
-        使用你自己的 WebDAV 服务器保存和获取日迹数据文件。同步不经过日迹开发者的服务器，
-        密码只保存在本机数据库，不会写入导出的 JSON 数据包；取消“记住密码”后仅保留当前会话。
+        填写服务器和目录，测试连接后保存。测试可能创建缺失目录，并写入后删除临时探测文件。
       </p>
 
       <form className="webdav-form" onSubmit={event => { event.preventDefault(); handleSave(); }}>
@@ -315,7 +314,7 @@ export default function WebdavSyncPanel() {
                 type={form.show_password ? 'text' : 'password'}
                 value={form.password}
                 autoComplete="current-password"
-                placeholder={config?.has_password && !form.password ? '已保存，留空表示沿用' : ''}
+                placeholder={config?.has_password && !form.password ? '已提供，留空沿用' : ''}
                 onChange={event => updateForm('password', event.target.value)}
               />
               <button
@@ -359,7 +358,7 @@ export default function WebdavSyncPanel() {
                 <input id="webdav-remote-filename" value={form.remote_filename}
                   onChange={event => updateForm('remote_filename', event.target.value)} />
                 {formErrors.remote_filename && <div role="alert" className="field-error">{formErrors.remote_filename}</div>}
-                <div className="field-hint">默认 daytrace-latest.json，远端只保留这一份文件。</div>
+                <div className="field-hint">默认 daytrace-latest.json；上传覆盖当前文件，不保留历史版本。</div>
               </div>
             )}
           </div>
@@ -394,7 +393,7 @@ export default function WebdavSyncPanel() {
         <button className="btn btn-secondary" disabled={!configured || syncBusy || testState.state === 'failed'} onClick={handleDownloadClick}>下载远端数据</button>
       </div>
       <p className="field-hint">
-        v0.11.x 只有手动上传和手动下载。上传前会展示本机与远端信息并等待确认；下载只进入现有导入预览，不会自动合并。
+        上传前需确认覆盖；下载后需预览并确认合并，不会自动同步。
       </p>
 
       {uploadResult && (

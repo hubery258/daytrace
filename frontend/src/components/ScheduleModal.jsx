@@ -232,7 +232,7 @@ export default function ScheduleModal({
 
           <div className="form-group">
             <label>地点</label>
-            <input value={form.location} onChange={e => handleChange('location', e.target.value)} placeholder="例如：图书馆" />
+            <input value={form.location} onChange={e => handleChange('location', e.target.value)} placeholder="可选地点" />
           </div>
 
           <div className="form-group">

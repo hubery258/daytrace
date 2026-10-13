@@ -43,9 +43,9 @@ export default function ProjectListPage() {
     <div className="project-list-page">
       <header className="page-hero page-hero-compact">
         <div>
-          <div className="eyebrow">把长一点的路，拆成下一步</div>
+          <div className="eyebrow">项目列表</div>
           <h1>项目</h1>
-          <p>聚合待办与日程，持续看见真正需要推进的方向。</p>
+          <p>选择项目，查看待办、日程和进度。</p>
         </div>
         <button className="btn btn-primary" onClick={() => setShowModal(true)}>新建项目</button>
       </header>

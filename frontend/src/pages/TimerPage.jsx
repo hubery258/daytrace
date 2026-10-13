@@ -177,7 +177,7 @@ export default function TimerPage() {
         <div className="timer-head">
           <div>
             <h1>计时</h1>
-            <p>记录正在发生的事，结束后按 50% 覆盖规则折算为实际时间块。</p>
+            <p>结束后折算时间块：每格覆盖至少一半，保留手动记录。</p>
           </div>
           <div className={`timer-status ${timer?.status || 'idle'}`}>{timer ? (timer.status === 'paused' ? '已暂停' : '进行中') : '未开始'}</div>
         </div>
@@ -258,7 +258,7 @@ export default function TimerPage() {
             }}
           >
             <h2 id="cancel-timer-title">取消本次计时？</h2>
-            <p>取消后不会生成实际记录，已经记录的计时时长也不会保留。</p>
+            <p>取消后不生成实际记录，也不保留本次计时时长。</p>
             <div className="form-actions">
               <button type="button" className="btn btn-secondary" autoFocus onClick={closeCancelConfirm}>继续计时</button>
               <button type="button" className="btn btn-danger" onClick={confirmCancel}>确认取消</button>

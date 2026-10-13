@@ -146,20 +146,20 @@ export default function AiCreatePage() {
 
       <div className="page-header">
         <div>
-          <h1>AI新建</h1>
-          <p className="hint-line">描述你的计划或需求，AI只会返回草稿，需要你确认后才写入。</p>
+          <h1>AI 新建</h1>
+          <p className="hint-line">描述待办或日程需求，确认草稿后才创建。</p>
         </div>
       </div>
 
       <div className="card">
-        {!hasApiKey && <div className="ai-draft-warning">还没有配置 API Key。请先到 <Link to="/settings">设置页</Link>.</div>}
+        {!hasApiKey && <div className="ai-draft-warning">尚未配置 API Key，请前往 <Link to="/settings">设置</Link>。</div>}
 
         <div className="form-group">
           <label>你想创建什么？</label>
           <textarea
             value={text}
             onChange={e => setText(e.target.value)}
-            placeholder="例如：我想读完一本九章的书，每一章一个待办，每个 DDL 比上一个后推 3 天。"
+            placeholder="输入事项、日期和要求"
             style={{ minHeight: 160 }}
           />
         </div>

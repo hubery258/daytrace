@@ -41,9 +41,9 @@ export default function App() {
   return (
     <div className="app">
       <nav className="nav-bar">
-        <div className="brand-lockup" aria-label="日迹，本地优先个人效率工具">
+        <div className="brand-lockup" aria-label="日迹">
           <img src={logo} alt="" className="brand-mark" />
-          <span className="brand-copy"><strong>日迹</strong><small>计划与现实的每日痕迹</small></span>
+          <span className="brand-copy"><strong>日迹</strong><small>daytrace</small></span>
         </div>
         <div className="nav-links" aria-label="主要页面">
           {NAV_ITEMS.filter(item => displayPreferences.pages[item.key]).map(item => (

@@ -206,8 +206,8 @@ export default function HomePage() {
       <header className="home-hero">
         <div>
           <div className="eyebrow">今天 · {todayLabel(now)}</div>
-          <h1>日子缓缓向前，走过的地方自会留下痕迹。</h1>
-          <p>先照顾眼前最重要的事，晚些时候再回看计划与现实。</p>
+          <h1>今日概览</h1>
+          <p>查看当前日程、关注待办和临近 DDL。</p>
         </div>
         <div className="home-actions">
           <button className="btn btn-primary" onClick={() => { setEditTodo(null); setShowTodoModal(true); }}>新建待办</button>
@@ -236,7 +236,7 @@ export default function HomePage() {
               )}
             </>
           ) : (
-            <div className="no-schedule"><strong>现在没有进行中的日程</strong><span>留白也是一天的一部分。</span></div>
+            <div className="no-schedule"><strong>现在没有进行中的日程</strong><span>点击“安排日程”添加计划。</span></div>
           )}
           {displayPreferences.homeUpcomingScheduleCount > 0 && (
             <div className="home-upcoming" aria-labelledby="home-upcoming-title">
@@ -263,14 +263,14 @@ export default function HomePage() {
                 {focusingTodos.length < 3 && <button className="btn btn-sm btn-secondary" onClick={() => setShowTodoPicker(true)}>添加</button>}
               </div>
               {focusingTodos.length === 0
-                ? <div className="empty-state small">今天还没有设定关注项。</div>
+                ? <div className="empty-state small">暂无关注待办，点击“添加”选择。</div>
                 : focusingTodos.map(todo => renderTodoItem(todo))}
             </section>
           )}
 
           {modules.nearDeadlines && (
             <section className="card home-section">
-              <div className="card-header"><span><small>提前看见</small>临近 DDL <em>{ddlNearTodos.length}</em></span></div>
+              <div className="card-header"><span><small>即将到期</small>临近 DDL <em>{ddlNearTodos.length}</em></span></div>
               {ddlNearTodos.length === 0 ? <div className="empty-state small">近期没有临近期限。</div> : (
                 <>
                   {hardNearTodos.map(todo => renderTodoItem(todo, { showDdlType: true }))}
@@ -284,7 +284,7 @@ export default function HomePage() {
         <aside className="home-side-column">
           {modules.projects && (
             <section className="card home-section project-glance">
-              <div className="card-header"><span><small>持续推进</small>项目</span><Link to="/projects">查看全部</Link></div>
+              <div className="card-header"><span><small>进行中</small>项目</span><Link to="/projects">查看全部</Link></div>
               {visibleProjects.length === 0 ? <div className="empty-state small">暂无进行中的项目。</div> : visibleProjects.map(project => (
                 <Link className="home-project-row" key={project.id} to={`/projects/${project.id}`}>
                   <i style={{ background: project.color || 'var(--primary)' }} />
@@ -297,7 +297,7 @@ export default function HomePage() {
 
           {modules.waitingReplies && (
             <section className="card home-section waiting-glance">
-              <div className="card-header"><span><small>留给对方一点时间</small>等待答复 <em>{waitingTodos.length}</em></span></div>
+              <div className="card-header"><span><small>待回应</small>等待答复 <em>{waitingTodos.length}</em></span></div>
               {waitingTodos.length === 0
                 ? <div className="empty-state small">没有等待中的事项。</div>
                 : waitingTodos.map(todo => renderTodoItem(todo))}

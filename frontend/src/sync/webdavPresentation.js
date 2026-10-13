@@ -8,10 +8,10 @@
 export const DEFAULT_REMOTE_DIRECTORY = 'daytrace';
 export const DEFAULT_REMOTE_FILENAME = 'daytrace-latest.json';
 export const WEBDAV_INSECURE_WARNING = '当前服务器地址未使用 HTTPS。WebDAV 密码会以明文经过网络，请确认你信任该服务器后再继续。';
-export const WEBDAV_REMEMBER_HINT = '勾选后密码保存在本机数据库，不会进入导出的 JSON 数据包；取消后密码只保留在当前同步进程内存，进程结束后需重新输入。复制或分享数据库文件时，其中的密码也会被包含。';
-export const WEBDAV_UPLOAD_WARNING = '上传会用本机数据覆盖远端 daytrace-latest.json。该操作不合并远端数据。如果远端文件更新时间更晚，请先下载并确认。';
-export const WEBDAV_DOWNLOAD_NOTICE = '下载后会先进入导入预览，不会直接覆盖本机数据。具体合并规则沿用现有 JSON 合并逻辑。';
-export const WEBDAV_AUTO_SYNC_TEASER = '当前采用手动汇总：下载后预览并合并，再上传合并结果，让另一设备导入。WebDAV 只负责传输，不自动同步或传播删除。';
+export const WEBDAV_REMEMBER_HINT = '勾选后存入本机数据库，复制数据库也会带上密码；密码不进入 JSON 数据包。不勾选则仅保留到当前进程结束。';
+export const WEBDAV_UPLOAD_WARNING = '上传会用本机数据覆盖所列远端文件，不合并远端数据。远端较新时，请先下载并确认合并。';
+export const WEBDAV_DOWNLOAD_NOTICE = '下载后进入导入预览，不会直接覆盖本机数据；确认合并后才写入。';
+export const WEBDAV_AUTO_SYNC_TEASER = '先下载并确认合并，再上传结果，最后在另一设备下载并合并。不自动同步或传播删除。';
 
 export const WEBDAV_ENTITY_LABELS = Object.freeze({
   projects: '项目',
@@ -35,7 +35,7 @@ export const SYNC_ERROR_MESSAGES = Object.freeze({
   WEBDAV_FORBIDDEN: '没有访问或写入权限。',
   WEBDAV_NOT_FOUND: '远端文件或目录不存在。',
   WEBDAV_METHOD_NOT_ALLOWED: '当前服务器不支持所需 WebDAV 操作。',
-  WEBDAV_CONFLICT: '远端文件已被其他设备修改，请重新读取后再上传。',
+  WEBDAV_CONFLICT: '远端状态冲突，已停止上传。请重新读取远端信息。',
   WEBDAV_QUOTA_EXCEEDED: '远端空间不足。',
   WEBDAV_INVALID_PACKAGE: '远端文件不是有效的日迹数据包。',
   WEBDAV_UNSUPPORTED_SCHEMA: '数据包 schema_version 不受支持。',
@@ -213,7 +213,7 @@ export function buildDownloadSummaryView({ remote, package: dataPackage, summary
     { key: 'content_length', label: '远端文件大小', value: formatBytes(remote?.content_length) },
     { key: 'schema_version', label: 'schema_version', value: dataPackage?.schema_version || '—' },
     { key: 'exported_at', label: '远端导出时间', value: formatSyncTime(dataPackage?.exported_at) },
-    { key: 'total', label: '实体总数', value: `${Object.values(counts).reduce((sum, count) => sum + Number(count || 0), 0)} 条` },
+    { key: 'total', label: '记录总数', value: `${Object.values(counts).reduce((sum, count) => sum + Number(count || 0), 0)} 条` },
   ];
   return {
     title: '下载远端数据',
@@ -230,7 +230,7 @@ export function describeSyncError(error) {
   const code = error.code || null;
   const message = (code === 'SYNC_LOCAL_DATA_INVALID' && error.message) || SYNC_ERROR_MESSAGES[code] || error.message || '同步失败，请稍后重试。';
   const hints = {
-    WEBDAV_CONFLICT: '远端文件在预览后被修改。请重新点击上传，先读取最新的远端信息。',
+    WEBDAV_CONFLICT: '远端可能已变化、被删除或缺少版本标识（ETag）。请重新点击上传读取最新信息，必要时先下载合并。',
     WEBDAV_AUTH_FAILED: '建议使用应用密码，不要直接使用主账号密码。',
     WEBDAV_FORBIDDEN: '请确认远程目录存在且当前账号有写入权限。',
     WEBDAV_NOT_FOUND: '请确认远程目录已经存在，必要时先在 WebDAV 客户端中手动创建。',
@@ -264,7 +264,7 @@ export function syncStatusView(status, config) {
     { key: 'remote_etag', label: '当前远端 ETag', value: status?.last_remote_etag || '未读取' },
     { key: 'remote_modified', label: '当前远端最后修改时间', value: formatSyncTime(status?.last_remote_modified_at) },
   );
-  if (!hasPassword) rows.push({ key: 'password', label: '密码状态', value: '未保存，需要重新输入密码' });
+  if (!hasPassword) rows.push({ key: 'password', label: '密码状态', value: '未提供，请输入密码' });
   return { configured, hasPassword, busy: Boolean(status?.busy), rows };
 }
 

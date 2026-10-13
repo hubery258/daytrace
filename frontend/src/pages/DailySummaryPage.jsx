@@ -135,9 +135,9 @@ export default function DailySummaryPage() {
     <div className="summary-layout">
       <header className="page-hero page-hero-compact">
         <div>
-          <div className="eyebrow">把一天留给自己</div>
+          <div className="eyebrow">每日记录</div>
           <h1>每日日志</h1>
-          <p>手写记录和完成事项留在这里；实际投入请到统计页查看。</p>
+          <p>记录今天，查看当天完成的待办。</p>
         </div>
       </header>
       <div className="summary-date-bar">
@@ -152,7 +152,7 @@ export default function DailySummaryPage() {
             previous + (previous ? '\n' : '') + item.content)} title={item.name}>{item.name}</button>)}</div>}
         <div className="log-editor">
           <textarea value={logText} onChange={event => setLogText(event.target.value)}
-            placeholder="记录今天的想法、收获与感受…" readOnly={!isToday} />
+            placeholder="写下今天的记录" readOnly={!isToday} />
         </div>
         {isToday && <div className="form-actions"><button className="btn btn-primary" onClick={saveLog}>保存日志</button></div>}
       </section>
@@ -169,7 +169,7 @@ export default function DailySummaryPage() {
 
       <section className="ai-chat">
         <h2>AI 待办与日程建议</h2>
-        <p className="hint-line">结合当天日志和计划，提出下一天的待办或日程草稿；确认后才写入。</p>
+        <p className="hint-line">根据当天日志和计划生成明日草稿，确认后才创建。</p>
         {!hasApiKey && <p className="hint-line">尚未配置 API Key。<Link to="/settings">前往设置</Link></p>}
         {hasApiKey && <button className="btn btn-primary" disabled={draftLoading} onClick={generateSuggestions}>
           {draftLoading ? '正在生成建议…' : '生成下一天的建议'}
