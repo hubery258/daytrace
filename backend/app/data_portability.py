@@ -5,14 +5,20 @@ from __future__ import annotations
 import enum
 import re
 import uuid as uuid_lib
+import json
+import os
+from pathlib import Path
+import tempfile
 from datetime import date, datetime, timezone
 from typing import Any
 
-from sqlalchemy import Date as SADate, DateTime as SADateTime, Enum as SAEnum, delete, select
+from sqlalchemy import Date as SADate, DateTime as SADateTime, Enum as SAEnum, delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from . import models
 from .recurrence_claims import rebuild_recurrence_claims
+from .merge_plan import build_merge_plan, canonical, normalize_package
 
 
 APP_ID = "riji"
@@ -59,6 +65,7 @@ SPECS: dict[str, tuple[type, tuple[str, ...]]] = {
     "time_blocks": (models.TimeBlock, (
         "block_date", "start_minute", "end_minute", "granularity", "category_id",
         "notes", "source", "coverage_seconds", "created_at", "updated_at",
+        "origin_uuid",
     )),
     "daily_logs": (models.DailyLog, (
         "log_date", "log_text", "created_at", "updated_at",
@@ -69,6 +76,7 @@ SPECS: dict[str, tuple[type, tuple[str, ...]]] = {
     "timer_sessions": (models.TimerSession, (
         "name", "status", "started_at", "last_resumed_at", "paused_at",
         "paused_seconds", "active_intervals", "ended_at", "notes", "created_at", "updated_at",
+        "is_parked",
     )),
 }
 
@@ -111,6 +119,24 @@ async def _all(db: AsyncSession, model: type) -> list[Any]:
 
 async def export_package(db: AsyncSession) -> dict[str, Any]:
     rows = {name: await _all(db, spec[0]) for name, spec in SPECS.items()}
+    references = {
+        'recurrence_rules': {'project_id': 'projects'},
+        'recurrence_exceptions': {'recurrence_rule_id': 'recurrence_rules'},
+        'todos': {'project_id': 'projects', 'recurrence_rule_id': 'recurrence_rules'},
+        'schedules': {'project_id': 'projects', 'recurrence_rule_id': 'recurrence_rules', 'linked_todo_ids': 'todos'},
+        'time_blocks': {'category_id': 'time_block_categories', 'linked_todo_id': 'todos', 'manual_project_id': 'projects', 'source_timer_id': 'timer_sessions'},
+        'daily_logs': {'completed_todo_ids': 'todos'},
+        'timer_sessions': {'project_id': 'projects', 'linked_todo_id': 'todos', 'created_schedule_id': 'schedules'},
+    }
+    local_ids = {name: {row.id for row in items} for name, items in rows.items()}
+    for name, fields in references.items():
+        for row in rows[name]:
+            for field, target in fields.items():
+                value = getattr(row, field)
+                values = (value or []) if field.endswith('_ids') else ([] if value is None else [value])
+                if any(value not in local_ids[target] for value in values):
+                    context = f'（计划：{row.name}）' if name == 'schedules' else ''
+                    raise DataPackageError(f'本机 {name}.{field} 含断裂关联{context}，请先修复')
     rows["schedules"] = [item for item in rows["schedules"] if item.is_planned]
     rows["recurrence_rules"] = [item for item in rows["recurrence_rules"] if
         item.entity_type != models.RecurrenceEntityType.schedule or
@@ -132,6 +158,10 @@ async def export_package(db: AsyncSession) -> dict[str, Any]:
         exported["project_uuid"] = project_uuids.get(source.project_id)
         exported["template_json"] = dict(exported.get("template_json") or {})
         exported["template_json"].pop("project_id", None)
+        template_ids = exported['template_json'].pop('linked_todo_ids', [])
+        exported['template_linked_todo_uuids'] = [todo_uuids[value] for value in template_ids if value in todo_uuids]
+        if len(exported['template_linked_todo_uuids']) != len(template_ids):
+            raise DataPackageError('重复计划模板含断裂任务关联，请先修复')
     normalized_exceptions: list[dict[str, Any]] = []
     seen_exception_keys: set[tuple[str, str, str]] = set()
     for source, exported in zip(rows["recurrence_exceptions"], entities["recurrence_exceptions"]):
@@ -252,55 +282,6 @@ def validate_package(package: Any) -> dict[str, Any]:
     return normalized
 
 
-async def preview_package(db: AsyncSession, package: Any, mode: str = "merge") -> dict[str, Any]:
-    mode = _validate_mode(mode)
-    package = validate_package(package)
-    summary: dict[str, dict[str, int]] = {}
-    rule_result = await db.execute(select(models.RecurrenceRule.id, models.RecurrenceRule.uuid))
-    rule_uuid_by_id = {row[0]: row[1] for row in rule_result.fetchall()}
-    for name in ENTITY_ORDER:
-        model, _ = SPECS[name]
-        existing_result = await db.execute(select(model))
-        existing = list(existing_result.scalars().all())
-        update_count = 0
-        matched_existing_ids: set[int] = set()
-        for item in package["entities"][name]:
-            matched = next((existing_item for existing_item in existing if existing_item.uuid == item["uuid"]), None)
-            is_update = matched is not None
-            if name == "time_block_categories" and not is_update:
-                matched = next((x for x in existing if x.name == item.get("name")), None)
-                is_update = matched is not None
-            if name == "daily_logs" and not is_update:
-                matched = next((existing_item for existing_item in existing if existing_item.log_date == _parse_date(item.get("log_date"))), None)
-                is_update = matched is not None
-            if name == "recurrence_exceptions" and not is_update:
-                matched = next((existing_item for existing_item in existing if
-                    rule_uuid_by_id.get(existing_item.recurrence_rule_id) == item.get("recurrence_rule_uuid") and
-                    _json_value(existing_item.entity_type) == item.get("entity_type") and
-                    existing_item.recurrence_date == _parse_date(item.get("recurrence_date"))), None)
-                is_update = matched is not None
-            if matched is not None:
-                matched_existing_ids.add(matched.id)
-            update_count += int(is_update)
-        count = len(package["entities"][name])
-        summary[name] = {
-            "total": count,
-            "create": count - update_count,
-            "update": update_count,
-            "delete": len(existing) - len(matched_existing_ids) if mode == "replace" else 0,
-        }
-    return {
-        "app": package["app"],
-        "schema_version": package["schema_version"],
-        "exported_at": package.get("exported_at"),
-        "mode": mode,
-        "conflict_policy": "replace_local_data" if mode == "replace" else "incoming_package_wins_by_uuid",
-        "entities": summary,
-        "total": sum(item["total"] for item in summary.values()),
-        "delete_total": sum(item["delete"] for item in summary.values()),
-    }
-
-
 def _validate_mode(mode: str) -> str:
     if mode not in {"merge", "replace"}:
         raise DataPackageError("mode 必须是 merge 或 replace")
@@ -341,6 +322,8 @@ def _coerce(model: type, field: str, value: Any) -> Any:
 
 def _apply_fields(instance: Any, model: type, fields: tuple[str, ...], item: dict[str, Any]) -> None:
     for field in fields:
+        if model is models.RecurrenceRule and field == "template_json":
+            continue
         if field in item:
             setattr(instance, field, _coerce(model, field, item[field]))
 
@@ -368,8 +351,6 @@ async def _upsert_group(db: AsyncSession, name: str, items: list[dict[str, Any]]
             recurrence_rule_id = _resolve(maps["recurrence_rules"], item.get("recurrence_rule_uuid"), "重复规则")
             recurrence_key = (recurrence_rule_id, item.get("entity_type"), _parse_date(item.get("recurrence_date")))
         instance = by_uuid.get(item["uuid"])
-        if instance is None and name == "time_block_categories":
-            instance = by_name.get(item.get("name"))
         if instance is None and name == "daily_logs":
             instance = by_date.get(_parse_date(item.get("log_date")))
         if instance is None and name == "recurrence_exceptions":
@@ -383,6 +364,8 @@ async def _upsert_group(db: AsyncSession, name: str, items: list[dict[str, Any]]
             if name in ("time_block_categories", "daily_logs", "recurrence_exceptions") and instance.uuid != item["uuid"]:
                 instance.uuid = item["uuid"]
         _apply_fields(instance, model, fields, item)
+        if 'updated_at' in item and db.is_modified(instance):
+            flag_modified(instance, 'updated_at')
         if name == "recurrence_exceptions":
             instance.recurrence_rule_id = recurrence_rule_id
         if name == "time_blocks":
@@ -401,7 +384,7 @@ def _resolve(mapping: dict[str, Any], item_uuid: Any, label: str) -> int | None:
     return instance.id
 
 
-async def import_package(db: AsyncSession, raw_package: Any, mode: str = "merge") -> dict[str, Any]:
+async def _write_package(db: AsyncSession, raw_package: Any, mode: str = "merge") -> dict[str, Any]:
     mode = _validate_mode(mode)
     package = validate_package(raw_package)
     entities = package["entities"]
@@ -410,28 +393,6 @@ async def import_package(db: AsyncSession, raw_package: Any, mode: str = "merge"
     try:
         for name in ENTITY_ORDER:
             if name == "time_blocks":
-                if mode == "merge":
-                    incoming_uuids = {item["uuid"] for item in entities[name]}
-                    for item in entities[name]:
-                        result = await db.execute(select(models.TimeBlock).where(
-                            models.TimeBlock.block_date == _parse_date(item["block_date"]),
-                            models.TimeBlock.start_minute < item["end_minute"],
-                            models.TimeBlock.end_minute > item["start_minute"]))
-                        for old in result.scalars().all():
-                            if old.uuid in incoming_uuids:
-                                continue
-                            await db.delete(old)
-                            for start, end in ((old.start_minute, min(old.end_minute, item["start_minute"])),
-                                               (max(old.start_minute, item["end_minute"]), old.end_minute)):
-                                for minute in range(start, end, 15):
-                                    if minute + 15 <= end:
-                                        db.add(models.TimeBlock(
-                                            block_date=old.block_date, start_minute=minute, end_minute=minute + 15,
-                                            granularity=15, category_id=old.category_id, notes=old.notes,
-                                            linked_todo_id=old.linked_todo_id, manual_project_id=old.manual_project_id,
-                                            source=old.source, source_timer_id=old.source_timer_id,
-                                            coverage_seconds=min(old.coverage_seconds or 0, 900) if old.coverage_seconds is not None else None))
-                        await db.flush()
                 for item in entities[name]:
                     item["category_id"] = _resolve(maps["time_block_categories"], item["category_uuid"], "属性")
             mapped, created, updated = await _upsert_group(db, name, entities[name], maps)
@@ -449,8 +410,11 @@ async def import_package(db: AsyncSession, raw_package: Any, mode: str = "merge"
         for item in entities["recurrence_rules"]:
             instance = rules[item["uuid"]]
             instance.project_id = _resolve(projects, item.get("project_uuid"), "项目")
-            template = dict(instance.template_json or {})
+            template = dict(item.get("template_json") or {})
             template.pop("project_id", None)
+            template.pop('linked_todo_ids', None)
+            if item.get('entity_type') == 'schedule':
+                template['linked_todo_ids'] = [_resolve(todos, value, '待办') for value in item.get('template_linked_todo_uuids', [])]
             instance.template_json = template
         for item in entities["todos"]:
             instance = todos[item["uuid"]]
@@ -475,6 +439,15 @@ async def import_package(db: AsyncSession, raw_package: Any, mode: str = "merge"
             instance.linked_todo_id = _resolve(todos, item.get("linked_todo_uuid"), "待办")
             instance.created_schedule_id = _resolve(schedules, item.get("created_schedule_uuid"), "日程") if item.get("created_schedule_uuid") in schedules else None
 
+        # Preserve the reviewed record's metadata; ORM onupdate must not manufacture a new revision
+        # while resolving portable UUID associations in a second flush.
+        for name in ENTITY_ORDER:
+            for item in entities[name]:
+                instance = maps[name][item['uuid']]
+                if 'updated_at' in item and (db.is_modified(instance) or instance.updated_at != _parse_datetime(item['updated_at'])):
+                    instance.updated_at = _parse_datetime(item['updated_at'])
+                    flag_modified(instance, 'updated_at')
+
         deleted: dict[str, int] = {name: 0 for name in ENTITY_ORDER}
         if mode == "replace":
             for name in reversed(ENTITY_ORDER):
@@ -496,10 +469,6 @@ async def import_package(db: AsyncSession, raw_package: Any, mode: str = "merge"
                     ))
                 await db.execute(delete(model).where(model.id.in_(remove_ids)))
                 deleted[name] = len(remove_ids)
-        if mode == "replace" and not entities["time_block_categories"]:
-            for name, color in (("学习", "#347f88"), ("娱乐", "#d89b50"), ("运动", "#4c9b67"),
-                                ("开发", "#536fba"), ("休息", "#8a85a9")):
-                db.add(models.TimeBlockCategory(name=name, color=color))
         await rebuild_recurrence_claims(db)
         await db.commit()
     except Exception:
@@ -514,3 +483,80 @@ async def import_package(db: AsyncSession, raw_package: Any, mode: str = "merge"
         "updated": sum(item["updated"] for item in results.values()),
         "deleted": sum(deleted.values()),
     }
+
+
+def save_operation_backup(db: AsyncSession, package: dict, prefix: str = 'before-import') -> str:
+    """Persist, fsync and read back a logical snapshot before any mutation."""
+    database = db.get_bind().url.database
+    if not database or database == ':memory:':
+        root = Path(tempfile.gettempdir()) / 'riji-test-backups'
+    else:
+        root = Path(database).resolve().parent / 'operation-backups'
+    target = root / f'{prefix}-{uuid_lib.uuid4()}.json'
+    serialized = canonical(package).encode('utf-8')
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        with target.open('xb') as handle:
+            handle.write(serialized)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if target.read_bytes() != serialized or json.loads(target.read_text(encoding='utf-8')) != package:
+            raise OSError('操作前副本校验失败')
+    except Exception as exc:
+        raise DataPackageError('操作前副本未能保存并校验，未执行操作') from exc
+    return str(target)
+
+
+async def preview_package(db: AsyncSession, package: Any, mode: str = 'merge', choices: dict | None = None) -> dict:
+    try:
+        validate_package(package)
+        plan = build_merge_plan(await export_package(db), package, mode, choices)
+        return {k: v for k, v in plan.items() if k != 'package'}
+    except (ValueError, TypeError, KeyError) as exc:
+        raise DataPackageError(str(exc)) from exc
+
+
+async def import_package(db: AsyncSession, raw_package: Any, mode: str = 'merge', choices: dict | None = None, preview_token: str | None = None) -> dict:
+    if not preview_token:
+        raise DataPackageError('请先预览并确认当前数据包')
+    try:
+        # End any read-only preview transaction, then reserve SQLite's writer before re-reading state.
+        await db.rollback()
+        await db.execute(text('BEGIN IMMEDIATE'))
+        validate_package(raw_package)
+        local = await export_package(db)
+        plan = build_merge_plan(local, raw_package, mode, choices)
+        if plan['token'] != preview_token:
+            raise DataPackageError('本机数据、数据包或选择已变化，请重新预览')
+        if plan['unresolved']:
+            raise DataPackageError('还有未解决的冲突，不能执行导入')
+        validate_package(plan['package'])
+        backup = save_operation_backup(db, local)
+        # Temporary names permit identity-preserving category rename swaps under SQLite UNIQUE(name).
+        final_names = {r['uuid']: r['name'] for r in plan['package']['entities']['time_block_categories']}
+        for row in await _all(db, models.TimeBlockCategory):
+            if row.uuid not in final_names or row.name != final_names[row.uuid]:
+                row.name = f'__import_{row.uuid}'
+        await db.flush()
+        if mode == 'merge':
+            final_exceptions = {r['uuid']: r for r in plan['package']['entities']['recurrence_exceptions']}
+            old_exceptions = {r['uuid']: r for r in local['entities']['recurrence_exceptions']}
+            for row in await _all(db, models.RecurrenceException):
+                before, after = old_exceptions[row.uuid], final_exceptions.get(row.uuid)
+                if after and any(before[k] != after[k] for k in ('recurrence_rule_uuid', 'entity_type', 'recurrence_date')):
+                    await db.delete(row)
+            await db.flush()
+        if mode == 'merge':
+            keep = {r['uuid'] for r in plan['package']['entities']['time_blocks']}
+            for row in await _all(db, models.TimeBlock):
+                if row.uuid not in keep:
+                    await db.delete(row)
+            await db.flush()
+        await _write_package(db, plan['package'], mode)
+        summary = plan['entities']
+        return {'mode': mode, 'schema_version': plan['schema_version'], 'entities': summary,
+                'created': sum(r['create'] for r in summary.values()), 'updated': sum(r['update'] for r in summary.values()),
+                'deleted': plan['delete_total'], 'skipped': sum(r['skip'] for r in summary.values()), 'backup_path': backup}
+    except Exception:
+        await db.rollback()
+        raise

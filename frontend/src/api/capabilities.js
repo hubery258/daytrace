@@ -136,8 +136,21 @@ export const CAPABILITIES = Object.freeze([
 
   // Data portability (3)
   defineCapability({ id: 'data.export', method: 'GET', pathTemplate: '/data/export', response: 'DataPackage' }),
+  defineCapability({ id: 'data.checkScheduleLinks', method: 'GET', pathTemplate: '/data/references/schedules', response: 'ScheduleLinkPreview' }),
+  defineCapability({ id: 'data.repairScheduleLinks', method: 'POST', pathTemplate: '/data/references/schedules/repair', body: 'ScheduleLinkRepairRequest', response: 'ScheduleLinkRepairResult', transaction: TRANSACTION.SERIALIZED_ATOMIC }),
   defineCapability({ id: 'data.previewImport', method: 'POST', pathTemplate: '/data/import/preview', body: 'DataImportRequest', response: 'DataImportPreview', errors: Object.freeze(['VALIDATION_ERROR', 'INVALID_DATA_PACKAGE', 'INTERNAL_ERROR']) }),
   defineCapability({ id: 'data.import', method: 'POST', pathTemplate: '/data/import', body: 'DataImportRequest', response: 'DataImportResult', errors: Object.freeze(['VALIDATION_ERROR', 'INVALID_DATA_PACKAGE', 'CONFLICT', 'INTERNAL_ERROR']), transaction: TRANSACTION.SERIALIZED_ATOMIC }),
+
+  // WebDAV manual sync (7). The local backend proxies WebDAV for web and
+  // desktop; the Android adapter implements the same contract with native HTTP
+  // so the device talks to the user's own WebDAV server directly.
+  defineCapability({ id: 'sync.getWebdavConfig', method: 'GET', pathTemplate: '/sync/webdav/config', response: 'WebDavConfigOut' }),
+  defineCapability({ id: 'sync.saveWebdavConfig', method: 'PUT', pathTemplate: '/sync/webdav/config', body: 'WebDavConfigIn', response: 'WebDavConfigOut', errors: Object.freeze(['VALIDATION_ERROR', 'INVALID_DATA_PACKAGE', 'INTERNAL_ERROR']), transaction: TRANSACTION.SECURE_WRITE }),
+  defineCapability({ id: 'sync.testWebdav', method: 'POST', pathTemplate: '/sync/webdav/test', body: 'WebDavTestRequest', response: 'WebDavTestResult', errors: NETWORK_ERRORS, transaction: TRANSACTION.NETWORK }),
+  defineCapability({ id: 'sync.preflightWebdavUpload', method: 'POST', pathTemplate: '/sync/webdav/upload/preflight', response: 'WebDavUploadPreflight', errors: NETWORK_ERRORS, transaction: TRANSACTION.NETWORK }),
+  defineCapability({ id: 'sync.uploadWebdav', method: 'POST', pathTemplate: '/sync/webdav/upload', body: 'WebDavUploadRequest', response: 'WebDavUploadResult', errors: Object.freeze(['VALIDATION_ERROR', 'CONFLICT', 'UNAUTHORIZED', 'FORBIDDEN', 'NETWORK_ERROR', 'INTERNAL_ERROR']), transaction: TRANSACTION.NETWORK_AND_WRITE }),
+  defineCapability({ id: 'sync.downloadWebdav', method: 'POST', pathTemplate: '/sync/webdav/download', response: 'WebDavDownloadResult', errors: NETWORK_ERRORS, transaction: TRANSACTION.NETWORK }),
+  defineCapability({ id: 'sync.webdavStatus', method: 'GET', pathTemplate: '/sync/webdav/status', response: 'WebDavStatusOut' }),
 
   // Health (1)
   defineCapability({ id: 'health.check', method: 'GET', pathTemplate: '/health', response: 'HealthOut', errors: Object.freeze(['NETWORK_ERROR', 'INTERNAL_ERROR']) }),

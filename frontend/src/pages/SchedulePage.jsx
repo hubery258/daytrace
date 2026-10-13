@@ -1,3 +1,5 @@
+import { scheduleDisplayName } from '../utils/displayName';
+import { getScheduleSegment } from '../utils/scheduleLayout';
 import { useState, useEffect, useCallback } from 'react';
 import { projectApi, recurrenceApi, scheduleApi, timeBlockApi, todoApi } from '../api/client';
 import { callChatCompletion } from '../ai/aiClient';
@@ -70,23 +72,6 @@ function minutesToLocalValue(dateStr, minutes) {
 
 function addDaysToDateStr(dateStr, days) {
   return addDays(dateStr, days);
-}
-
-function getScheduleSegment(schedule, dateStr) {
-  const dayStart = new Date(`${dateStr}T00:00:00+08:00`).getTime();
-  const dayEnd = dayStart + 24 * 60 * 60 * 1000;
-  const scheduleStart = parseAsLocal(schedule.start_time).getTime();
-  const scheduleEnd = parseAsLocal(schedule.end_time).getTime();
-  if (scheduleStart >= dayEnd || scheduleEnd <= dayStart) return null;
-
-  const visibleStart = Math.max(scheduleStart, dayStart);
-  const visibleEnd = Math.min(scheduleEnd, dayEnd);
-  return {
-    startMinutes: (visibleStart - dayStart) / 60000,
-    durationMinutes: Math.max(1, (visibleEnd - visibleStart) / 60000),
-    startsBefore: scheduleStart < dayStart,
-    endsAfter: scheduleEnd > dayEnd,
-  };
 }
 
 function segmentTimeLabel(schedule, segment) {
@@ -237,7 +222,7 @@ export default function SchedulePage() {
       setWeekSchedules([...week, ...groupsAsEvents(groupTimeBlocks(weekBlocks), categoryData, todoData, projectData)]);
       setMonthSchedules([...month, ...groupsAsEvents(groupTimeBlocks(monthBlocks), categoryData, todoData, projectData)]);
     } catch (err) {
-      setAiError(err.message || 'AI schedule arrangement failed.');
+      setAiError(err.message || '日程加载失败。');
       setAiDiagnostics(null);
     }
   }, [currentDate]);
@@ -351,7 +336,7 @@ export default function SchedulePage() {
       setShowAiReview(scheduleDrafts.length > 0);
       setAiError(diagnostics.errors.join('\n'));
     } catch (err) {
-      setAiError(err.message || 'AI schedule arrangement failed.');
+      setAiError(err.message || 'AI 日程草稿生成失败。');
     } finally {
       setAiLoading(false);
     }
@@ -379,7 +364,7 @@ export default function SchedulePage() {
     if (!contextMenu) return;
     const schedule = contextMenu.schedule;
     if (schedule.recurrence_rule_id) {
-      const deleteAll = window.confirm('Recurring schedule. OK = delete all future planned instances and stop the rule. Cancel = delete only this instance.');
+      const deleteAll = window.confirm('这是重复计划。点击“确定”删除所有未来计划实例并停止规则；点击“取消”只删除当前实例。');
       if (deleteAll) await recurrenceApi.delete(schedule.recurrence_rule_id, true);
       else await scheduleApi.delete(schedule.id);
     } else {
@@ -477,9 +462,9 @@ export default function SchedulePage() {
               setContextMenu({ x: e.clientX, y: e.clientY, schedule: s });
             }}
             style={{ ...getEventStyle(s, dateStr), borderLeftColor: projectColor(s), borderLeftWidth: 4 }}
-            title={[s.name, segment ? segmentTimeLabel(s, segment) : '', details].filter(Boolean).join('\n')}
+            title={[scheduleDisplayName(s, projects), segment ? segmentTimeLabel(s, segment) : '', details].filter(Boolean).join('\n')}
           >
-            <span className="event-title">{s.name}</span>
+            <span className="event-title">{scheduleDisplayName(s, projects)}</span>
             {density !== 'compact' && segment && <span className="event-time">{segmentTimeLabel(s, segment)}</span>}
             {density === 'detailed' && details && <span className="event-note">{details}</span>}
           </button>
@@ -551,10 +536,10 @@ export default function SchedulePage() {
                       type="button"
                       className={`week-time-event density-${density} ${schedule.is_planned ? 'planned' : 'actual'}`}
                       style={{ ...getWeekEventStyle(schedule, dayKey), borderLeftColor: projectColor(schedule) }}
-                      title={[schedule.name, segment ? segmentTimeLabel(schedule, segment) : '', details].filter(Boolean).join('\n')}
+                      title={[scheduleDisplayName(schedule, projects), segment ? segmentTimeLabel(schedule, segment) : '', details].filter(Boolean).join('\n')}
                       onClick={() => openSchedule(schedule, schedule.is_planned ? canEditPlanned : undefined)}
                     >
-                      <strong>{schedule.name}</strong>
+                      <strong>{scheduleDisplayName(schedule, projects)}</strong>
                       {density !== 'compact' && segment && <span>{segmentTimeLabel(schedule, segment)}</span>}
                       {density === 'detailed' && details && <small>{details}</small>}
                     </button>
@@ -604,11 +589,12 @@ export default function SchedulePage() {
                       key={schedule.id}
                       type="button"
                       className={`month-event ${schedule.is_planned ? 'planned' : 'actual'}`}
+                      title={scheduleDisplayName(schedule, projects)}
                       style={{ borderLeftColor: projectColor(schedule) }}
                       onClick={() => openSchedule(schedule, schedule.is_planned ? canEditPlanned : undefined)}
                     >
                       <span>{getScheduleSegment(schedule, dayKey)?.startsBefore ? '跨天续' : formatTime(schedule.start_time)}</span>
-                      <strong>{schedule.name}</strong>
+                      <strong>{scheduleDisplayName(schedule, projects)}</strong>
                     </button>
                   ))}
                   {items.length > 3 && <div className="month-more">+{items.length - 3} {T.more}</div>}
@@ -628,9 +614,9 @@ export default function SchedulePage() {
     <div className={"schedule-page" + (viewMode === "day" && actualPreferences.actualDisplayMode === "blocks" ? " schedule-page-blocks" : "")}>
       <header className="page-hero page-hero-compact schedule-page-hero">
         <div>
-          <div className="eyebrow">让计划与现实，在同一天相遇</div>
+          <div className="eyebrow">计划与实际</div>
           <h1>日程</h1>
-          <p>并置原先的安排与真实发生的时间，留下一天完整的轮廓。</p>
+          <p>安排计划日程，记录实际时间。</p>
         </div>
       </header>
       <div className="schedule-toolbar">
@@ -682,12 +668,12 @@ export default function SchedulePage() {
                 <button className="btn btn-sm btn-secondary" onClick={() => openCreateSchedule(true)}>新增计划</button>
                 <button className="btn btn-sm btn-quiet planned-day-ai" disabled={aiLoading} onClick={handleAiArrangeGaps}>{aiLoading ? 'AI 安排中…' : 'AI 补空档'}</button>
                 {plannedSchedules.length === 0 ? <span>暂无计划日程</span> : plannedSchedules.map(item => (
-                  <button key={item.id} className="planned-day-item" onClick={() => openSchedule(item, canEditPlanned)}>
-                    {formatTime(item.start_time)}–{formatTime(item.end_time)} · {item.name}
+                  <button key={item.id} className="planned-day-item" title={scheduleDisplayName(item, projects)} onClick={() => openSchedule(item, canEditPlanned)}>
+                    {formatTime(item.start_time)}–{formatTime(item.end_time)} · {scheduleDisplayName(item, projects)}
                   </button>
                 ))}
               </div>
-              <ActualTimeBlocks date={dateStr} blocks={actualBlocks} categories={categories}
+              <ActualTimeBlocks date={dateStr} blocks={actualBlocks} plannedSchedules={plannedSchedules} categories={categories}
                 todos={todos} projects={projects} granularity={actualPreferences.timeBlockGranularity}
                 onChanged={loadSchedules} />
             </>
@@ -724,7 +710,7 @@ export default function SchedulePage() {
       {aiError && !aiDiagnostics && <div className="ai-draft-error" style={{ whiteSpace: 'pre-wrap' }}>{aiError}</div>}
       <AiResponseDiagnostics diagnostics={aiDiagnostics} />
       {aiWarnings.length > 0 && <div className="ai-draft-warning">{aiWarnings.map((warning, index) => <div key={index}>{warning}</div>)}</div>}
-      {aiDrafts.length > 0 && !showAiReview && <div className="card"><button className="btn btn-primary" onClick={() => setShowAiReview(true)}>Open {aiDrafts.length} schedule drafts</button></div>}
+      {aiDrafts.length > 0 && !showAiReview && <div className="card"><button className="btn btn-primary" onClick={() => setShowAiReview(true)}>查看 {aiDrafts.length} 条日程草稿</button></div>}
 
       {showAiReview && (
         <AiDraftReviewModal

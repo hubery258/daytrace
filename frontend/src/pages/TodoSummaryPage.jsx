@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { todoApi, recurrenceApi } from '../api/client';
+import { todoApi, recurrenceApi, projectApi } from '../api/client';
+import { projectItemDisplayName } from '../utils/displayName';
 import TodoModal from '../components/TodoModal';
 import ContextMenu from '../components/ContextMenu';
 import { BEIJING_TIME_ZONE, parseAsLocal, todayStr } from '../utils/time';
@@ -12,6 +13,7 @@ function addDays(dateStr, days) {
 
 export default function TodoSummaryPage() {
   const [todos, setTodos] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [showTodoModal, setShowTodoModal] = useState(false);
   const [editTodo, setEditTodo] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
@@ -19,8 +21,12 @@ export default function TodoSummaryPage() {
   const loadTodos = useCallback(async () => {
     const today = todayStr();
     await recurrenceApi.generate({ entity_type: 'todo', date_from: today, date_to: addDays(today, 7) });
-    const data = await todoApi.list({ is_completed: false });
+    const [data, projectData] = await Promise.all([
+      todoApi.list({ is_completed: false }),
+      projectApi.list().catch(error => { console.error('加载项目失败', error); return []; }),
+    ]);
     setTodos(data);
+    setProjects(projectData);
   }, []);
 
   useEffect(() => { loadTodos().catch(console.error); }, [loadTodos]);
@@ -67,9 +73,9 @@ export default function TodoSummaryPage() {
     <div className="todo-summary-page">
       <header className="page-hero page-hero-compact">
         <div>
-          <div className="eyebrow">收拢琐事，留出余地</div>
+          <div className="eyebrow">任务清单</div>
           <h1>待办</h1>
-          <p>按分类整理仍需推进的事项，普通状态不再占用注意力。</p>
+          <p>按分类查看未完成待办。</p>
         </div>
         <button className="btn btn-primary" onClick={() => { setEditTodo(null); setShowTodoModal(true); }}>
           新建待办
@@ -95,7 +101,7 @@ export default function TodoSummaryPage() {
               >
                 {todo.status === 'focusing' && <span className="todo-focus-marker" title="正在关注" aria-label="正在关注" />}
                 {todo.status === 'waiting_reply' && <span className="todo-state-note">等待答复</span>}
-                <span className="todo-name">{todo.name}</span>
+                <span className="todo-name" title={projectItemDisplayName(todo, projects)}>{projectItemDisplayName(todo, projects)}</span>
                 {todo.recurrence_rule_id && <span className="todo-meta">重复</span>}
                 {todo.ddl_date && (
                   <span className="todo-meta">

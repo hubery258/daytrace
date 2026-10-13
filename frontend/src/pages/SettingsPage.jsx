@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import DataPortabilityPanel from '../components/DataPortabilityPanel';
+import WebdavSyncPanel from '../components/WebdavSyncPanel';
+import UserManual from '../components/UserManual';
 import { timeBlockApi } from '../api/client';
 import {
   DEFAULT_DISPLAY_PREFERENCES,
@@ -15,10 +17,10 @@ const DEFAULT_API_BASE = 'https://api.deepseek.com';
 const DEFAULT_MODEL = 'deepseek-chat';
 
 const PAGE_SWITCHES = [
-  ['home', '首页', '每天打开时的总览入口'],
+  ['home', '首页', '查看当前日程和待办'],
   ['schedule', '日程', '查看计划与实际记录'],
-  ['timer', '计时', '记录真实投入的时间'],
-  ['projects', '项目', '承载需要持续推进的事项'],
+  ['timer', '计时', '开始、暂停或结束计时'],
+  ['projects', '项目', '查看项目待办与日程'],
   ['todos', '待办', '集中查看与整理任务'],
   ['stats', '统计', '按实际时间块查看时间和任务投入'],
   ['summary', '日志', '记录每日文字和已完成待办'],
@@ -27,7 +29,7 @@ const PAGE_SWITCHES = [
 
 const HOME_MODULE_SWITCHES = [
   ['currentSchedule', '当前日程', '显示此刻正在进行的安排'],
-  ['focusingTodos', '正在关注', '保留今天最重要的少量待办'],
+  ['focusingTodos', '正在关注', '显示设为关注中的待办'],
   ['waitingReplies', '等待答复', '集中查看等待他人回应的事项'],
   ['projects', '项目进展', '显示最多三个进行中的项目'],
   ['nearDeadlines', '临近 DDL', '显示即将到期的硬性与弹性事项'],
@@ -135,6 +137,7 @@ export default function SettingsPage() {
       timeFormat: DEFAULT_DISPLAY_PREFERENCES.timeFormat,
       actualDisplayMode: DEFAULT_DISPLAY_PREFERENCES.actualDisplayMode,
       timeBlockGranularity: DEFAULT_DISPLAY_PREFERENCES.timeBlockGranularity,
+      homeUpcomingScheduleCount: DEFAULT_DISPLAY_PREFERENCES.homeUpcomingScheduleCount,
       pages: { ...DEFAULT_DISPLAY_PREFERENCES.pages },
       homeModules: { ...DEFAULT_DISPLAY_PREFERENCES.homeModules },
     };
@@ -146,19 +149,21 @@ export default function SettingsPage() {
   return (
     <div className="settings-page">
       <header className="settings-header">
-        <div><div className="eyebrow">保持简单，也保留选择</div><h1>设置</h1><p>裁剪你每天看到的内容，并管理只保存在此设备上的配置。</p></div>
+        <div><div className="eyebrow">本机配置</div><h1>设置</h1><p>调整显示，配置 AI 与 WebDAV，导入或导出数据。</p></div>
         <div className="local-badge"><span />本地配置</div>
       </header>
 
+      <UserManual />
+
       <section className="settings-section" aria-labelledby="display-settings-title">
         <div className="settings-section-heading">
-          <div><span className="settings-index">01</span><h2 id="display-settings-title">界面与入口</h2><p>开关会立即生效，只隐藏展示与入口，不会删除待办、日程或其他数据。</p></div>
+          <div><span className="settings-index">01</span><h2 id="display-settings-title">界面与入口</h2><p>开关立即生效；隐藏页面或模块不会删除数据。</p></div>
           {displaySaved && <span className="saved-indicator" role="status">已在本地保存</span>}
         </div>
 
         <div className="settings-grid">
           <div className="settings-panel">
-            <div className="settings-panel-title"><h3>导航页面</h3><p>设置页始终保留，避免无法恢复入口。</p></div>
+            <div className="settings-panel-title"><h3>导航页面</h3><p>隐藏的页面可在此重新开启。</p></div>
             <div className="setting-toggle-list">
               {PAGE_SWITCHES.map(([key, title, description]) => (
                 <SettingToggle
@@ -173,7 +178,7 @@ export default function SettingsPage() {
           </div>
 
           <div className="settings-panel">
-            <div className="settings-panel-title"><h3>首页模块</h3><p>按你的日常使用方式控制首页密度。</p></div>
+            <div className="settings-panel-title"><h3>首页模块</h3><p>选择首页显示的内容。</p></div>
             <div className="setting-toggle-list">
               {HOME_MODULE_SWITCHES.map(([key, title, description]) => (
                 <SettingToggle
@@ -186,6 +191,16 @@ export default function SettingsPage() {
               ))}
             </div>
             <button className="btn btn-quiet reset-display-button" onClick={resetDisplayPreferences}>恢复默认展示</button>
+            <div className="form-group home-upcoming-setting">
+              <label htmlFor="home-upcoming-count">“接下来”显示数量</label>
+              <select id="home-upcoming-count" value={displayPreferences.homeUpcomingScheduleCount}
+                onChange={event => updateActualPreference('homeUpcomingScheduleCount', Number(event.target.value))}>
+                <option value={0}>0 个（隐藏接下来）</option>
+                <option value={1}>1 个</option>
+                <option value={2}>2 个</option>
+              </select>
+              <p className="field-hint">按开始时间显示今天接下来的计划；选择 0 不影响“此刻”。</p>
+            </div>
           </div>
           <div className="settings-panel">
             <div className="settings-panel-title"><h3>时间格式</h3><p>控制 DDL 时间输入和日程时间轴的显示方式。</p></div>
@@ -243,7 +258,7 @@ export default function SettingsPage() {
       </section>
 
       <section className="settings-section" aria-labelledby="ai-settings-title">
-        <div className="settings-section-heading"><div><span className="settings-index">02</span><h2 id="ai-settings-title">AI 辅助</h2><p>日迹直接使用你配置的 OpenAI-compatible 接口，Key 仅用于待办与日程建议，不会提交给日迹后端。</p></div></div>
+        <div className="settings-section-heading"><div><span className="settings-index">02</span><h2 id="ai-settings-title">AI 辅助</h2><p>请求直接发送到你配置的兼容 OpenAI 接口，Key 不发送给日迹后端。</p></div></div>
         <div className="settings-panel settings-form-panel">
           <div className="form-group">
             <label htmlFor="ai-api-key">AI API Key</label>
@@ -261,9 +276,20 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      <section className="settings-section" aria-labelledby="data-settings-title">
-        <div className="settings-section-heading"><div><span className="settings-index">03</span><h2 id="data-settings-title">本地数据</h2><p>导出与导入你的核心个人数据。展示开关不会参与数据删除。</p></div></div>
+      <section className="settings-section" aria-labelledby="data-settings-title" id="local-data-section">
+        <div className="settings-section-heading"><div><span className="settings-index">03</span><h2 id="data-settings-title">本地数据</h2><p>备份、合并或恢复核心个人数据。</p></div></div>
         <DataPortabilityPanel />
+      </section>
+
+      <section className="settings-section" aria-labelledby="webdav-settings-title" id="webdav-section">
+        <div className="settings-section-heading">
+          <div>
+            <span className="settings-index">04</span>
+            <h2 id="webdav-settings-title">WebDAV 同步</h2>
+            <p>手动上传或下载到自己的服务器，不经过日迹开发者服务器。</p>
+          </div>
+        </div>
+        <WebdavSyncPanel />
       </section>
     </div>
   );

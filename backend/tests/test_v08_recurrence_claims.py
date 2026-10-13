@@ -12,6 +12,7 @@ from sqlalchemy.pool import StaticPool
 from app import crud, models, schemas
 from app.data_portability import ENTITY_ORDER, export_package, import_package, validate_package
 from app.database import Base
+from portability_helpers import confirmed_import as import_package
 from app.main import SQLITE_SCHEMA_VERSION, ensure_sqlite_schema_compat
 from app.recurrence_claims import rebuild_recurrence_claims
 

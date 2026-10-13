@@ -136,9 +136,9 @@ export default function StatisticsPage() {
     <div className="statistics-page">
       <header className="page-hero page-hero-compact statistics-hero">
         <div>
-          <div className="eyebrow">把真实投入看清楚</div>
+          <div className="eyebrow">实际时间统计</div>
           <h1>时间统计</h1>
-          <p>按实际时间块计算。计划日程和旧实际日程都不会进入统计。</p>
+          <p>仅统计实际时间块，不计入计划日程或旧实际日程。</p>
         </div>
       </header>
 
@@ -178,7 +178,7 @@ export default function StatisticsPage() {
           {statistics.totalMinutes === 0 ? (
             <div className="statistics-empty">
               <strong>这段时间还没有实际记录</strong>
-              <p>在日程页给时间格标上属性，统计就会出现在这里。</p>
+              <p>前往日程页，选择时间并标记属性。</p>
               <Link className="btn btn-primary" to="/schedule">去记录时间</Link>
             </div>
           ) : (

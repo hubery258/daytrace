@@ -24,9 +24,9 @@ Push-Location $backendDir
 try {
     & $PythonPath -m pip install -r requirements-desktop.txt
     if ($LASTEXITCODE -ne 0) { throw 'Failed to install desktop backend dependencies.' }
-    & $PythonPath -m PyInstaller --noconfirm --clean --onefile --name riji-sidecar --collect-all uvicorn --collect-all fastapi --collect-all sqlalchemy --hidden-import aiosqlite desktop_sidecar.py
+    & $PythonPath -m PyInstaller --noconfirm --clean --onefile --name daytrace-sidecar --add-data "app/merge_contract.json;app" --add-data "app/merge_field_policy.json;app" --collect-all uvicorn --collect-all fastapi --collect-all sqlalchemy --hidden-import aiosqlite desktop_sidecar.py
     if ($LASTEXITCODE -ne 0) { throw 'Failed to build the FastAPI sidecar.' }
-    Write-Host "sidecar: $backendDir\dist\riji-sidecar.exe"
+    Write-Host "sidecar: $backendDir\dist\daytrace-sidecar.exe"
 } finally {
     Pop-Location
 }

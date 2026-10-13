@@ -14,7 +14,7 @@ $buildTag = Get-Date -Format 'yyyyMMdd-HHmmss'
 $tempOutputRelative = "../release/desktop-build-$buildTag"
 $tempOutput = Join-Path $repoRoot "release\desktop-build-$buildTag"
 $stableDir = Join-Path $repoRoot 'release\desktop'
-$stableArtifact = Join-Path $stableDir "riji-desktop-$appVersion.exe"
+$stableArtifact = Join-Path $stableDir "daytrace-desktop-$appVersion.exe"
 Push-Location $frontendDir
 try {
     if ($ElectronMirror) { $env:ELECTRON_MIRROR = $ElectronMirror }
@@ -33,7 +33,7 @@ try {
     Pop-Location
 }
 
-$builtArtifact = Join-Path $tempOutput "riji-desktop-$appVersion.exe"
+$builtArtifact = Join-Path $tempOutput "daytrace-desktop-$appVersion.exe"
 if (-not (Test-Path -LiteralPath $builtArtifact)) { throw "Missing desktop artifact: $builtArtifact" }
 New-Item -ItemType Directory -Path $stableDir -Force | Out-Null
 Copy-Item -LiteralPath $builtArtifact -Destination $stableArtifact -Force

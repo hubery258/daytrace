@@ -1,12 +1,18 @@
 {
   "name": "riji-frontend",
   "private": true,
-  "version": "0.10.1",
+  "version": "0.11.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node --test src/ai/aiClient.test.js src/ai/aiDraftParser.test.js src/ai/aiPrompts.test.js src/utils/timeBlocks.test.js src/utils/timeStatistics.test.js",
+    "test": "node --test src/ai/aiClient.test.js src/ai/aiDraftParser.test.js src/ai/aiPrompts.test.js src/utils/displayName.test.js src/utils/displayPreferences.test.js src/utils/homeSchedules.test.js src/utils/scheduleLayout.test.js src/utils/timeBlocks.test.js src/utils/timeStatistics.test.js tests/webdavSync.test.mjs tests/webdavMobileAdapter.test.mjs tests/webdavRuntimeSync.test.mjs tests/manualMerge.test.mjs",
+    "test:contract": "node --test tests/contractManifest.test.mjs",
+    "test:mobile": "node --test tests/mobileAdapter.test.mjs tests/mobileDomain.test.mjs tests/mobileMigration.test.mjs tests/webdavMobileAdapter.test.mjs tests/webdavRuntimeSync.test.mjs tests/manualMerge.test.mjs",
+    "test:platform": "node --test tests/platformAdapters.test.mjs",
+    "test:sync": "node --test tests/webdavSync.test.mjs tests/webdavMobileAdapter.test.mjs tests/webdavRuntimeSync.test.mjs tests/manualMerge.test.mjs",
+    "test:zju": "node --test tests/zjuNetwork.test.mjs tests/zjuNormalize.test.mjs",
+    "test:ai": "node --test src/ai/aiClient.test.js src/ai/aiDraftParser.test.js src/ai/aiPrompts.test.js",
     "preview": "vite preview",
     "desktop:dev": "npm run build && electron electron/main.cjs",
     "desktop:dir": "npm run build && electron-builder --dir",
@@ -52,8 +58,8 @@
         "to": "frontend"
       },
       {
-        "from": "../backend/dist/riji-sidecar.exe",
-        "to": "sidecar/riji-sidecar.exe"
+        "from": "../backend/dist/daytrace-sidecar.exe",
+        "to": "sidecar/daytrace-sidecar.exe"
       }
     ],
     "win": {
@@ -66,7 +72,7 @@
           ]
         }
       ],
-      "artifactName": "riji-desktop-${version}.${ext}"
+      "artifactName": "daytrace-desktop-${version}.${ext}"
     },
     "electronDist": "node_modules/electron/dist",
     "compression": "store"

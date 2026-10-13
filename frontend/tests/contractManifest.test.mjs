@@ -37,9 +37,9 @@ function examplePath(pathTemplate) {
   return pathTemplate.replace(/\{([^}]+)\}/g, (_, name) => encodeURIComponent(`${name}-42`));
 }
 
-test('manifest contains exactly 65 complete, uniquely addressable capabilities', () => {
-  assert.equal(CAPABILITIES.length, 65);
-  assert.equal(CAPABILITIES_BY_ID.size, 65);
+test('manifest contains exactly 74 complete, uniquely addressable capabilities', () => {
+  assert.equal(CAPABILITIES.length, 74);
+  assert.equal(CAPABILITIES_BY_ID.size, 74);
 
   const methodPaths = new Set();
   for (const capability of CAPABILITIES) {
@@ -84,8 +84,8 @@ test('all public client methods have a unique manifest binding', () => {
   ));
   const boundIds = bindings.map((binding) => binding.capabilityId);
 
-  assert.equal(bindings.length, 65);
-  assert.equal(new Set(boundIds).size, 65, 'a capability is bound by more than one public method');
+  assert.equal(bindings.length, 74);
+  assert.equal(new Set(boundIds).size, 74, 'a capability is bound by more than one public method');
   assert.deepEqual(new Set(boundIds), new Set(CAPABILITIES.map((item) => item.id)));
   for (const binding of bindings) {
     assert.ok(CAPABILITIES_BY_ID.has(binding.capabilityId), `${binding.group}.${binding.method} has an unknown binding`);

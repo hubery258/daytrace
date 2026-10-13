@@ -1,0 +1,801 @@
+[
+  {
+    "name": "legacy-schedule-only-differences",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "schedules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000101",
+            "name": "计划",
+            "start_time": "2026-10-13T09:00:00",
+            "end_time": "2026-10-13T10:00:00",
+            "notes": "原备注",
+            "category": "旧本机分类",
+            "nature": "relax",
+            "relax_suggestion": "旧本机建议"
+          }
+        ],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "entity_type": "schedule",
+            "start_date": "2026-10-13",
+            "frequency": "daily",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "原备注",
+              "category": "旧本机分类",
+              "nature": "relax",
+              "relax_suggestion": "旧本机建议"
+            }
+          }
+        ],
+        "todos": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "schedules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000101",
+            "name": "计划",
+            "start_time": "2026-10-13T09:00:00",
+            "end_time": "2026-10-13T10:00:00",
+            "notes": "原备注",
+            "category": "旧导入分类",
+            "nature": "free_arrange",
+            "relax_suggestion": "旧导入建议"
+          }
+        ],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "entity_type": "schedule",
+            "start_date": "2026-10-13",
+            "frequency": "daily",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "原备注",
+              "category": "旧导入分类",
+              "nature": "free_arrange",
+              "relax_suggestion": "旧导入建议"
+            }
+          }
+        ],
+        "todos": []
+      }
+    },
+    "choices": {},
+    "expected": {
+      "rows": {
+        "schedules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000101",
+            "notes": "原备注",
+            "category": "旧本机分类",
+            "nature": "relax",
+            "relax_suggestion": "旧本机建议"
+          }
+        ],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "原备注",
+              "category": "旧本机分类",
+              "nature": "relax",
+              "relax_suggestion": "旧本机建议"
+            }
+          }
+        ]
+      },
+      "summary": {
+        "schedules": {
+          "create": 0,
+          "update": 0,
+          "skip": 1,
+          "conflict": 0
+        },
+        "recurrence_rules": {
+          "create": 0,
+          "update": 0,
+          "skip": 1,
+          "conflict": 0
+        }
+      }
+    },
+    "unresolved_before": 0
+  },
+  {
+    "name": "legacy-schedule-mixed-select-incoming",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "schedules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000101",
+            "name": "计划",
+            "start_time": "2026-10-13T09:00:00",
+            "end_time": "2026-10-13T10:00:00",
+            "notes": "原备注",
+            "category": "旧本机分类",
+            "nature": "relax",
+            "relax_suggestion": "旧本机建议"
+          }
+        ],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "entity_type": "schedule",
+            "start_date": "2026-10-13",
+            "frequency": "daily",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "原备注",
+              "category": "旧本机分类",
+              "nature": "relax",
+              "relax_suggestion": "旧本机建议"
+            }
+          }
+        ],
+        "todos": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "schedules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000101",
+            "name": "计划",
+            "start_time": "2026-10-13T09:00:00",
+            "end_time": "2026-10-13T10:00:00",
+            "notes": "导入业务备注",
+            "category": "旧导入分类",
+            "nature": "free_arrange",
+            "relax_suggestion": "旧导入建议"
+          }
+        ],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "entity_type": "schedule",
+            "start_date": "2026-10-13",
+            "frequency": "daily",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "导入业务备注",
+              "category": "旧导入分类",
+              "nature": "free_arrange",
+              "relax_suggestion": "旧导入建议"
+            }
+          }
+        ],
+        "todos": []
+      }
+    },
+    "choices": {
+      "schedules:123e4567-e89b-42d3-a456-000000000101:record": {
+        "side": "incoming"
+      },
+      "recurrence_rules:123e4567-e89b-42d3-a456-000000000102:record": {
+        "side": "incoming"
+      }
+    },
+    "expected": {
+      "rows": {
+        "schedules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000101",
+            "notes": "导入业务备注",
+            "category": "旧本机分类",
+            "nature": "relax",
+            "relax_suggestion": "旧本机建议"
+          }
+        ],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "导入业务备注",
+              "category": "旧本机分类",
+              "nature": "relax",
+              "relax_suggestion": "旧本机建议"
+            }
+          }
+        ]
+      },
+      "summary": {
+        "schedules": {
+          "create": 0,
+          "update": 1,
+          "skip": 0,
+          "conflict": 1
+        },
+        "recurrence_rules": {
+          "create": 0,
+          "update": 1,
+          "skip": 0,
+          "conflict": 1
+        }
+      }
+    },
+    "unresolved_before": 2
+  },
+  {
+    "name": "legacy-schedule-new-records",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "schedules": [],
+        "recurrence_rules": [],
+        "todos": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "schedules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000101",
+            "name": "计划",
+            "start_time": "2026-10-13T09:00:00",
+            "end_time": "2026-10-13T10:00:00",
+            "notes": "原备注",
+            "category": "旧导入分类",
+            "nature": "free_arrange",
+            "relax_suggestion": "旧导入建议"
+          }
+        ],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "entity_type": "schedule",
+            "start_date": "2026-10-13",
+            "frequency": "daily",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "原备注",
+              "category": "旧导入分类",
+              "nature": "free_arrange",
+              "relax_suggestion": "旧导入建议"
+            }
+          }
+        ],
+        "todos": []
+      }
+    },
+    "choices": {},
+    "expected": {
+      "rows": {
+        "schedules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000101",
+            "notes": "原备注",
+            "category": "旧导入分类",
+            "nature": "free_arrange",
+            "relax_suggestion": "旧导入建议"
+          }
+        ],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "原备注",
+              "category": "旧导入分类",
+              "nature": "free_arrange",
+              "relax_suggestion": "旧导入建议"
+            }
+          }
+        ]
+      },
+      "summary": {
+        "schedules": {
+          "create": 1,
+          "update": 0,
+          "skip": 0,
+          "conflict": 0
+        },
+        "recurrence_rules": {
+          "create": 1,
+          "update": 0,
+          "skip": 0,
+          "conflict": 0
+        }
+      }
+    },
+    "unresolved_before": 0
+  },
+  {
+    "name": "legacy-schedule-restore-values",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "schedules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000101",
+            "name": "计划",
+            "start_time": "2026-10-13T09:00:00",
+            "end_time": "2026-10-13T10:00:00",
+            "notes": "原备注",
+            "category": "旧本机分类",
+            "nature": "relax",
+            "relax_suggestion": "旧本机建议"
+          }
+        ],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "entity_type": "schedule",
+            "start_date": "2026-10-13",
+            "frequency": "daily",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "原备注",
+              "category": "旧本机分类",
+              "nature": "relax",
+              "relax_suggestion": "旧本机建议"
+            }
+          }
+        ],
+        "todos": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "schedules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000101",
+            "name": "计划",
+            "start_time": "2026-10-13T09:00:00",
+            "end_time": "2026-10-13T10:00:00",
+            "notes": "原备注",
+            "category": "旧导入分类",
+            "nature": "free_arrange",
+            "relax_suggestion": "旧导入建议"
+          }
+        ],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "entity_type": "schedule",
+            "start_date": "2026-10-13",
+            "frequency": "daily",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "原备注",
+              "category": "旧导入分类",
+              "nature": "free_arrange",
+              "relax_suggestion": "旧导入建议"
+            }
+          }
+        ],
+        "todos": []
+      }
+    },
+    "mode": "replace",
+    "choices": {},
+    "expected": {
+      "rows": {
+        "schedules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000101",
+            "notes": "原备注",
+            "category": "旧导入分类",
+            "nature": "free_arrange",
+            "relax_suggestion": "旧导入建议"
+          }
+        ],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "原备注",
+              "category": "旧导入分类",
+              "nature": "free_arrange",
+              "relax_suggestion": "旧导入建议"
+            }
+          }
+        ]
+      },
+      "summary": {
+        "schedules": {
+          "create": 0,
+          "update": 1,
+          "skip": 0,
+          "conflict": 0
+        },
+        "recurrence_rules": {
+          "create": 0,
+          "update": 1,
+          "skip": 0,
+          "conflict": 0
+        }
+      }
+    },
+    "unresolved_before": 0
+  },
+  {
+    "name": "legacy-schedule-keeps-todo-category-conflicts",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "schedules": [],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "entity_type": "todo",
+            "start_date": "2026-10-13",
+            "frequency": "daily",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "原备注",
+              "category": "本机重复任务分类"
+            }
+          }
+        ],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000103",
+            "name": "任务",
+            "ddl_type": "none",
+            "category": "本机任务分类",
+            "status": "not_focusing"
+          }
+        ]
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "schedules": [],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "entity_type": "todo",
+            "start_date": "2026-10-13",
+            "frequency": "daily",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "原备注",
+              "category": "导入重复任务分类"
+            }
+          }
+        ],
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000103",
+            "name": "任务",
+            "ddl_type": "none",
+            "category": "导入任务分类",
+            "status": "not_focusing"
+          }
+        ]
+      }
+    },
+    "choices": {
+      "todos:123e4567-e89b-42d3-a456-000000000103:category": {
+        "side": "incoming"
+      },
+      "recurrence_rules:123e4567-e89b-42d3-a456-000000000102:record": {
+        "side": "incoming"
+      }
+    },
+    "expected": {
+      "rows": {
+        "todos": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000103",
+            "category": "导入任务分类"
+          }
+        ],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "原备注",
+              "category": "导入重复任务分类"
+            }
+          }
+        ]
+      },
+      "summary": {
+        "todos": {
+          "create": 0,
+          "update": 1,
+          "skip": 0,
+          "conflict": 1
+        },
+        "recurrence_rules": {
+          "create": 0,
+          "update": 1,
+          "skip": 0,
+          "conflict": 1
+        }
+      }
+    },
+    "unresolved_before": 2
+  },
+  {
+    "name": "legacy-schedule-template-local-absent",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "schedules": [],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "entity_type": "schedule",
+            "start_date": "2026-10-13",
+            "frequency": "daily",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "原备注"
+            }
+          }
+        ],
+        "todos": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "schedules": [],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "entity_type": "schedule",
+            "start_date": "2026-10-13",
+            "frequency": "daily",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "导入业务备注",
+              "category": "旧导入分类",
+              "nature": "free_arrange",
+              "relax_suggestion": "旧导入建议"
+            }
+          }
+        ],
+        "todos": []
+      }
+    },
+    "choices": {
+      "recurrence_rules:123e4567-e89b-42d3-a456-000000000102:record": {
+        "side": "incoming"
+      }
+    },
+    "expected": {
+      "rows": {
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "导入业务备注"
+            }
+          }
+        ]
+      },
+      "summary": {
+        "recurrence_rules": {
+          "create": 0,
+          "update": 1,
+          "skip": 0,
+          "conflict": 1
+        }
+      }
+    },
+    "unresolved_before": 1
+  },
+  {
+    "name": "legacy-schedule-incoming-absent",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "schedules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000101",
+            "name": "计划",
+            "start_time": "2026-10-13T09:00:00",
+            "end_time": "2026-10-13T10:00:00",
+            "notes": "原备注",
+            "category": "旧本机分类",
+            "nature": "relax",
+            "relax_suggestion": "旧本机建议"
+          }
+        ],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "entity_type": "schedule",
+            "start_date": "2026-10-13",
+            "frequency": "daily",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "原备注",
+              "category": "旧本机分类",
+              "nature": "relax",
+              "relax_suggestion": "旧本机建议"
+            }
+          }
+        ],
+        "todos": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "schedules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000101",
+            "name": "计划",
+            "start_time": "2026-10-13T09:00:00",
+            "end_time": "2026-10-13T10:00:00",
+            "notes": "导入业务备注",
+            "category": "普通日程",
+            "nature": "no_other_task"
+          }
+        ],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "entity_type": "schedule",
+            "start_date": "2026-10-13",
+            "frequency": "daily",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "导入业务备注"
+            }
+          }
+        ],
+        "todos": []
+      }
+    },
+    "choices": {
+      "schedules:123e4567-e89b-42d3-a456-000000000101:record": {
+        "side": "incoming"
+      },
+      "recurrence_rules:123e4567-e89b-42d3-a456-000000000102:record": {
+        "side": "incoming"
+      }
+    },
+    "expected": {
+      "rows": {
+        "schedules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000101",
+            "notes": "导入业务备注",
+            "category": "旧本机分类",
+            "nature": "relax",
+            "relax_suggestion": "旧本机建议"
+          }
+        ],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "导入业务备注",
+              "category": "旧本机分类",
+              "nature": "relax",
+              "relax_suggestion": "旧本机建议"
+            }
+          }
+        ]
+      },
+      "summary": {
+        "schedules": {
+          "create": 0,
+          "update": 1,
+          "skip": 0,
+          "conflict": 1
+        },
+        "recurrence_rules": {
+          "create": 0,
+          "update": 1,
+          "skip": 0,
+          "conflict": 1
+        }
+      }
+    },
+    "unresolved_before": 2
+  },
+  {
+    "name": "legacy-schedule-template-type-change",
+    "local": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "schedules": [],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "entity_type": "schedule",
+            "start_date": "2026-10-13",
+            "frequency": "daily",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "原备注",
+              "category": "旧本机分类",
+              "nature": "relax",
+              "relax_suggestion": "旧本机建议"
+            }
+          }
+        ],
+        "todos": []
+      }
+    },
+    "incoming": {
+      "app": "riji",
+      "schema_version": "0.10.0",
+      "entities": {
+        "schedules": [],
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "entity_type": "todo",
+            "start_date": "2026-10-13",
+            "frequency": "daily",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "原备注",
+              "category": "新任务分类"
+            }
+          }
+        ],
+        "todos": []
+      }
+    },
+    "choices": {
+      "recurrence_rules:123e4567-e89b-42d3-a456-000000000102:record": {
+        "side": "incoming"
+      }
+    },
+    "expected": {
+      "rows": {
+        "recurrence_rules": [
+          {
+            "uuid": "123e4567-e89b-42d3-a456-000000000102",
+            "entity_type": "todo",
+            "template_json": {
+              "name": "重复模板",
+              "notes": "原备注",
+              "category": "新任务分类"
+            }
+          }
+        ]
+      },
+      "summary": {
+        "recurrence_rules": {
+          "create": 0,
+          "update": 1,
+          "skip": 0,
+          "conflict": 1
+        }
+      }
+    },
+    "unresolved_before": 1
+  }
+]

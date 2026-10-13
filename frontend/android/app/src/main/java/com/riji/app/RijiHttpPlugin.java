@@ -157,6 +157,8 @@ public final class RijiHttpPlugin extends Plugin {
             context.reject("request was cancelled", "REQUEST_CANCELLED");
         } catch (ResponseTooLargeException exception) {
             context.reject("response exceeded the configured size limit", "RESPONSE_TOO_LARGE");
+        } catch (RijiHttpRawExchange.TooLargeException exception) {
+            context.reject("response exceeded the configured size limit", "RESPONSE_TOO_LARGE");
         } catch (RedirectException exception) {
             context.reject(exception.getMessage(), exception.code);
         } catch (ProtocolException exception) {
@@ -190,6 +192,11 @@ public final class RijiHttpPlugin extends Plugin {
         while (true) {
             if (context.isCancelled()) {
                 throw new RequestCancelledException();
+            }
+            if (RijiHttpRawExchange.requiresRawTransport(currentMethod)) {
+                // WebDAV methods like PROPFIND and MKCOL cannot be sent through
+                // HttpURLConnection, so they use the bounded raw exchange.
+                return performRawRequest(context, spec, currentUri, currentMethod, currentBody, currentHeaders);
             }
 
             HttpURLConnection connection = null;
@@ -276,6 +283,48 @@ public final class RijiHttpPlugin extends Plugin {
                 }
             }
         }
+    }
+
+    private JSObject performRawRequest(
+        RequestContext context,
+        RequestSpec spec,
+        URI uri,
+        String method,
+        byte[] body,
+        Map<String, List<String>> headers
+    ) throws Exception {
+        if (context.isCancelled()) {
+            throw new RequestCancelledException();
+        }
+        RijiHttpRawExchange.Result response = RijiHttpRawExchange.execute(
+            uri.toString(),
+            method,
+            headers,
+            body,
+            spec.connectTimeoutMs,
+            spec.readTimeoutMs,
+            spec.maxResponseBytes
+        );
+        if (context.isCancelled()) {
+            throw new RequestCancelledException();
+        }
+        storeCookies(uri, response.headers);
+
+        JSObject result = new JSObject();
+        result.put("requestId", spec.requestId);
+        result.put("status", response.status);
+        result.put("headers", exposedHeaders(response.headers));
+        if ("base64".equals(spec.responseType)) {
+            result.put("body", Base64.encodeToString(response.body, Base64.NO_WRAP));
+        } else {
+            Charset charset = RijiHttpSupport.responseCharset(
+                RijiHttpRawExchange.headerValue(response.headers, "Content-Type")
+            );
+            result.put("body", new String(response.body, charset));
+        }
+        result.put("url", uri.toString());
+        result.put("redirected", false);
+        return result;
     }
 
     private void applyHeaders(HttpURLConnection connection, Map<String, List<String>> headers) {

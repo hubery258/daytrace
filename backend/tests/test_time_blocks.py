@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app import crud, models, schemas
 from app.data_portability import export_package, import_package
 from app.database import Base
+from portability_helpers import confirmed_import as import_package
 from app.routers.time_blocks import TimerConversion, from_timer, list_blocks, replace_range
 
 
@@ -151,8 +152,8 @@ class TimeBlockTests(unittest.IsolatedAsyncioTestCase):
             categories = list((await target.execute(select(models.TimeBlockCategory))).scalars())
             schedules = list((await target.execute(select(models.Schedule))).scalars())
             blocks = list((await target.execute(select(models.TimeBlock))).scalars())
-            self.assertEqual(len(categories), 1)
-            self.assertEqual(categories[0].color, '#4c9b67')
+            self.assertEqual(len(categories), 2)
+            self.assertIn('#4c9b67', [category.color for category in categories])
             self.assertEqual([item.name for item in schedules], ['体育课'])
             self.assertEqual(len(blocks), 1)
             self.assertEqual(blocks[0].notes, '跑步')

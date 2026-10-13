@@ -7,6 +7,7 @@ import {
 } from '../src/data/mobile/database.js';
 import { mobileRequest } from '../src/data/mobile/router.js';
 import { createSqlJsConnection } from './helpers/sqlJsDatabase.mjs';
+import { upcomingSchedules } from '../src/utils/homeSchedules.js';
 
 process.env.NODE_ENV = 'test';
 
@@ -37,8 +38,8 @@ test('migrations are ordered, versioned, and keep identity claim tables', async 
   const migrations = (await connection.query('SELECT version, name FROM mobile_schema_migrations ORDER BY version')).values;
   const version = (await connection.query('PRAGMA user_version')).values[0].user_version;
   const claimTable = (await connection.query("SELECT name FROM sqlite_master WHERE type='table' AND name='recurrence_instance_claims'")).values;
-  assert.deepEqual(migrations.map((item) => item.version), [1, 2, 3, 4, 5]);
-  assert.equal(version, 5);
+  assert.deepEqual(migrations.map((item) => item.version), [1, 2, 3, 4, 5, 6, 7]);
+  assert.equal(version, 7);
   assert.equal(claimTable.length, 1);
 });
 
@@ -85,6 +86,25 @@ test('schedules use lane overlap detection and strict week intersection boundari
   });
   const week = await call('/schedules/week/?start_date=2026-08-17');
   assert.deepEqual(week.map((item) => item.id), [first.id, actual.id]);
+});
+
+test('home day queries keep repeated schedule instances unique across refreshes and midnight', async () => {
+  await call('/recurrence-rules/', 'POST', {
+    entity_type: 'schedule', frequency: 'daily', start_date: '2099-01-05',
+    template_json: { name: '重复计划', start_time: '2020-01-01T10:00:00', end_time: '2020-01-01T11:00:00', is_planned: true },
+  });
+  for (const day of ['2099-01-05', '2099-01-06']) {
+    const generation = { entity_type: 'schedule', date_from: day, date_to: day };
+    await call('/recurrence-rules/generate', 'POST', generation);
+    assert.deepEqual((await call('/recurrence-rules/generate', 'POST', generation)).created_schedule_ids, []);
+    const next = day === '2099-01-05' ? '2099-01-06' : '2099-01-07';
+    const schedules = await call(`/schedules/?is_planned=true&date_from=${day}T00:00:00&date_to=${next}T00:00:00`);
+    const upcoming = upcomingSchedules(schedules, new Date(`${day}T09:00:00+08:00`).getTime(), 2);
+    assert.equal(upcoming.length, 1);
+    assert.equal(upcoming[0].name, '重复计划');
+    assert.equal(upcoming[0].recurrence_date, day);
+  }
+  assert.equal((await connection.query('SELECT * FROM schedules')).values.length, 2);
 });
 
 test('recurrence generation is idempotent and deleted instances never revive', async () => {

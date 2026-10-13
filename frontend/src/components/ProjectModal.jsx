@@ -100,7 +100,7 @@ export default function ProjectModal({ project, onClose, onSaved }) {
             <textarea
               value={form.description}
               onChange={e => handleChange('description', e.target.value)}
-              placeholder="项目说明、推进备注、验收条件等"
+              placeholder="可选说明"
             />
           </div>
 

@@ -16,6 +16,14 @@ from sqlalchemy import (
 from .database import Base
 
 
+class SecretColumn(Column):
+    """Column marker for values that must stay out of diagnostics."""
+
+    def __init__(self, *args, repr=False, **kwargs):
+        self.secret_repr = repr
+        super().__init__(*args, **kwargs)
+
+
 def beijing_now() -> datetime:
     return datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None)
 
@@ -178,6 +186,7 @@ class TimeBlock(Base):
     source = Column(String(20), default="manual", nullable=False)
     source_timer_id = Column(Integer, ForeignKey("timer_sessions.id"), nullable=True)
     coverage_seconds = Column(Integer, nullable=True)
+    origin_uuid = Column(String(36), nullable=True)
     created_at = Column(DateTime, default=beijing_now, nullable=False)
     updated_at = Column(DateTime, default=beijing_now, onupdate=beijing_now, nullable=False)
 
@@ -231,6 +240,7 @@ class TimerSession(Base):
     uuid = Column(String(36), default=new_uuid, unique=True, nullable=False, index=True)
     name = Column(String(200), nullable=False)
     status = Column(SAEnum(TimerStatus), default=TimerStatus.running, nullable=False)
+    is_parked = Column(Boolean, default=False, nullable=False)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
     linked_todo_id = Column(Integer, ForeignKey("todos.id"), nullable=True)
     started_at = Column(DateTime, nullable=False)
@@ -312,6 +322,39 @@ class ZjuGradeSnapshot(Base):
     payload_json = Column(JSON, default=dict, nullable=False)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+class WebDavConfig(Base):
+    """Local WebDAV configuration; excluded from portable data packages."""
+
+    __tablename__ = "webdav_configs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String(36), default=new_uuid, unique=True, nullable=False, index=True)
+    name = Column(String(100), default="WebDAV", nullable=False)
+    base_url = Column(String(2048), default="", nullable=False)
+    username = Column(String(200), default="", nullable=False)
+    password = SecretColumn(Text, default="", nullable=False, repr=False)
+    remote_directory = Column(String(300), default="daytrace", nullable=False)
+    remote_filename = Column(String(200), default="daytrace-latest.json", nullable=False)
+    remember_password = Column(Boolean, default=False, nullable=False)
+    allow_insecure_http = Column(Boolean, default=False, nullable=False)
+    last_sync_at = Column(DateTime, nullable=True)
+    last_success_at = Column(DateTime, nullable=True)
+    last_download_at = Column(DateTime, nullable=True)
+    last_status = Column(String(20), default="idle", nullable=False)
+    last_error = Column(Text, default="", nullable=False)
+    last_error_code = Column(String(50), default="", nullable=False)
+    last_remote_etag = Column(String(300), nullable=True)
+    last_remote_modified_at = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+    def __repr__(self) -> str:
+        return (
+            f"WebDavConfig(uuid={self.uuid!r}, base_url={self.base_url!r}, "
+            f"username={self.username!r}, remember_password={self.remember_password!r})"
+        )
+
 
 class ImportBatch(Base):
     __tablename__ = "import_batches"

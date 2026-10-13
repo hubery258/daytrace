@@ -109,6 +109,8 @@ const BOOLEAN_COLUMNS = new Set([
   'is_planned',
   'save_password',
   'save_pintia_cookie',
+  'remember_password',
+  'allow_insecure_http',
 ]);
 
 function isoNow() {
@@ -237,6 +239,34 @@ const MIGRATIONS = [
         WHERE status IN ('running', 'paused')
         ORDER BY created_at DESC, id DESC LIMIT 1
       `, [stamp], false);
+    },
+  },
+  {
+    version: 6,
+    name: 'v0.11 webdav manual sync configuration',
+    up: async (db) => {
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS webdav_config (
+          id INTEGER PRIMARY KEY CHECK (id = 1), uuid TEXT NOT NULL,
+          base_url TEXT NOT NULL DEFAULT '', username TEXT NOT NULL DEFAULT '',
+          password TEXT NOT NULL DEFAULT '',
+          remote_directory TEXT NOT NULL DEFAULT 'daytrace',
+          remote_filename TEXT NOT NULL DEFAULT 'daytrace-latest.json',
+          remember_password INTEGER NOT NULL DEFAULT 0,
+          allow_insecure_http INTEGER NOT NULL DEFAULT 0,
+          last_sync_at TEXT, last_success_at TEXT, last_download_at TEXT,
+          last_status TEXT NOT NULL DEFAULT 'idle', last_error TEXT NOT NULL DEFAULT '',
+          last_error_code TEXT NOT NULL DEFAULT '', last_remote_etag TEXT,
+          last_remote_modified_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+      `, false);
+    },
+  },
+  {
+    version: 7,
+    name: 'v0.11.1 local WebDAV credential storage',
+    up: async (db) => {
+      await ensureColumn(db, 'webdav_config', 'password', "password TEXT NOT NULL DEFAULT ''");
     },
   },
 ];

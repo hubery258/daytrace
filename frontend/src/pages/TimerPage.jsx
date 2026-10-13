@@ -1,3 +1,4 @@
+import { projectItemDisplayName } from '../utils/displayName';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { projectApi, timeBlockApi, timerApi, todoApi } from '../api/client';
 import { readDisplayPreferences } from '../utils/displayPreferences';
@@ -176,7 +177,7 @@ export default function TimerPage() {
         <div className="timer-head">
           <div>
             <h1>计时</h1>
-            <p>记录正在发生的事，结束后按 50% 覆盖规则折算为实际时间块。</p>
+            <p>结束后折算时间块：每格覆盖至少一半，保留手动记录。</p>
           </div>
           <div className={`timer-status ${timer?.status || 'idle'}`}>{timer ? (timer.status === 'paused' ? '已暂停' : '进行中') : '未开始'}</div>
         </div>
@@ -220,7 +221,7 @@ export default function TimerPage() {
               <label>关联待办</label>
               <select value={form.linked_todo_id} onChange={e => setForm(prev => ({ ...prev, linked_todo_id: e.target.value, project_id: e.target.value ? '' : prev.project_id }))}>
                 <option value="">不关联待办</option>
-                {todos.map(todo => <option key={todo.id} value={todo.id}>{todo.name}</option>)}
+                {todos.map(todo => <option key={todo.id} value={todo.id}>{projectItemDisplayName(todo, projects)}</option>)}
               </select>
             </div>
             <div className="form-group">
@@ -237,7 +238,8 @@ export default function TimerPage() {
         {recent.length === 0 ? <div className="empty-state small">暂无最近计时</div> : recent.map(item => (
           <div key={item.id} className="timer-recent-row">
             <strong>{item.name}</strong>
-            <span>{formatDuration(item.elapsed_seconds)} · {item.status === 'completed' ? '已结束' : '已取消'}</span>
+            <span>{formatDuration(item.elapsed_seconds)} · {item.is_parked ? '合并后暂存暂停' : item.status === 'completed' ? '已结束' : '已取消'}</span>
+            {item.is_parked && <button className="btn btn-sm btn-secondary" disabled={!!timer || actionBusy} onClick={()=>refreshAfterAction(()=>timerApi.resume(item.id))}>继续这条计时</button>}
             {item.status === 'completed' && <button className="btn btn-sm btn-secondary" onClick={() => setFinishTimer(item)}>折算时间块</button>}
           </div>
         ))}
@@ -256,7 +258,7 @@ export default function TimerPage() {
             }}
           >
             <h2 id="cancel-timer-title">取消本次计时？</h2>
-            <p>取消后不会生成实际记录，已经记录的计时时长也不会保留。</p>
+            <p>取消后不生成实际记录，也不保留本次计时时长。</p>
             <div className="form-actions">
               <button type="button" className="btn btn-secondary" autoFocus onClick={closeCancelConfirm}>继续计时</button>
               <button type="button" className="btn btn-danger" onClick={confirmCancel}>确认取消</button>

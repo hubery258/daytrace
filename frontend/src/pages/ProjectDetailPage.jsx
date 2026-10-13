@@ -148,7 +148,7 @@ export default function ProjectDetailPage() {
           <strong>{progressLabel(todo_count, completed_todo_count, progress)}</strong>
         </div>
         {todo_count > 0 && completed_todo_count === todo_count && project.status !== 'completed' && (
-          <div className="hint-line">所有待办已完成，项目仍需要手动确认完成。</div>
+          <div className="hint-line">待办已全部完成，请手动将项目设为完成。</div>
         )}
       </section>
 

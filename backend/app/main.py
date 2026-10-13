@@ -10,9 +10,9 @@ from starlette.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from .database import async_engine, Base
-from .routers import data_portability, logs, projects, recurrence, schedules, time_blocks, timer, todos, zju
+from .routers import data_portability, logs, projects, recurrence, schedules, sync_webdav, time_blocks, timer, todos, zju
 
-SQLITE_SCHEMA_VERSION = 9
+SQLITE_SCHEMA_VERSION = 12
 
 class SPAStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
@@ -82,6 +82,7 @@ async def ensure_sqlite_schema_compat(conn):
             "paused_at": "paused_at DATETIME",
             "paused_seconds": "paused_seconds INTEGER DEFAULT 0",
             "active_intervals": "active_intervals JSON DEFAULT '[]'",
+            "is_parked": "is_parked BOOLEAN NOT NULL DEFAULT 0",
             "ended_at": "ended_at DATETIME",
             "created_schedule_id": "created_schedule_id INTEGER",
             "notes": "notes TEXT DEFAULT ''",
@@ -89,6 +90,7 @@ async def ensure_sqlite_schema_compat(conn):
             "updated_at": "updated_at DATETIME",
         },
     )
+    await add_missing_columns("time_blocks", {"origin_uuid": "origin_uuid VARCHAR(36)"})
     await add_missing_columns("daily_logs", {"uuid": "uuid VARCHAR(36)"})
     await add_missing_columns("log_templates", {"uuid": "uuid VARCHAR(36)"})
     await add_missing_columns(
@@ -103,6 +105,10 @@ async def ensure_sqlite_schema_compat(conn):
             "created_at": "created_at DATETIME",
             "updated_at": "updated_at DATETIME",
         },
+    )
+    await add_missing_columns(
+        "webdav_configs",
+        {"password": "password TEXT DEFAULT ''"},
     )
     await add_missing_columns(
         "import_batches",
@@ -219,7 +225,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="日迹 API",
     description="个人效率助手 - 待办 & 日程 & 项目 & AI 分析",
-    version="0.10.1",
+    version="0.11.3",
     lifespan=lifespan,
 )
 
@@ -239,6 +245,7 @@ app.include_router(projects.router)
 app.include_router(recurrence.router)
 app.include_router(logs.router)
 app.include_router(data_portability.router)
+app.include_router(sync_webdav.router)
 app.include_router(zju.router)
 
 

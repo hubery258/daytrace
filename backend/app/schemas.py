@@ -411,6 +411,7 @@ class TimerOut(BaseModel):
     uuid: str
     name: str
     status: TimerStatus
+    is_parked: bool = False
     project_id: Optional[int] = None
     linked_todo_id: Optional[int] = None
     started_at: datetime
@@ -656,3 +657,32 @@ class ZjuGradeOut(BaseModel):
     has_cache: bool = False
     from_cache: bool = False
     errors: List[str] = Field(default_factory=list)
+
+
+# ============ WebDAV manual sync (v0.11.0) ============
+
+class WebDavConfigIn(BaseModel):
+    """Local configuration plus a write-only password."""
+
+    base_url: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = Field(default=None, repr=False)
+    remember_password: bool = False
+    remote_directory: Optional[str] = None
+    remote_filename: Optional[str] = None
+    allow_insecure_http: Optional[bool] = None
+
+
+class WebDavTestRequest(BaseModel):
+    base_url: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = Field(default=None, repr=False)
+    remote_directory: Optional[str] = None
+    remote_filename: Optional[str] = None
+    allow_insecure_http: Optional[bool] = None
+
+
+class WebDavUploadRequest(BaseModel):
+    confirmed: bool = False
+    expected_remote_etag: Optional[str] = None
+    expected_remote_exists: Optional[bool] = None

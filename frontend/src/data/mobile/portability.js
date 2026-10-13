@@ -1,5 +1,6 @@
 import {
   createUuid,
+  getDatabase,
   insert,
   one,
   rows,
@@ -10,6 +11,8 @@ import {
 } from './database.js';
 import { mobileError, validationError } from './domain.js';
 import { rebuildAllRecurrenceClaims } from './recurrence.js';
+import { createScheduleLinkRepair } from '../scheduleLinkRepair.js';
+const scheduleLinks = createScheduleLinkRepair({rows,run,getDatabase});
 
 export const DATA_SCHEMA_VERSION = '0.8.0';
 const SUPPORTED_SCHEMA_VERSIONS = new Set(['0.6.0', DATA_SCHEMA_VERSION]);
@@ -340,6 +343,8 @@ export async function importDataPackage(raw, mode = 'merge') {
 }
 
 export async function portabilityRequest(method, pathname, body) {
+  if (method === 'GET' && pathname === '/data/references/schedules') return withWriteLock(()=>scheduleLinks.preview());
+  if (method === 'POST' && pathname === '/data/references/schedules/repair') return withWriteLock(()=>scheduleLinks.repair(body));
   if (method === 'GET' && pathname === '/data/export') return exportDataPackage();
   if (method === 'POST' && pathname === '/data/import/preview') return previewDataImport(body.package, body.mode || 'merge');
   if (method === 'POST' && pathname === '/data/import') return importDataPackage(body.package, body.mode || 'merge');

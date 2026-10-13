@@ -182,7 +182,7 @@ export const timerApi = {
   start: bindCapability('timer.start', (data) => ({ path: '/timer/start', options: jsonOptions('POST', data) })),
   updateCurrent: bindCapability('timer.updateCurrent', (data) => ({ path: '/timer/current', options: jsonOptions('PUT', data) })),
   pause: bindCapability('timer.pause', () => ({ path: '/timer/pause', options: { method: 'POST' } })),
-  resume: bindCapability('timer.resume', () => ({ path: '/timer/resume', options: { method: 'POST' } })),
+  resume: bindCapability('timer.resume', (timerId) => ({ path: '/timer/resume', options: jsonOptions('POST', timerId ? {timer_id:timerId} : {}) })),
   finish: bindCapability('timer.finish', () => ({ path: '/timer/finish', options: { method: 'POST' } })),
   cancel: bindCapability('timer.cancel', () => ({ path: '/timer/cancel', options: { method: 'POST' } })),
   attachSchedule: bindCapability('timer.attachSchedule', (timerId, scheduleId) => ({
@@ -224,9 +224,23 @@ export const zjuApi = {
 };
 
 export const dataApi = {
+  checkScheduleLinks: bindCapability('data.checkScheduleLinks', () => ({ path: '/data/references/schedules' })),
+  repairScheduleLinks: bindCapability('data.repairScheduleLinks', (previewToken) => ({ path: '/data/references/schedules/repair', options: jsonOptions('POST', {preview_token:previewToken,confirmed:true}) })),
   export: bindCapability('data.export', () => ({ path: '/data/export' })),
-  previewImport: bindCapability('data.previewImport', (dataPackage, mode = 'merge') => ({ path: '/data/import/preview', options: jsonOptions('POST', { package: dataPackage, mode }) })),
-  import: bindCapability('data.import', (dataPackage, mode = 'merge') => ({ path: '/data/import', options: jsonOptions('POST', { package: dataPackage, mode }) })),
+  previewImport: bindCapability('data.previewImport', (dataPackage, mode = 'merge', choices = {}) => ({ path: '/data/import/preview', options: jsonOptions('POST', { package: dataPackage, mode, choices }) })),
+  import: bindCapability('data.import', (dataPackage, mode = 'merge', choices = {}, previewToken) => ({ path: '/data/import', options: jsonOptions('POST', { package: dataPackage, mode, choices, preview_token: previewToken }) })),
+};
+
+// v0.11.0 manual WebDAV sync. Web and Windows Electron hit the local backend
+// proxy; Android serves the same paths from its native data layer.
+export const syncApi = {
+  getConfig: bindCapability('sync.getWebdavConfig', () => ({ path: '/sync/webdav/config' })),
+  saveConfig: bindCapability('sync.saveWebdavConfig', (data) => ({ path: '/sync/webdav/config', options: jsonOptions('PUT', data) })),
+  testConnection: bindCapability('sync.testWebdav', (data) => ({ path: '/sync/webdav/test', options: jsonOptions('POST', data) })),
+  preflightUpload: bindCapability('sync.preflightWebdavUpload', () => ({ path: '/sync/webdav/upload/preflight', options: jsonOptions('POST', {}) })),
+  upload: bindCapability('sync.uploadWebdav', (data) => ({ path: '/sync/webdav/upload', options: jsonOptions('POST', data) })),
+  download: bindCapability('sync.downloadWebdav', () => ({ path: '/sync/webdav/download', options: jsonOptions('POST', {}) })),
+  status: bindCapability('sync.webdavStatus', () => ({ path: '/sync/webdav/status' })),
 };
 
 export const healthApi = {
@@ -251,5 +265,6 @@ export const clientCapabilityBindings = Object.freeze({
   templateApi: bindingMap(templateApi),
   zjuApi: bindingMap(zjuApi),
   dataApi: bindingMap(dataApi),
+  syncApi: bindingMap(syncApi),
   healthApi: bindingMap(healthApi),
 });
